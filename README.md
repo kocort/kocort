@@ -74,7 +74,7 @@ Kocort's pioneering security architecture—Brain handles reasoning, Cerebellum 
 ```
 
 - **Brain**: Cloud/remote LLM handles reasoning and decision-making (supports OpenAI, Anthropic, etc.)
-- **Cerebellum**: Local quantized model (0.8B–1.5B), runs fully offline
+- **Cerebellum**: Local 1.7B quantized model, runs fully offline
   - Performs semantic safety review on every `tool_call` (intent consistency, data exfiltration, injection attacks, etc.)
   - Review results: `approve` / `flag` / `reject`, with risk level and reasoning
   - Intelligently skips low-risk read-only operations for performance
