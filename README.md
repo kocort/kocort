@@ -5,7 +5,15 @@
 <h1 align="center">Kocort</h1>
 
 <p align="center">
-  <b>Desktop AI Agent Assistant — Dual-Brain Architecture · Zero CLI · Single-Binary Deployment</b>
+  <b>Desktop AI Agent Assistant — Dual-Brain Architecture · Zero CLI · Cross-Platform</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/kocort/kocort/actions/workflows/ci.yml"><img src="https://github.com/kocort/kocort/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/kocort/kocort/releases"><img src="https://img.shields.io/github/v/release/kocort/kocort" alt="Latest Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/kocort/kocort" alt="License" /></a>
+  <img src="https://img.shields.io/badge/Go-1.23-00ADD8?logo=go" alt="Go 1.23" />
+  <img src="https://img.shields.io/badge/Platforms-macOS%20%7C%20Windows%20%7C%20Linux-222222" alt="Platforms" />
 </p>
 
 <p align="center">
@@ -437,39 +445,6 @@ kocort/
 | Channel Integration | Terminal | Feishu/Telegram/Discord/Slack/WhatsApp, etc. |
 | Cross-Platform | macOS / Linux | ✅ Windows / macOS / Linux native support |
 | Skill/Task Management | CLI manual config | ✅ Visual management panel (install/configure/schedule) |
-
----
-
-## Core Capabilities
-
-### 🤖 Agent Runtime
-
-Core runtime capabilities in the current repository:
-
-- **30+ Built-in Tools** — File I/O, command execution, web fetch/search, browser automation, memory, session and sub-agent tools
-- **Skill System** — Workspace skill discovery, snapshotting, command dispatch, install/import flow
-- **Sub-Agent Orchestration** — Child session spawning, registry, completion announcement, steer/send flows
-- **Streaming Output** — Chat, tool, lifecycle, and delivery events exposed through SSE
-- **Loop Protection** — Repetitive tool-call circuit breaking and policy-based tool governance
-
-### 🔒 Security Framework
-
-- **Sandbox Control** — File operations restricted to user-authorized whitelist paths; system-critical directories are read-only
-- **Elevated Interception** — High-risk operations tiered by risk level (low/medium/high/critical), require user confirmation
-- **Tool Approval** — Sensitive tools require dynamic approval before execution
-- **Cerebellum Review** — Local model performs semantic-level security review on sensitive operations, preventing prompt injection and data leakage
-
-### 📡 Multi-Channel Integration
-
-Supports external inbound/outbound adapters through the shared channel manager:
-
-- Feishu · Telegram · Discord · Slack · WhatsApp · Zalo
-- Generic Webhook
-- WebChat
-
-### ⏰ Scheduled Tasks
-
-One-shot / interval / cron scheduling is built into the runtime and reuses the same agent execution pipeline.
 
 ---
 

@@ -9,6 +9,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/kocort/kocort/actions/workflows/ci.yml"><img src="https://github.com/kocort/kocort/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/kocort/kocort/releases"><img src="https://img.shields.io/github/v/release/kocort/kocort" alt="Latest Release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/kocort/kocort" alt="License" /></a>
+  <img src="https://img.shields.io/badge/Go-1.23-00ADD8?logo=go" alt="Go 1.23" />
+  <img src="https://img.shields.io/badge/Platforms-macOS%20%7C%20Windows%20%7C%20Linux-222222" alt="Platforms" />
+</p>
+
+<p align="center">
   <a href="#快速开始">快速开始</a> ·
   <a href="#核心特性">核心特性</a> ·
   <a href="#架构概览">架构</a> ·
