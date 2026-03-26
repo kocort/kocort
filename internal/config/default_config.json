@@ -1,0 +1,168 @@
+{
+  "models": {
+    "providers": {}
+  },
+  "logging": {
+    "enabled": true,
+    "console": true,
+    "level": "debug"
+  },
+  "tools": {
+    "exec": {
+      "allowBackground": true,
+      "backgroundMs": 10000,
+      "timeoutSec": 1800
+    },
+    "elevated": {
+      "enabled": false
+    },
+    "sandbox": {
+      "mode": "off",
+      "workspaceAccess": "none",
+      "sessionToolsVisibility": "spawned",
+      "scope": "agent"
+    },
+    "loopDetection": {
+      "enabled": false,
+      "historySize": 30,
+      "warningThreshold": 10,
+      "criticalThreshold": 20,
+      "globalCircuitBreakerThreshold": 30,
+      "detectors": {
+        "genericRepeat": true,
+        "knownPollNoProgress": true,
+        "pingPong": true
+      }
+    },
+    "browserDriverDir": "",
+    "browserAutoInstall": true,
+    "browserUseSystem": true,
+    "browserSkipInstall": false,
+    "browserChannel": "",
+    "browserHeadless": true,
+    "browserPersistSession": true,
+    "browserUserDataDir": ""
+  },
+  "plugins": {
+    "enabled": true,
+    "allow": [],
+    "deny": [],
+    "load": {
+      "paths": []
+    },
+    "entries": {}
+  },
+  "skills": {
+    "allowBundled": [],
+    "load": {
+      "extraDirs": [],
+      "watch": true,
+      "watchDebounceMs": 250
+    },
+    "install": {
+      "preferBrew": true,
+      "nodeManager": "npm"
+    },
+    "limits": {
+      "maxCandidatesPerRoot": 200,
+      "maxSkillsLoadedPerSource": 30,
+      "maxSkillsInPrompt": 12,
+      "maxSkillsPromptChars": 12000,
+      "maxSkillFileBytes": 131072
+    },
+    "entries": {}
+  },
+  "agents": {
+    "defaults": {
+      "timeoutSeconds": 600,
+      "compaction": {
+        "reserveTokensFloor": 20000,
+        "memoryFlush": {
+          "enabled": true,
+          "softThresholdTokens": 4000,
+          "systemPrompt": "Session nearing compaction. Store durable memories now.",
+          "prompt": "Write any lasting notes to memory/YYYY-MM-DD.md or MEMORY.md using available tools. Reply with NO_REPLY if nothing should be stored."
+        }
+      },
+      "heartbeat": {
+        "every": "30m",
+        "target": "none",
+        "ackMaxChars": 300
+      },
+      "runtime": {
+        "type": "embedded"
+      },
+      "subagents": {
+        "maxSpawnDepth": 5
+      }
+    },
+    "list": []
+  },
+  "session": {
+    "mainKey": "main",
+    "resetTriggers": [
+      "/new",
+      "/reset"
+    ],
+    "maintenance": {
+      "mode": "warn",
+      "pruneAfter": "30d",
+      "maxEntries": 500,
+      "rotateBytes": "10mb",
+      "resetArchiveRetention": "30d"
+    },
+    "toolsVisibility": "tree",
+    "agentToAgent": {
+      "enabled": false,
+      "allow": []
+    }
+  },
+  "acp": {
+    "enabled": false,
+    "runtime": {
+      "ttlMinutes": 10
+    }
+  },
+  "gateway": {
+    "enabled": true,
+    "bind": "loopback",
+    "port": 18789,
+    "auth": {
+      "mode": "none"
+    },
+    "webchat": {
+      "enabled": true
+    }
+  },
+  "channels": {
+    "defaults": {
+      "defaultAgent": "main",
+      "allowFrom": [],
+      "textChunkLimit": 4000,
+      "chunkMode": "length"
+    },
+    "entries": {}
+  },
+  "memory": {
+    "backend": "builtin",
+    "citations": "auto"
+  },
+  "tasks": {
+    "enabled": true,
+    "tickSeconds": 5,
+    "maxConcurrent": 4
+  },
+  "cerebellum": {
+    "enabled": true,
+    "modelsDir": "models",
+    "threads": 4,
+    "contextSize": 2048
+  },
+  "brainLocal": {
+    "modelsDir": "models",
+    "threads": 4,
+    "contextSize": 4096,
+    "gpuLayers": 0,
+    "autoStart": true
+  }
+}

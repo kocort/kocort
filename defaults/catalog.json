@@ -1,0 +1,318 @@
+{
+    "cerebellum": [
+        {
+            "id": "qwen3-1.7b-q4_k_m",
+            "name": "Qwen3 1.7B (Q4_K_M)",
+            "description": "Recommended: Good balance of speed and quality for safety review",
+            "size": "~1.28 GB",
+            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q4_K_M.gguf",
+            "filename": "Qwen3-1.7B.Q4_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3-1.7b-q3_k_m",
+            "name": "Qwen3 1.7B (Q3_K_M)",
+            "description": "Lightweight: Smallest practical quantization for low-resource environments",
+            "size": "~1.07 GB",
+            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q3_K_M.gguf",
+            "filename": "Qwen3-1.7B.Q3_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3-1.7b-q6_k",
+            "name": "Qwen3 1.7B (Q6_K)",
+            "description": "Higher quality: Best accuracy for complex safety reviews",
+            "size": "~1.67 GB",
+            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q6_K.gguf",
+            "filename": "Qwen3-1.7B.Q6_K.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        }
+    ],
+    "brain": [
+        {
+            "id": "qwen3.5-9b-q4_k_m",
+            "name": "Qwen3.5 9B (Q4_K_M)",
+            "description": "Recommended: Good balance of speed and quality for general agent tasks",
+            "size": "~5.7 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf",
+            "filename": "Qwen3.5-9B-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-9b-q3_k_m",
+            "name": "Qwen3.5 9B (Q3_K_M)",
+            "description": "Lightweight: Smaller footprint for lower-resource environments",
+            "size": "~4.7 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q3_K_M.gguf",
+            "filename": "Qwen3.5-9B-Q3_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-9b-q8_0",
+            "name": "Qwen3.5 9B (Q8_0)",
+            "description": "Higher quality: Best accuracy for demanding tasks",
+            "size": "~9.5 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q8_0.gguf",
+            "filename": "Qwen3.5-9B-Q8_0.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-27b-q4_k_m",
+            "name": "Qwen3.5 27B (Q4_K_M)",
+            "description": "Balanced large model: Strong reasoning and instruction following",
+            "size": "~16.4 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q4_K_M.gguf",
+            "filename": "Qwen3.5-27B-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 65536,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-27b-q3_k_m",
+            "name": "Qwen3.5 27B (Q3_K_M)",
+            "description": "Lightweight large model: Reduced VRAM for 27B-class performance",
+            "size": "~14.0 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q3_K_M.gguf",
+            "filename": "Qwen3.5-27B-Q3_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 65536,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-27b-q8_0",
+            "name": "Qwen3.5 27B (Q8_0)",
+            "description": "Highest accuracy 27B: Near-lossless quantization for maximum quality",
+            "size": "~28.8 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q8_0.gguf",
+            "filename": "Qwen3.5-27B-Q8_0.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 65536,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-122b-a10b-q4_k_m",
+            "name": "Qwen3.5 122B-A10B (Q4_K_M)",
+            "description": "MoE flagship: 122B total / 10B active parameters, exceptional capability",
+            "size": "~76.5 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-122B-A10B-GGUF/resolve/main/Qwen3.5-122B-A10B-Q4_K_M.gguf",
+            "filename": "Qwen3.5-122B-A10B-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 131072,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-122b-a10b-q3_k_m",
+            "name": "Qwen3.5 122B-A10B (Q3_K_M)",
+            "description": "MoE balanced: Reduced size with strong 122B-A10B performance",
+            "size": "~56.4 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-122B-A10B-GGUF/resolve/main/Qwen3.5-122B-A10B-Q3_K_M.gguf",
+            "filename": "Qwen3.5-122B-A10B-Q3_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 131072,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-397b-a17b-q4_k_m",
+            "name": "Qwen3.5 397B-A17B (Q4_K_M)",
+            "description": "MoE ultra: 397B total / 17B active, state-of-the-art open-source performance",
+            "size": "~244 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-397B-A17B-GGUF/resolve/main/Qwen3.5-397B-A17B-Q4_K_M.gguf",
+            "filename": "Qwen3.5-397B-A17B-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 131072,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-397b-a17b-q3_k_m",
+            "name": "Qwen3.5 397B-A17B (Q3_K_M)",
+            "description": "MoE ultra lightweight: Best-in-class quality at reduced storage cost",
+            "size": "~177 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-397B-A17B-GGUF/resolve/main/Qwen3.5-397B-A17B-Q3_K_M.gguf",
+            "filename": "Qwen3.5-397B-A17B-Q3_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 131072,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        }
+    ]
+}

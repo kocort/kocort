@@ -1,0 +1,437 @@
+[
+  {
+    "id": "anthropic",
+    "label": "Anthropic",
+    "baseUrl": "https://api.anthropic.com",
+    "api": "anthropic-messages",
+    "models": [
+      {
+        "id": "claude-opus-4-6",
+        "name": "Claude Opus 4.6",
+        "reasoning": true,
+        "contextWindow": 1000000,
+        "maxTokens": 128000
+      },
+      {
+        "id": "claude-sonnet-4-20250514",
+        "name": "Claude Sonnet 4",
+        "reasoning": true,
+        "contextWindow": 200000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "claude-3-7-sonnet-20250219",
+        "name": "Claude 3.7 Sonnet",
+        "reasoning": true,
+        "contextWindow": 200000,
+        "maxTokens": 8192
+      }
+    ]
+  },
+  {
+    "id": "openai",
+    "label": "OpenAI",
+    "baseUrl": "https://api.openai.com/v1",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "gpt-4.1",
+        "name": "GPT-4.1",
+        "reasoning": true,
+        "contextWindow": 128000,
+        "maxTokens": 16384
+      },
+      {
+        "id": "gpt-4.1-mini",
+        "name": "GPT-4.1 Mini",
+        "reasoning": false,
+        "contextWindow": 128000,
+        "maxTokens": 16384
+      }
+    ]
+  },
+  {
+    "id": "dashscope",
+    "label": "DashScope",
+    "labelZh": "灵积（阿里云百炼）",
+    "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "qwen-max",
+        "name": "Qwen Max",
+        "reasoning": true,
+        "contextWindow": 131072,
+        "maxTokens": 8192
+      },
+      {
+        "id": "qwen-plus",
+        "name": "Qwen Plus",
+        "reasoning": false,
+        "contextWindow": 131072,
+        "maxTokens": 8192
+      }
+    ]
+  },
+  {
+    "id": "minimax",
+    "label": "MiniMax",
+    "baseUrl": "https://api.minimax.io/anthropic",
+    "api": "anthropic-messages",
+    "models": [
+      {
+        "id": "MiniMax-M2.5",
+        "name": "MiniMax M2.5",
+        "reasoning": true,
+        "contextWindow": 200000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "MiniMax-M2.5-highspeed",
+        "name": "MiniMax M2.5 Highspeed",
+        "reasoning": true,
+        "contextWindow": 200000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "MiniMax-VL-01",
+        "name": "MiniMax VL 01",
+        "reasoning": false,
+        "contextWindow": 200000,
+        "maxTokens": 8192
+      }
+    ]
+  },
+  {
+    "id": "moonshot",
+    "label": "Moonshot",
+    "labelZh": "月之暗面",
+    "baseUrl": "https://api.moonshot.ai/v1",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "kimi-k2.5",
+        "name": "Kimi K2.5",
+        "reasoning": false,
+        "contextWindow": 256000,
+        "maxTokens": 8192
+      }
+    ]
+  },
+  {
+    "id": "volcengine",
+    "label": "VolcEngine",
+    "labelZh": "火山引擎",
+    "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "doubao-seed-1-8-251228",
+        "name": "Doubao Seed 1.8",
+        "reasoning": false,
+        "contextWindow": 256000,
+        "maxTokens": 4096
+      },
+      {
+        "id": "kimi-k2-5-260127",
+        "name": "Kimi K2.5",
+        "reasoning": false,
+        "contextWindow": 256000,
+        "maxTokens": 4096
+      },
+      {
+        "id": "glm-4-7-251222",
+        "name": "GLM 4.7",
+        "reasoning": false,
+        "contextWindow": 200000,
+        "maxTokens": 4096
+      },
+      {
+        "id": "deepseek-v3-2-251201",
+        "name": "DeepSeek V3.2",
+        "reasoning": false,
+        "contextWindow": 128000,
+        "maxTokens": 4096
+      }
+    ]
+  },
+  {
+    "id": "byteplus",
+    "label": "BytePlus",
+    "baseUrl": "https://ark.ap-southeast.bytepluses.com/api/v3",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "seed-1-8-251228",
+        "name": "Seed 1.8",
+        "reasoning": false,
+        "contextWindow": 256000,
+        "maxTokens": 4096
+      },
+      {
+        "id": "kimi-k2-5-260127",
+        "name": "Kimi K2.5",
+        "reasoning": false,
+        "contextWindow": 256000,
+        "maxTokens": 4096
+      },
+      {
+        "id": "glm-4-7-251222",
+        "name": "GLM 4.7",
+        "reasoning": false,
+        "contextWindow": 200000,
+        "maxTokens": 4096
+      }
+    ]
+  },
+  {
+    "id": "xiaomi",
+    "label": "Xiaomi",
+    "labelZh": "小米",
+    "baseUrl": "https://api.xiaomimimo.com/anthropic",
+    "api": "anthropic-messages",
+    "models": [
+      {
+        "id": "mimo-v2-flash",
+        "name": "Xiaomi MiMo V2 Flash",
+        "reasoning": false,
+        "contextWindow": 262144,
+        "maxTokens": 8192
+      }
+    ]
+  },
+  {
+    "id": "together",
+    "label": "Together",
+    "baseUrl": "https://api.together.xyz/v1",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "moonshotai/Kimi-K2.5",
+        "name": "Kimi K2.5",
+        "reasoning": true,
+        "contextWindow": 262144,
+        "maxTokens": 32768
+      },
+      {
+        "id": "zai-org/GLM-4.7",
+        "name": "GLM 4.7 Fp8",
+        "reasoning": false,
+        "contextWindow": 202752,
+        "maxTokens": 8192
+      },
+      {
+        "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "name": "Llama 3.3 70B Instruct Turbo",
+        "reasoning": false,
+        "contextWindow": 131072,
+        "maxTokens": 8192
+      },
+      {
+        "id": "deepseek-ai/DeepSeek-V3.1",
+        "name": "DeepSeek V3.1",
+        "reasoning": false,
+        "contextWindow": 131072,
+        "maxTokens": 8192
+      },
+      {
+        "id": "deepseek-ai/DeepSeek-R1",
+        "name": "DeepSeek R1",
+        "reasoning": true,
+        "contextWindow": 131072,
+        "maxTokens": 8192
+      }
+    ]
+  },
+  {
+    "id": "openrouter",
+    "label": "OpenRouter",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "auto",
+        "name": "OpenRouter Auto",
+        "reasoning": false,
+        "contextWindow": 200000,
+        "maxTokens": 8192
+      }
+    ]
+  },
+  {
+    "id": "qianfan",
+    "label": "Qianfan",
+    "labelZh": "千帆（百度智能云）",
+    "baseUrl": "https://qianfan.baidubce.com/v2",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "deepseek-v3.2",
+        "name": "DeepSeek V3.2",
+        "reasoning": true,
+        "contextWindow": 98304,
+        "maxTokens": 32768
+      },
+      {
+        "id": "ernie-5.0-thinking-preview",
+        "name": "ERNIE-5.0-Thinking-Preview",
+        "reasoning": true,
+        "contextWindow": 119000,
+        "maxTokens": 64000
+      }
+    ]
+  },
+  {
+    "id": "nvidia",
+    "label": "NVIDIA",
+    "baseUrl": "https://integrate.api.nvidia.com/v1",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "nvidia/qwen3.5-plus",
+        "name": "Qwen3.5 Plus",
+        "reasoning": true,
+        "contextWindow": 32768,
+        "maxTokens": 8192
+      },
+      {
+        "id": "nvidia/qwen3.5-thinking",
+        "name": "Qwen3.5 Thinking",
+        "reasoning": true,
+        "contextWindow": 32768,
+        "maxTokens": 8192
+      },
+      {
+        "id": "nvidia/llama-3.1-nemotron-70b-instruct",
+        "name": "NVIDIA Llama 3.1 Nemotron 70B",
+        "reasoning": false,
+        "contextWindow": 131072,
+        "maxTokens": 4096
+      },
+      {
+        "id": "meta/llama-3.3-70b-instruct",
+        "name": "Meta Llama 3.3 70B",
+        "reasoning": false,
+        "contextWindow": 131072,
+        "maxTokens": 4096
+      }
+    ]
+  },
+  {
+    "id": "synthetic",
+    "label": "Synthetic",
+    "baseUrl": "https://api.synthetic.new/anthropic",
+    "api": "anthropic-messages",
+    "models": [
+      {
+        "id": "hf:MiniMaxAI/MiniMax-M2.5",
+        "name": "MiniMax M2.5",
+        "reasoning": false,
+        "contextWindow": 192000,
+        "maxTokens": 65536
+      },
+      {
+        "id": "hf:moonshotai/Kimi-K2-Thinking",
+        "name": "Kimi K2 Thinking",
+        "reasoning": true,
+        "contextWindow": 256000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "hf:moonshotai/Kimi-K2.5",
+        "name": "Kimi K2.5",
+        "reasoning": true,
+        "contextWindow": 256000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "hf:zai-org/GLM-4.7",
+        "name": "GLM-4.7",
+        "reasoning": false,
+        "contextWindow": 198000,
+        "maxTokens": 128000
+      },
+      {
+        "id": "hf:zai-org/GLM-5",
+        "name": "GLM-5",
+        "reasoning": true,
+        "contextWindow": 256000,
+        "maxTokens": 128000
+      },
+      {
+        "id": "hf:deepseek-ai/DeepSeek-R1-0528",
+        "name": "DeepSeek R1 0528",
+        "reasoning": false,
+        "contextWindow": 128000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "hf:deepseek-ai/DeepSeek-V3.2",
+        "name": "DeepSeek V3.2",
+        "reasoning": false,
+        "contextWindow": 159000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "hf:Qwen/Qwen3-235B-A22B-Instruct-2507",
+        "name": "Qwen3 235B A22B Instruct",
+        "reasoning": false,
+        "contextWindow": 256000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "hf:Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "name": "Qwen3 Coder 480B A35B Instruct",
+        "reasoning": false,
+        "contextWindow": 256000,
+        "maxTokens": 8192
+      }
+    ]
+  },
+  {
+    "id": "kilocode",
+    "label": "Kilocode",
+    "baseUrl": "https://api.kilo.ai/api/gateway/",
+    "api": "openai-completions",
+    "models": [
+      {
+        "id": "kilo/auto",
+        "name": "Kilo Auto",
+        "reasoning": true,
+        "contextWindow": 1000000,
+        "maxTokens": 128000
+      }
+    ]
+  },
+  {
+    "id": "qwen-portal",
+    "label": "Qwen Portal",
+    "labelZh": "通义千问",
+    "free": true,
+    "baseUrl": "https://portal.qwen.ai/v1",
+    "api": "openai-completions",
+    "authKind": "oauth-device-code",
+    "oauthConfig": {
+      "deviceCodeUrl": "https://chat.qwen.ai/api/v1/oauth2/device/code",
+      "tokenUrl": "https://chat.qwen.ai/api/v1/oauth2/token",
+      "clientId": "f0304373b74a44d2b584a3fb70ca9e56",
+      "scope": "openid profile email model.completion"
+    },
+    "models": [
+      {
+        "id": "coder-model",
+        "name": "Qwen Coder",
+        "reasoning": false,
+        "contextWindow": 128000,
+        "maxTokens": 8192
+      },
+      {
+        "id": "vision-model",
+        "name": "Qwen Vision",
+        "reasoning": false,
+        "contextWindow": 128000,
+        "maxTokens": 8192
+      }
+    ]
+  }
+]

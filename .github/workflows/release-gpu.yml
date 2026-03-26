@@ -1,0 +1,120 @@
+name: Reusable GPU Build
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifacts:
+        description: Upload packaged GPU backends as workflow artifacts
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build-gpu-linux:
+    name: GPU Vulkan linux-amd64
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            cmake ccache build-essential git ca-certificates wget gnupg software-properties-common
+
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+            | gpg --dearmor -o /usr/share/keyrings/lunarg-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/lunarg-archive-keyring.gpg] \
+            https://packages.lunarg.com/vulkan/1.4.313 jammy main" \
+            | tee /etc/apt/sources.list.d/lunarg-vulkan.list > /dev/null
+          apt-get update
+          apt-get install -y vulkan-sdk
+
+          if [ -d "/usr/lib/x86_64-linux-gnu/vulkan" ]; then
+            echo "VULKAN_SDK=/usr" >> $GITHUB_ENV
+          fi
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Configure
+        run: cmake --preset Vulkan
+
+      - name: Build
+        run: cmake --build --preset Vulkan --parallel
+
+      - name: Install
+        run: cmake --install build --prefix dist/linux-amd64
+
+      - name: Package artifact
+        run: tar -czf kocort-gpu-vulkan-linux-amd64.tar.gz -C dist/linux-amd64 .
+
+      - name: Upload artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kocort-gpu-vulkan-linux-amd64
+          path: kocort-gpu-vulkan-linux-amd64.tar.gz
+
+  build-gpu-windows:
+    name: GPU Vulkan windows-amd64
+    runs-on: windows-latest
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          choco install -y --no-progress ccache ninja
+
+      - name: Cache Vulkan SDK
+        id: cache-install
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            C:\VulkanSDK
+          key: vulkan-sdk-1.4.321.1
+
+      - name: Install Vulkan SDK
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ("${{ steps.cache-install.outputs.cache-hit }}" -ne 'true') {
+            Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/1.4.321.1/windows/vulkansdk-windows-X64-1.4.321.1.exe" -OutFile "install.exe"
+            Start-Process -FilePath .\install.exe -ArgumentList "-c","--am","--al","in" -NoNewWindow -Wait
+          }
+          $vulkanPath = (Resolve-Path "C:\VulkanSDK\*").path
+          echo "$vulkanPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Save Vulkan SDK cache
+        if: ${{ !cancelled() && steps.cache-install.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            C:\VulkanSDK
+          key: vulkan-sdk-1.4.321.1
+
+      - uses: actions/checkout@v4
+
+      - name: Build GPU backend
+        run: |
+          Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
+          Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -no_logo'
+          cmake --preset Vulkan
+          cmake --build --preset Vulkan --parallel
+          cmake --install build --prefix dist\windows-amd64
+        env:
+          CMAKE_GENERATOR: Ninja
+
+      - name: Package artifact
+        shell: pwsh
+        run: Compress-Archive -Path "dist\windows-amd64\*" -DestinationPath "kocort-gpu-vulkan-windows-amd64.zip" -Force
+
+      - name: Upload artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kocort-gpu-vulkan-windows-amd64
+          path: kocort-gpu-vulkan-windows-amd64.zip

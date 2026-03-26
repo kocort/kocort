@@ -1,0 +1,101 @@
+name: Reusable Desktop Build
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifacts:
+        description: Upload packaged desktop builds as workflow artifacts
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.23"
+
+jobs:
+  build-desktop-windows:
+    name: Desktop windows-${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            action: --windows
+            dist_dir: dist/windows_amd64
+            artifact_name: kocort-desktop-windows-amd64
+          - arch: arm64
+            action: --windows-arm
+            dist_dir: dist/windows_arm64
+            artifact_name: kocort-desktop-windows-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build desktop bundle
+        run: |
+          chmod +x ./scripts/build-desktop.sh
+          ./scripts/build-desktop.sh ${{ matrix.action }}
+
+      - name: Package artifact
+        run: |
+          python3 - <<'PY'
+          import os
+          import zipfile
+
+          dist_dir = os.path.abspath('${{ matrix.dist_dir }}')
+          archive_path = os.path.abspath('${{ matrix.artifact_name }}.zip')
+          with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as archive:
+              for root, _, files in os.walk(dist_dir):
+                  for filename in files:
+                      full_path = os.path.join(root, filename)
+                      archive.write(full_path, os.path.relpath(full_path, dist_dir))
+          PY
+
+      - name: Upload artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.zip
+
+  build-desktop-macos:
+    name: Desktop macos-universal
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build desktop app and dmg
+        run: |
+          chmod +x ./scripts/build-desktop.sh
+          ./scripts/build-desktop.sh --macos-universal
+          ./scripts/build-desktop.sh --macos-dmg
+
+      - name: Package app bundle
+        run: tar -czf kocort-desktop-macos-universal-app.tar.gz -C dist Kocort.app
+
+      - name: Rename dmg artifact
+        run: |
+          version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+          mv "dist/Kocort-${version}.dmg" kocort-desktop-macos-universal.dmg
+
+      - name: Upload artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kocort-desktop-macos-universal
+          path: |
+            kocort-desktop-macos-universal-app.tar.gz
+            kocort-desktop-macos-universal.dmg

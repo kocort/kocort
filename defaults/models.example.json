@@ -1,0 +1,21 @@
+{
+  "models": {
+    "providers": {
+      "example": {
+        "baseUrl": "https://api.example.com/v1",
+        "apiKey": "replace-me",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "example/model",
+            "name": "Example Model",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for non-App-Store distribution (direct .dmg / Homebrew).
+  This is less restrictive — no sandbox, just hardened runtime.
+-->
+<plist version="1.0">
+<dict>
+	<!-- Hardened Runtime: allow the Go binary to execute -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+
+	<!-- Network -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>

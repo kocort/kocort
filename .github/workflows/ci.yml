@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cli-build:
+    name: CLI Build Matrix
+    uses: ./.github/workflows/release-cli.yml
+    with:
+      upload-artifacts: false

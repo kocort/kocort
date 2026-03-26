@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Kocort
+GenericName=AI Agent
+Comment=Run and manage AI agents locally
+TryExec=kocort-desktop
+Exec=kocort-desktop
+Icon=kocort
+Terminal=false
+Categories=Development;Utility;ArtificialIntelligence;
+Keywords=AI;Agent;LLM;Runtime;Tray;
+StartupNotify=true
+X-GNOME-UsesNotifications=true

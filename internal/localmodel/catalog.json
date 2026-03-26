@@ -1,0 +1,412 @@
+{
+    "cerebellum": [
+        {
+            "id": "qwen3-1.7b-q4_k_m",
+            "name": "Qwen3 1.7B (Q4_K_M)",
+            "description": {
+                "zh": "推荐：速度与质量均衡，适合安全审查。",
+                "en": "Recommended: balanced speed and quality for safety review."
+            },
+            "size": "~1.28 GB",
+            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q4_K_M.gguf",
+            "filename": "Qwen3-1.7B.Q4_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3-1.7b-q3_k_m",
+            "name": "Qwen3 1.7B (Q3_K_M)",
+            "description": {
+                "zh": "轻量：适合低资源环境的实用最小量化。",
+                "en": "Lightweight: smallest practical quantization for low-resource environments."
+            },
+            "size": "~1.07 GB",
+            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q3_K_M.gguf",
+            "filename": "Qwen3-1.7B.Q3_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3-1.7b-q6_k",
+            "name": "Qwen3 1.7B (Q6_K)",
+            "description": {
+                "zh": "高质量：复杂安全审查下精度更好。",
+                "en": "Higher quality: better accuracy for complex safety reviews."
+            },
+            "size": "~1.67 GB",
+            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q6_K.gguf",
+            "filename": "Qwen3-1.7B.Q6_K.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        }
+    ],
+    "brain": [
+        {
+            "id": "qwen3-8b-q4_k_m",
+            "name": "Qwen3 8B (Q4_K_M)",
+            "description": {
+                "zh": "轻量首选：通用对话与基础代理任务，单文件下载。",
+                "en": "Lightweight default: general chat and basic agent tasks, single-file download."
+            },
+            "size": "~5.03 GB",
+            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-8B-GGUF/resolve/main/Qwen3-8B.Q4_K_M.gguf",
+            "filename": "Qwen3-8B.Q4_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 1.5
+                }
+            }
+        },
+        {
+            "id": "qwen3-14b-q4_k_m",
+            "name": "Qwen3 14B (Q4_K_M)",
+            "description": {
+                "zh": "中等体量：更强推理与代码能力，单文件下载。",
+                "en": "Mid-sized: stronger reasoning and coding, single-file download."
+            },
+            "size": "~9.0 GB",
+            "downloadUrl": "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
+            "filename": "Qwen3-14B-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 1.5
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-9b-claude46-opus-q4_k_m",
+            "name": "Qwen3.5 9B Claude 4.6 Opus Distilled (Q4_K_M)",
+            "description": {
+                "zh": "推理增强：Claude 4.6 Opus 蒸馏版，单文件下载。",
+                "en": "Reasoning-enhanced: Claude 4.6 Opus distilled variant, single-file download."
+            },
+            "size": "~5.63 GB",
+            "downloadUrl": "https://huggingface.co/Jackrong/Qwen3.5-9B-Claude-4.6-Opus-Reasoning-Distilled-GGUF/resolve/main/Qwen3.5-9B.Q4_K_M.gguf",
+            "filename": "Qwen3.5-9B.Q4_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 1.5
+                }
+            }
+        },
+        {
+            "id": "qwen3.5-27b-claude46-opus-heretic-v2-q4_k_m",
+            "name": "Qwen3.5 27B Claude 4.6 Opus Heretic v2 (Q4_K_M)",
+            "description": {
+                "zh": "大模型推理：27B 蒸馏增强版，单文件下载。",
+                "en": "Large reasoning model: 27B distilled enhanced variant, single-file download."
+            },
+            "size": "~16.5 GB",
+            "downloadUrl": "https://huggingface.co/llmfan46/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-heretic-v2-GGUF/resolve/main/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-heretic-v2-Q4_K_M.gguf",
+            "filename": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-heretic-v2-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 65536,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 1.5
+                }
+            }
+        },
+        {
+            "id": "gpt-oss-20b-q4_k_m",
+            "name": "gpt-oss 20B (Q4_K_M)",
+            "description": {
+                "zh": "OpenAI 开源权重版本，适合低延迟本地部署，单文件下载。",
+                "en": "OpenAI open-weight release for low-latency local deployment, single-file download."
+            },
+            "size": "~11.6 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf",
+            "filename": "gpt-oss-20b-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 32768,
+                "gpuLayers": 0,
+                "sampling": {
+                    "temp": 1.0,
+                    "topP": 1.0,
+                    "topK": 40,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "glm-4.7-flash-q4_k_m",
+            "name": "GLM-4.7-Flash (Q4_K_M)",
+            "description": {
+                "zh": "30B 级轻量 MoE，适合快速代理与工具调用，单文件下载。",
+                "en": "Lightweight 30B-class MoE for fast agents and tool use, single-file download."
+            },
+            "size": "~18.3 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF/resolve/main/GLM-4.7-Flash-Q4_K_M.gguf",
+            "filename": "GLM-4.7-Flash-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 65536,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 1.0,
+                    "topP": 0.95,
+                    "topK": 40,
+                    "minP": 0.01,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "glm-5-q4_k_m",
+            "name": "GLM-5 (Q4_K_M)",
+            "description": {
+                "zh": "超大规模旗舰模型，11 分片下载。",
+                "en": "Flagship ultra-large model, 11-part download."
+            },
+            "size": "~456 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00001-of-00011.gguf",
+            "filename": "GLM-5-Q4_K_M-00001-of-00011.gguf",
+            "files": [
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00001-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00001-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00002-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00002-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00003-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00003-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00004-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00004-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00005-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00005-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00006-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00006-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00007-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00007-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00008-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00008-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00009-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00009-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00010-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00010-of-00011.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/GLM-5-GGUF/resolve/main/Q4_K_M/GLM-5-Q4_K_M-00011-of-00011.gguf",
+                    "filename": "GLM-5-Q4_K_M-00011-of-00011.gguf"
+                }
+            ],
+            "defaults": {
+                "threads": 8,
+                "contextSize": 131072,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 1.0,
+                    "topP": 0.95,
+                    "topK": 40,
+                    "minP": 0.01,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "minimax-m2.5-q4_k_m",
+            "name": "MiniMax-M2.5 (Q4_K_M)",
+            "description": {
+                "zh": "长上下文与工具能力较强，4 分片下载。",
+                "en": "Strong long-context and tool-use model, 4-part download."
+            },
+            "size": "~138 GB",
+            "downloadUrl": "https://huggingface.co/unsloth/MiniMax-M2.5-GGUF/resolve/main/Q4_K_M/MiniMax-M2.5-Q4_K_M-00001-of-00004.gguf",
+            "filename": "MiniMax-M2.5-Q4_K_M-00001-of-00004.gguf",
+            "files": [
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/MiniMax-M2.5-GGUF/resolve/main/Q4_K_M/MiniMax-M2.5-Q4_K_M-00001-of-00004.gguf",
+                    "filename": "MiniMax-M2.5-Q4_K_M-00001-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/MiniMax-M2.5-GGUF/resolve/main/Q4_K_M/MiniMax-M2.5-Q4_K_M-00002-of-00004.gguf",
+                    "filename": "MiniMax-M2.5-Q4_K_M-00002-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/MiniMax-M2.5-GGUF/resolve/main/Q4_K_M/MiniMax-M2.5-Q4_K_M-00003-of-00004.gguf",
+                    "filename": "MiniMax-M2.5-Q4_K_M-00003-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/MiniMax-M2.5-GGUF/resolve/main/Q4_K_M/MiniMax-M2.5-Q4_K_M-00004-of-00004.gguf",
+                    "filename": "MiniMax-M2.5-Q4_K_M-00004-of-00004.gguf"
+                }
+            ],
+            "defaults": {
+                "threads": 8,
+                "contextSize": 131072,
+                "gpuLayers": 0,
+                "sampling": {
+                    "temp": 1.0,
+                    "topP": 0.95,
+                    "topK": 40,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3-coder-next-q4_k_m",
+            "name": "Qwen3-Coder-Next (Q4_K_M)",
+            "description": {
+                "zh": "面向编码代理优化，4 分片下载。",
+                "en": "Optimized for coding agents, 4-part download."
+            },
+            "size": "~48.4 GB",
+            "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+            "filename": "Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+            "files": [
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+                    "filename": "Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
+                    "filename": "Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00003-of-00004.gguf",
+                    "filename": "Qwen3-Coder-Next-Q4_K_M-00003-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00004-of-00004.gguf",
+                    "filename": "Qwen3-Coder-Next-Q4_K_M-00004-of-00004.gguf"
+                }
+            ],
+            "defaults": {
+                "threads": 8,
+                "contextSize": 131072,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 1.0,
+                    "topP": 0.95,
+                    "topK": 40,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        }
+    ]
+}

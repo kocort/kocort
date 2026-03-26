@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Required for App Store distribution -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Network: the Go server listens locally and the UI opens a browser -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+
+	<!-- File access: kocort needs to read/write config and workspace files -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- Read/write access to Downloads folder (common workspace location) -->
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+
+	<!-- App Group container: used for ~/.kocort config data in sandboxed mode -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(TeamIdentifierPrefix)com.kocort.app</string>
+	</array>
+
+	<!-- Allow spawning the embedded Go helper binary -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,19 @@
+{
+  "channels": {
+    "defaults": {
+      "defaultAgent": "main",
+      "textChunkLimit": 4000,
+      "chunkMode": "length"
+    },
+    "entries": {
+      "mock": {
+        "enabled": true,
+        "defaultTo": "user-1",
+        "agent": "main",
+        "config": {
+          "driver": "mock"
+        }
+      }
+    }
+  }
+}

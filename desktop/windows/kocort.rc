@@ -1,0 +1,13 @@
+// kocort.rc — Windows resource script
+// Embeds the application icon and manifest into the .exe
+//
+// To compile: windres -o kocort.syso kocort.rc
+// (or use go-winres / rsrc for Go-native embedding)
+
+#include <winuser.h>
+
+// App icon (shows in Explorer, taskbar, Alt+Tab)
+1 ICON "..\\icons\\icon.ico"
+
+// Application manifest (DPI-aware, Win10+ compat)
+1 RT_MANIFEST "kocort.manifest"

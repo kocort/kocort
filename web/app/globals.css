@@ -1,0 +1,299 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@variant dark (&:where(.dark, .dark *));
+
+html,
+body {
+  height: 100%;
+}
+
+html {
+  --font-sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Mono", "Fira Code", monospace;
+}
+
+body {
+  background: #fafafa;
+  color: #18181b;
+}
+
+.dark body {
+  background: #09090b;
+  color: #f4f4f5;
+}
+
+.agent-markdown {
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-width: 0;
+}
+
+.agent-markdown> :last-child {
+  margin-bottom: 0;
+}
+
+.agent-markdown pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.agent-sender-simple {
+  background: transparent;
+}
+
+.agent-sender-simple .ant-sender-content {
+  padding: 10px 12px 6px;
+  border-radius: 12px;
+}
+
+.agent-sender-simple .ant-sender-footer {
+  margin-top: 6px;
+  padding: 0 12px 6px;
+}
+
+.agent-sender-simple .ant-sender-input {
+  padding-left: 6px;
+  align-self: flex-start;
+}
+
+.agent-sender-simple .ant-sender-input textarea,
+.agent-sender-simple .ant-sender-input .ant-input {
+  padding-left: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  line-height: 1.6;
+}
+
+.agent-sender-simple .ant-sender-header {
+  margin-bottom: 6px;
+}
+
+.agent-sender-simple .ant-file-card-list {
+  gap: 8px;
+}
+
+.dark .agent-markdown {
+  --heading-color: #f5f5f5;
+  --text-color: rgba(255, 255, 255, 0.88);
+  --border-color: rgba(63, 63, 70, 1);
+  --line-color: rgba(255, 255, 255, 0.1);
+  --table-head-bg: rgba(39, 39, 42, 1);
+  --table-body-bg: rgba(24, 24, 27, 1);
+}
+
+.dark .ant-bubble .ant-bubble-content {
+  color: #e4e4e7;
+}
+
+.dark .ant-bubble .ant-bubble-header {
+  color: #a1a1aa;
+}
+
+/* Prevent bubble overflow on narrow screens */
+.ant-bubble {
+  min-width: 0;
+}
+
+/*
+ * ant-bubble-body is the flex child wrapping header + content + footer.
+ * flex: 1 1 0 makes the assistant bubble body fill all available width
+ * (minus avatar) from the very first token — prevents the jarring
+ * narrow → full-width snap that occurs when the first line fills up.
+ * Only applied to start-placement (assistant) bubbles so user bubbles
+ * on the right are unaffected.
+ */
+.ant-bubble-start .ant-bubble-body {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* For end-placement (user) bubbles: just prevent overflow */
+.ant-bubble-end .ant-bubble-body {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.ant-bubble .ant-bubble-content {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Constrain images and pre blocks inside bubbles */
+.ant-bubble img {
+  max-width: 100%;
+  height: auto;
+}
+
+.ant-bubble pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/*
+ * Bubble content entrance animation.
+ * Plays once when the content div is first mounted (loading → content
+ * transition, or loading dots initial appearance). React reconciliation
+ * keeps the same DOM node during streaming, so the animation never
+ * replays mid-stream.
+ */
+@keyframes bubbleContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.bubble-content-in {
+  animation: bubbleContentIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dark .ant-sender,
+.dark .ant-sender-content {
+  background: transparent;
+}
+
+.dark .ant-think,
+.dark .ant-thought-chain {
+  color: #e4e4e7;
+}
+
+/* ThoughtChain inside bubble: compact styling & dark mode */
+.ant-thought-chain {
+  font-size: 13px;
+}
+
+.dark .ant-thought-chain .ant-thought-chain-item-header-title {
+  color: #d4d4d8;
+}
+
+.dark .ant-thought-chain .ant-thought-chain-item-header-description {
+  color: #a1a1aa;
+}
+
+.dark .ant-thought-chain .ant-thought-chain-item-content {
+  color: #d4d4d8;
+}
+
+/* Dashed connector line in dark mode */
+.dark .ant-thought-chain .ant-thought-chain-item-line::after {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Outlined variant background in dark mode */
+.dark .ant-thought-chain .ant-thought-chain-item-outlined {
+  background: rgba(39, 39, 42, 0.5);
+}
+
+/* Typing dots animation */
+@keyframes typingDot {
+
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.typing-dot {
+  animation: typingDot 1.2s ease-in-out infinite;
+}
+
+/*
+ * Per-block streaming fade-in.
+ *
+ * When XMarkdown renders a NEW block element (p, h1-h6, pre, ul, ol, blockquote, li)
+ * the CSS animation fires immediately because it's a brand-new DOM node.
+ * React reconciliation keeps EXISTING nodes in place, so their animation has already
+ * completed (fill-mode: both holds them at opacity:1 / transform:none).
+ *
+ * Effect: each new paragraph / code block / list item fades in from the upper-left
+ * (opacity 0→1, slight X+Y drift) giving a natural left-to-right, top-to-bottom
+ * reading-direction reveal.  Within-paragraph text additions are silent (same node).
+ */
+@keyframes streamReveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Applied to the wrapper div rendered by StreamingMessage */
+.stream-reveal-active .agent-markdown>* {
+  animation: streamReveal 1.2s ease both;
+}
+
+/* List items animate individually as each is streamed in */
+.stream-reveal-active .agent-markdown li {
+  animation: streamReveal 1.2s ease both;
+}
+
+/* Kept for any remaining usages elsewhere */
+@keyframes streamFloat {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stream-token-float {
+  display: inline;
+  animation: streamFloat 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stream-new-token {
+  animation: streamFloat 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Skeleton shimmer for loading state */
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.shimmer-pulse {
+  background: linear-gradient(90deg,
+      rgba(228, 228, 231, 0.8) 25%,
+      rgba(212, 212, 216, 0.6) 50%,
+      rgba(228, 228, 231, 0.8) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.dark .shimmer-pulse {
+  background: linear-gradient(90deg,
+      rgba(39, 39, 42, 0.8) 25%,
+      rgba(52, 52, 56, 0.6) 50%,
+      rgba(39, 39, 42, 0.8) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
