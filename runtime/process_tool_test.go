@@ -35,7 +35,7 @@ func TestExecToolBackgroundCanBeListedAndKilled(t *testing.T) {
 	}
 
 	result, err := runtime.ExecuteTool(context.Background(), runCtx, "exec", map[string]any{
-		"command":    "sleep 5",
+		"command":    "sleep 2",
 		"background": true,
 	})
 	if err != nil {

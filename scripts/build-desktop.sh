@@ -167,10 +167,32 @@ build_windows() {
     local ldflags
     ldflags="$(build_ldflags) -H windowsgui"
 
+    # Set up MinGW cross-compiler for CGo
+    local cc cxx
+    case "$arch" in
+        amd64)
+            cc="x86_64-w64-mingw32-gcc"
+            cxx="x86_64-w64-mingw32-g++"
+            ;;
+        arm64)
+            cc="aarch64-w64-mingw32-gcc"
+            cxx="aarch64-w64-mingw32-g++"
+            ;;
+        *)
+            fail "Unsupported Windows architecture: $arch"
+            ;;
+    esac
+
+    if ! command -v "$cc" &>/dev/null; then
+        fail "Cross-compiler $cc not found. Install mingw-w64: sudo apt-get install gcc-mingw-w64"
+    fi
+
     cd "$PROJECT_ROOT"
-    CGO_ENABLED=0 GOOS=windows GOARCH="$arch" \
+    CGO_ENABLED=1 GOOS=windows GOARCH="$arch" \
+        CC="$cc" CXX="$cxx" \
         go build \
         -trimpath \
+        -tags llamacpp \
         -ldflags "$ldflags" \
         -o "$out_path" \
         ./cmd/kocort-desktop
@@ -203,9 +225,10 @@ build_linux() {
     ldflags="$(build_ldflags)"
 
     cd "$PROJECT_ROOT"
-    GOOS=linux GOARCH="$arch" \
+    CGO_ENABLED=1 GOOS=linux GOARCH="$arch" \
         go build \
         -trimpath \
+        -tags llamacpp \
         -ldflags "$ldflags" \
         -o "$out_path" \
         ./cmd/kocort-desktop
@@ -750,9 +773,12 @@ main() {
             --windows)         action="windows";       shift ;;
             --windows-arm)     action="windows-arm";   shift ;;
             --macos)           action="macos";         shift ;;
+            --macos-amd64)     action="macos-amd64";   shift ;;
+            --macos-arm64)     action="macos-arm64";   shift ;;
             --macos-universal) action="macos-universal"; shift ;;
             --macos-sign)      action="macos-sign";    shift ;;
             --macos-dmg)       action="macos-dmg";     shift ;;
+            --macos-dmg-only)  action="macos-dmg-only"; shift ;;
             --macos-notarize)  action="macos-notarize"; shift ;;
             --with-browser)    WITH_BROWSER="driver";  shift ;;
             --with-chromium)   WITH_BROWSER="chromium"; shift ;;
@@ -779,8 +805,17 @@ main() {
         macos)
             build_macos_app_bundle "$(uname -m)"
             ;;
+        macos-amd64)
+            build_macos_app_bundle "amd64"
+            ;;
+        macos-arm64)
+            build_macos_app_bundle "arm64"
+            ;;
         macos-universal)
             build_macos_app_bundle "universal"
+            ;;
+        macos-dmg-only)
+            build_macos_dmg
             ;;
         macos-sign)
             build_macos_app_bundle "universal"

@@ -39,6 +39,15 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Install MinGW cross-compiler
+        run: |
+          sudo apt-get update
+          # Install llvm-mingw for both amd64 and arm64 Windows cross-compilation
+          LLVM_MINGW_VER="20250114"
+          LLVM_MINGW_URL="https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VER}/llvm-mingw-${LLVM_MINGW_VER}-ucrt-ubuntu-20.04-x86_64.tar.xz"
+          curl -fsSL "$LLVM_MINGW_URL" | sudo tar -xJ -C /opt
+          echo "/opt/llvm-mingw-${LLVM_MINGW_VER}-ucrt-ubuntu-20.04-x86_64/bin" >> "$GITHUB_PATH"
+
       - name: Build desktop bundle
         run: |
           chmod +x ./scripts/build-desktop.sh
@@ -67,8 +76,22 @@ jobs:
           path: ${{ matrix.artifact_name }}.zip
 
   build-desktop-macos:
-    name: Desktop macos-universal
-    runs-on: macos-14
+    name: Desktop macos-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13-large
+            arch: amd64
+            action: --macos-amd64
+            macos_version_min: "11.0"
+            artifact_name: kocort-desktop-macos-amd64
+          - runner: macos-14
+            arch: arm64
+            action: --macos-arm64
+            macos_version_min: "14.0"
+            artifact_name: kocort-desktop-macos-arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -77,25 +100,34 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Build desktop app and dmg
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Build desktop app
+        env:
+          CGO_CFLAGS: "-O3 -mmacosx-version-min=${{ matrix.macos_version_min }}"
+          CGO_CXXFLAGS: "-O3 -mmacosx-version-min=${{ matrix.macos_version_min }}"
+          CGO_LDFLAGS: "-mmacosx-version-min=${{ matrix.macos_version_min }}"
         run: |
           chmod +x ./scripts/build-desktop.sh
-          ./scripts/build-desktop.sh --macos-universal
-          ./scripts/build-desktop.sh --macos-dmg
+          ./scripts/build-desktop.sh ${{ matrix.action }}
 
       - name: Package app bundle
-        run: tar -czf kocort-desktop-macos-universal-app.tar.gz -C dist Kocort.app
+        run: tar -czf ${{ matrix.artifact_name }}-app.tar.gz -C dist Kocort.app
+
+      - name: Build DMG
+        run: ./scripts/build-desktop.sh --macos-dmg-only
 
       - name: Rename dmg artifact
         run: |
           version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
-          mv "dist/Kocort-${version}.dmg" kocort-desktop-macos-universal.dmg
+          mv "dist/Kocort-${version}.dmg" ${{ matrix.artifact_name }}.dmg
 
       - name: Upload artifact
         if: inputs.upload-artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kocort-desktop-macos-universal
+          name: ${{ matrix.artifact_name }}
           path: |
-            kocort-desktop-macos-universal-app.tar.gz
-            kocort-desktop-macos-universal.dmg
+            ${{ matrix.artifact_name }}-app.tar.gz
+            ${{ matrix.artifact_name }}.dmg

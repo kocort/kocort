@@ -181,7 +181,7 @@ func TestServerChatCancelCancelsActiveRun(t *testing.T) {
 
 	done := make(chan struct{}, 1)
 	go func() {
-		req := httptest.NewRequest(http.MethodPost, "/api/workspace/chat/send", bytes.NewBufferString(`{"sessionKey":"`+sessionKey+`","message":"hello","channel":"webchat","to":"webchat-user","timeoutMs":120000}`))
+		req := httptest.NewRequest(http.MethodPost, "/api/workspace/chat/send", bytes.NewBufferString(`{"sessionKey":"`+sessionKey+`","message":"hello","channel":"webchat","to":"webchat-user","timeoutMs":5000}`))
 		req.Header.Set("Content-Type", "application/json")
 		res := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(res, req)

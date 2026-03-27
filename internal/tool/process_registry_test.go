@@ -123,8 +123,8 @@ func TestProcessRegistryPollEmptyID(t *testing.T) {
 func TestProcessRegistryKill(t *testing.T) {
 	r := NewProcessRegistry()
 	rec, err := r.Start(context.Background(), ProcessStartOptions{
-		Command: "sleep 60",
-		Timeout: 60 * time.Second,
+		Command: "sleep 5",
+		Timeout: 5 * time.Second,
 	})
 	if err != nil {
 		t.Fatalf("start: %v", err)

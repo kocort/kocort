@@ -76,14 +76,14 @@ type sequence struct {
 
 // seqParams collects parameters for creating a new sequence.
 type seqParams struct {
-	NumPredict int
-	Stop       []string
-	NumKeep    int
-	Sampling   *llama.SamplingParams
-	Embedding  bool
-	Shift      bool
-	Truncate   bool
-	Logprobs   bool
+	NumPredict  int
+	Stop        []string
+	NumKeep     int
+	Sampling    *llama.SamplingParams
+	Embedding   bool
+	Shift       bool
+	Truncate    bool
+	Logprobs    bool
 	TopLogprobs int
 }
 

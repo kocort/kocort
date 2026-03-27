@@ -448,7 +448,7 @@ func TestGatewayChatSendStopCommandCancelsActiveRun(t *testing.T) {
 
 	firstDone := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		sendReq := httptest.NewRequest(http.MethodPost, "/rpc/chat.send", strings.NewReader(`{"sessionKey":"agent:main:webchat:direct:webchat-user","message":"hello","channel":"webchat","to":"webchat-user","timeoutMs":120000}`))
+		sendReq := httptest.NewRequest(http.MethodPost, "/rpc/chat.send", strings.NewReader(`{"sessionKey":"agent:main:webchat:direct:webchat-user","message":"hello","channel":"webchat","to":"webchat-user","timeoutMs":5000}`))
 		sendReq.Header.Set("Content-Type", "application/json")
 		sendRes := httptest.NewRecorder()
 		server.Handler().ServeHTTP(sendRes, sendReq)

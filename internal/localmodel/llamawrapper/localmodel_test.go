@@ -163,8 +163,8 @@ func TestHasIncompleteUTF8(t *testing.T) {
 		result bool
 	}{
 		{"hello", false},
-		{string([]byte{0xc3}), true},        // start of 2-byte sequence
-		{string([]byte{0xe4, 0xb8}), true},  // start of 3-byte, missing 1
+		{string([]byte{0xc3}), true},       // start of 2-byte sequence
+		{string([]byte{0xe4, 0xb8}), true}, // start of 3-byte, missing 1
 		{"完整", false},
 	}
 

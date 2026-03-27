@@ -258,7 +258,7 @@ func TestCreateChatCompletionStream_WithToolDefinitions(t *testing.T) {
 		toolCalls    []openai.ToolCall
 	)
 
-	timeout := time.After(60 * time.Second)
+	timeout := time.After(15 * time.Second)
 	for {
 		select {
 		case <-timeout:

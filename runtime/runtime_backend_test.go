@@ -82,7 +82,7 @@ func TestCommandBackendJSONLModeStreamsBlocks(t *testing.T) {
 	backend := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
 			Command:    "sh",
-			Args:       []string{"-c", `printf '%s\n' '{"thread_id":"sess-cmd","text":"part 1","final":false}' '{"usage":{"tokens":7},"text":"done","final":true}'`},
+			Args:       []string{"-c", `echo '{"thread_id":"sess-cmd","text":"part 1","final":false}'; echo '{"usage":{"tokens":7},"text":"done","final":true}'`},
 			InputMode:  core.CommandBackendInputArg,
 			OutputMode: core.CommandBackendOutputJSONL,
 		},
@@ -176,7 +176,7 @@ func TestCLIBackendRetriesAfterSessionExpired(t *testing.T) {
 		Provider: "claude-cli",
 		Command: core.CommandBackendConfig{
 			Command:    "sh",
-			Args:       []string{"-c", `printf '%s' '{"session_id":"fresh-2","text":"CLI-OK"}'`},
+			Args:       []string{"-c", `echo '{"session_id":"fresh-2","text":"CLI-OK"}'`},
 			ResumeArgs: []string{"-c", `echo 'session expired' >&2; exit 1`},
 			OutputMode: core.CommandBackendOutputJSON,
 		},
@@ -976,7 +976,7 @@ func TestCommandBackendJSONLTracksStopReasonAndToolEvents(t *testing.T) {
 	be := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
 			Command:    "sh",
-			Args:       []string{"-c", `printf '%s\n' '{"type":"tool_call","text":"tool output"}' '{"type":"final","text":"done","stopReason":"completed"}'`},
+			Args:       []string{"-c", `echo '{"type":"tool_call","text":"tool output"}'; echo '{"type":"final","text":"done","stopReason":"completed"}'`},
 			OutputMode: core.CommandBackendOutputJSONL,
 		},
 	}
@@ -1004,7 +1004,7 @@ func TestCommandBackendJSONModeDispatchesFinalReply(t *testing.T) {
 	be := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
 			Command:    "sh",
-			Args:       []string{"-c", `printf '%s' '{"text":"JSON-OK","session_id":"sess-json"}'`},
+			Args:       []string{"-c", `echo '{"text":"JSON-OK","session_id":"sess-json"}'`},
 			OutputMode: core.CommandBackendOutputJSON,
 		},
 	}
@@ -1093,7 +1093,7 @@ func TestCLIBackendSessionExpiredClearsStoredSessionIDAndReportsMeta(t *testing.
 		Provider: "demo-cli",
 		Command: core.CommandBackendConfig{
 			Command: "sh",
-			Args:    []string{"-c", `printf 'CLI-OK'`},
+			Args:    []string{"-c", `echo 'CLI-OK'`},
 			ResumeArgs: []string{
 				"-c",
 				`echo 'session expired' >&2; exit 1`,
@@ -1104,7 +1104,7 @@ func TestCLIBackendSessionExpiredClearsStoredSessionIDAndReportsMeta(t *testing.
 	}
 	dispatcher := delivery.NewReplyDispatcher(&delivery.MemoryDeliverer{}, core.DeliveryTarget{SessionKey: "agent:main:main"})
 	result, err := be.Run(context.Background(), rtypes.AgentRunContext{
-		Request:         core.AgentRunRequest{Message: "hello", Timeout: 90 * time.Second},
+		Request:         core.AgentRunRequest{Message: "hello", Timeout: 10 * time.Second},
 		Session:         core.SessionResolution{SessionKey: "agent:main:main", SessionID: "sess-cli", Entry: entry},
 		ReplyDispatcher: dispatcher,
 	})

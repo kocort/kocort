@@ -78,7 +78,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-13
+          - runner: macos-13-large
             goarch: amd64
             os_label: darwin-amd64
             macos_version_min: "11.0"

@@ -102,7 +102,7 @@ func TestCommandBackendInjectsEnvironmentRuntimeAndOverrides(t *testing.T) {
 	backend := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
 			Command:    "/bin/sh",
-			Args:       []string{"-lc", "printf %s \"$GLOBAL_KEY|$INLINE_KEY|$KOCORT_AGENT_DIR\""},
+			Args:       []string{"-lc", "echo \"$GLOBAL_KEY|$INLINE_KEY|$KOCORT_AGENT_DIR\""},
 			OutputMode: core.CommandBackendOutputText,
 			Env: map[string]string{
 				"INLINE_KEY": "${INLINE_SOURCE}",

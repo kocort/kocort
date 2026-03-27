@@ -320,12 +320,12 @@ func (s *Server) handleNativeCompletion(w http.ResponseWriter, r *http.Request) 
 	}
 
 	sampling := &SamplingConfig{
-		Temperature: defaultFloat32(opts.Temperature, 0.8),
-		TopK:        defaultInt(opts.TopK, 40),
-		TopP:        defaultFloat32(opts.TopP, 0.9),
-		MinP:        opts.MinP,
-		TypicalP:    defaultFloat32(opts.TypicalP, 1.0),
-		RepeatLastN: defaultInt(opts.RepeatLastN, 64),
+		Temperature:   defaultFloat32(opts.Temperature, 0.8),
+		TopK:          defaultInt(opts.TopK, 40),
+		TopP:          defaultFloat32(opts.TopP, 0.9),
+		MinP:          opts.MinP,
+		TypicalP:      defaultFloat32(opts.TypicalP, 1.0),
+		RepeatLastN:   defaultInt(opts.RepeatLastN, 64),
 		RepeatPenalty: defaultFloat32(opts.RepeatPenalty, 1.1),
 		FreqPenalty:   opts.FrequencyPenalty,
 		PresPenalty:   opts.PresencePenalty,
