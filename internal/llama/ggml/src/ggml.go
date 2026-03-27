@@ -60,13 +60,17 @@ var OnceLoad = sync.OnceFunc(func() {
 
 	// Compute exe-relative library path based on platform convention.
 	var exeLib string
+	var legacyExeLib string
 	switch runtime.GOOS {
 	case "darwin":
 		exeLib = filepath.Dir(exe)
 	case "windows":
 		exeLib = filepath.Join(filepath.Dir(exe), "lib", "kocort")
 	default:
-		exeLib = filepath.Join(filepath.Dir(exe), "..", "lib", "kocort")
+		// Prefer self-contained deployment next to the executable, but keep
+		// the legacy ../lib/kocort lookup for older CLI/package layouts.
+		exeLib = filepath.Join(filepath.Dir(exe), "lib", "kocort")
+		legacyExeLib = filepath.Join(filepath.Dir(exe), "..", "lib", "kocort")
 	}
 
 	// Check KOCORT_LIBRARY_PATH first, then OLLAMA_LIBRARY_PATH, then default.
@@ -83,6 +87,9 @@ var OnceLoad = sync.OnceFunc(func() {
 		var candidates []string
 		if dirExists(exeLib) {
 			candidates = append(candidates, exeLib)
+		}
+		if legacyExeLib != "" && legacyExeLib != exeLib && dirExists(legacyExeLib) {
+			candidates = append(candidates, legacyExeLib)
 		}
 		if cwd, err := os.Getwd(); err == nil {
 			cwdLib := filepath.Join(cwd, "lib", "kocort")

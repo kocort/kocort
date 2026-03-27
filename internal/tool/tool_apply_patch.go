@@ -38,7 +38,7 @@ func (t *ApplyPatchTool) Execute(_ context.Context, toolCtx ToolContext, args ma
 	if err != nil {
 		return core.ToolResult{}, err
 	}
-	if _, err := resolveToolWorkingDir(toolCtx); err != nil {
+	if _, err := resolveToolDefaultWorkingDir(toolCtx); err != nil {
 		return core.ToolResult{}, err
 	}
 	ops, err := parseCodexPatch(patchText)

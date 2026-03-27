@@ -7,12 +7,12 @@ on:
         description: "Build CLI artifacts (6 platforms)"
         type: boolean
         default: true
-      build-gpu:
-        description: "Build GPU backend artifacts (Vulkan)"
+      build-desktop-gpu:
+        description: "Build optional Desktop GPU variants (windows/linux amd64 Vulkan)"
         type: boolean
-        default: true
+        default: false
       build-desktop:
-        description: "Build Desktop artifacts (macOS/Windows)"
+        description: "Build Desktop artifacts (macOS/Windows/Linux)"
         type: boolean
         default: true
       create-release:
@@ -31,26 +31,19 @@ jobs:
     with:
       upload-artifacts: true
 
-  gpu:
-    name: Build GPU Artifacts
-    if: inputs.build-gpu
-    uses: ./.github/workflows/release-gpu.yml
-    with:
-      upload-artifacts: true
-
   desktop:
     name: Build Desktop Artifacts
     if: inputs.build-desktop
     uses: ./.github/workflows/release-desktop.yml
     with:
       upload-artifacts: true
+      include-gpu: ${{ inputs.build-desktop-gpu }}
 
   release:
     name: Create Release
     runs-on: ubuntu-latest
     needs:
       - cli
-      - gpu
       - desktop
     # Allow release even if some optional builds were skipped
     if: inputs.create-release && !failure()
