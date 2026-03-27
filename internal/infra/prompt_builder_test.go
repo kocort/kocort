@@ -614,13 +614,13 @@ func TestBuildDocumentationPromptSection(t *testing.T) {
 
 func TestBuildSandboxPromptSection(t *testing.T) {
 	result := BuildSandboxPromptSection(PromptSandboxInfo{
-		Enabled:         true,
-		Mode:            "all",
-		WorkspaceAccess: "ro",
-		DefaultWorkdir:  "/repo",
+		Enabled:          true,
+		Mode:             "all",
+		WorkspaceAccess:  "ro",
+		DefaultWorkdir:   "/repo",
 		SandboxWorkspace: "/tmp/sandbox",
-		AgentWorkspace:  "/repo",
-		Scope:           "agent",
+		AgentWorkspace:   "/repo",
+		Scope:            "agent",
 	})
 	for _, needle := range []string{"## Sandbox", "Sandbox mode: all", "Workspace access: ro", "Sandbox scope: agent", "Default working directory: /repo", "Sandbox workspace: /tmp/sandbox"} {
 		if !strings.Contains(result, needle) {

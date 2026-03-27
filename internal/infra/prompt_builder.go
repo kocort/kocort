@@ -194,14 +194,14 @@ func BuildSystemPrompt(params PromptBuildParams) string {
 type PromptContextFile = memorypkg.PromptContextFile
 
 type PromptSandboxInfo struct {
-	Enabled         bool
-	Mode            string
-	WorkspaceAccess string
-	Scope           string
-	WorkspaceRoot   string
-	DefaultWorkdir  string
+	Enabled          bool
+	Mode             string
+	WorkspaceAccess  string
+	Scope            string
+	WorkspaceRoot    string
+	DefaultWorkdir   string
 	SandboxWorkspace string
-	AgentWorkspace  string
+	AgentWorkspace   string
 }
 
 type PromptBuildParams struct {
