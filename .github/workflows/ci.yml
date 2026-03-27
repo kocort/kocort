@@ -9,9 +9,28 @@ on:
 permissions:
   contents: read
 
+env:
+  GO_VERSION: "1.23"
+
 jobs:
-  cli-build:
-    name: CLI Build Matrix
-    uses: ./.github/workflows/release-cli.yml
-    with:
-      upload-artifacts: false
+  lint:
+    name: Lint & Vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go vet
+        run: go vet ./...
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Run tests
+        run: go test -count=1 -timeout 120s ./...

@@ -1,8 +1,24 @@
 name: Publish Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      build-cli:
+        description: "Build CLI artifacts (6 platforms)"
+        type: boolean
+        default: true
+      build-gpu:
+        description: "Build GPU backend artifacts (Vulkan)"
+        type: boolean
+        default: true
+      build-desktop:
+        description: "Build Desktop artifacts (macOS/Windows)"
+        type: boolean
+        default: true
+      create-release:
+        description: "Create GitHub Release from latest tag"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -10,18 +26,21 @@ permissions:
 jobs:
   cli:
     name: Build CLI Artifacts
+    if: inputs.build-cli
     uses: ./.github/workflows/release-cli.yml
     with:
       upload-artifacts: true
 
   gpu:
     name: Build GPU Artifacts
+    if: inputs.build-gpu
     uses: ./.github/workflows/release-gpu.yml
     with:
       upload-artifacts: true
 
   desktop:
     name: Build Desktop Artifacts
+    if: inputs.build-desktop
     uses: ./.github/workflows/release-desktop.yml
     with:
       upload-artifacts: true
@@ -33,7 +52,17 @@ jobs:
       - cli
       - gpu
       - desktop
+    # Allow release even if some optional builds were skipped
+    if: inputs.create-release && !failure()
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version tag
+        id: version
+        run: echo "tag=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')" >> "$GITHUB_OUTPUT"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -48,5 +77,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: artifacts/*
