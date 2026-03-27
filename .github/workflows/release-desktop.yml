@@ -56,7 +56,11 @@ jobs:
         run: |
           mkdir -p api/static/dist
           find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
-          cp -R .web-dist/out/. api/static/dist/
+          if [ -d .web-dist/out ]; then
+            cp -R .web-dist/out/. api/static/dist/
+          else
+            cp -R .web-dist/. api/static/dist/
+          fi
 
       - uses: actions/setup-go@v5
         with:
@@ -114,7 +118,11 @@ jobs:
         run: |
           mkdir -p api/static/dist
           find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
-          cp -R .web-dist/out/. api/static/dist/
+          if [ -d .web-dist/out ]; then
+            cp -R .web-dist/out/. api/static/dist/
+          else
+            cp -R .web-dist/. api/static/dist/
+          fi
 
       - uses: actions/setup-go@v5
         with:
@@ -213,7 +221,11 @@ jobs:
         run: |
           mkdir -p api/static/dist
           find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
-          cp -R .web-dist/out/. api/static/dist/
+          if [ -d .web-dist/out ]; then
+            cp -R .web-dist/out/. api/static/dist/
+          else
+            cp -R .web-dist/. api/static/dist/
+          fi
 
       - uses: actions/setup-go@v5
         with:
@@ -260,7 +272,11 @@ jobs:
         run: |
           mkdir -p api/static/dist
           find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
-          cp -R .web-dist/out/. api/static/dist/
+          if [ -d .web-dist/out ]; then
+            cp -R .web-dist/out/. api/static/dist/
+          else
+            cp -R .web-dist/. api/static/dist/
+          fi
 
       - uses: actions/setup-go@v5
         with:
@@ -338,7 +354,11 @@ jobs:
         run: |
           mkdir -p api/static/dist
           find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
-          cp -R .web-dist/out/. api/static/dist/
+          if [ -d .web-dist/out ]; then
+            cp -R .web-dist/out/. api/static/dist/
+          else
+            cp -R .web-dist/. api/static/dist/
+          fi
 
       - uses: actions/setup-go@v5
         with:
