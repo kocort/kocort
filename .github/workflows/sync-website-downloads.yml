@@ -1,0 +1,46 @@
+name: Sync Website Downloads
+
+on:
+  workflow_run:
+    workflows:
+      - Publish Release
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "指定要同步的 release tag，留空则取最新非 draft release"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync downloads.js
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name == 'Publish Release')
+      }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag input
+        id: vars
+        run: |
+          echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync website downloads.js
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_REPO_TOKEN }}
+          WEBSITE_PROXY_PREFIX_ZH: https://g.cource.com/
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "WEBSITE_REPO_TOKEN is not set; skipping website downloads.js sync."
+            exit 0
+          fi
+          chmod +x ./scripts/sync-website-downloads.sh
+          ./scripts/sync-website-downloads.sh "${{ steps.vars.outputs.tag }}"
