@@ -1145,6 +1145,8 @@ func TestNewRuntimeFromConfigUsesConfiguredReasoningDefault(t *testing.T) {
 	}
 	rt, err := NewRuntimeFromConfig(cfg, config.RuntimeConfigParams{
 		StateDir: t.TempDir(),
+		Provider: "nvidia",
+		Model:    "nvidia/glm-4-9b",
 	})
 	if err != nil {
 		t.Fatalf("new runtime from config: %v", err)

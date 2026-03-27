@@ -36,12 +36,6 @@ func (r *StaticIdentityResolver) Resolve(_ context.Context, agentID string) (cor
 		if identity.Name == "" {
 			identity.Name = agentID
 		}
-		if identity.DefaultProvider == "" {
-			identity.DefaultProvider = "openai"
-		}
-		if identity.DefaultModel == "" {
-			identity.DefaultModel = "gpt-4.1"
-		}
 		if strings.TrimSpace(identity.WorkspaceDir) == "" {
 			identity.WorkspaceDir = ResolveDefaultAgentWorkspaceDir(agentID)
 		}

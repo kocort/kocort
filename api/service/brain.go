@@ -141,7 +141,7 @@ func brainProviderProbeRequest(providerCfg config.ProviderConfig) (string, map[s
 		if key := strings.TrimSpace(providerCfg.APIKey); key != "" {
 			headers["authorization"] = "Bearer " + key
 		}
-		return joinBrainProbeURL(baseURL, "/models"), headers, nil
+		return baseURL, headers, nil
 	case "anthropic-messages":
 		baseURL, err := backend.ResolveAnthropicCompatBaseURL(providerCfg.BaseURL)
 		if err != nil {
@@ -151,7 +151,7 @@ func brainProviderProbeRequest(providerCfg config.ProviderConfig) (string, map[s
 			headers["x-api-key"] = key
 		}
 		headers["anthropic-version"] = "2023-06-01"
-		return joinBrainProbeURL(baseURL, "/v1/models"), headers, nil
+		return baseURL, headers, nil
 	default:
 		baseURL := strings.TrimSpace(providerCfg.BaseURL)
 		if baseURL == "" {

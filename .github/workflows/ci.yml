@@ -13,24 +13,107 @@ env:
   GO_VERSION: "1.23"
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # 1. 检测变动范围，按顶层目录分区
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      api:      ${{ steps.filter.outputs.api }}
+      cmd:      ${{ steps.filter.outputs.cmd }}
+      internal: ${{ steps.filter.outputs.internal }}
+      runtime:  ${{ steps.filter.outputs.runtime }}
+      utils:    ${{ steps.filter.outputs.utils }}
+      gomod:    ${{ steps.filter.outputs.gomod }}
+      packages: ${{ steps.affected.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'api/**'
+            cmd:
+              - 'cmd/**'
+            internal:
+              - 'internal/**'
+            runtime:
+              - 'runtime/**'
+            utils:
+              - 'utils/**'
+            gomod:
+              - 'go.mod'
+              - 'go.sum'
+
+      # 根据变动区域拼接需要检查的包列表
+      - name: Build affected package list
+        id: affected
+        run: |
+          pkgs=""
+
+          # go.mod/go.sum 变动意味着依赖更新，需要全量检查
+          if [[ "${{ steps.filter.outputs.gomod }}" == "true" ]]; then
+            pkgs="./..."
+          else
+            if [[ "${{ steps.filter.outputs.api }}" == "true" ]]; then
+              pkgs="$pkgs ./api/..."
+            fi
+            if [[ "${{ steps.filter.outputs.cmd }}" == "true" ]]; then
+              pkgs="$pkgs ./cmd/..."
+            fi
+            if [[ "${{ steps.filter.outputs.internal }}" == "true" ]]; then
+              pkgs="$pkgs ./internal/..."
+            fi
+            if [[ "${{ steps.filter.outputs.runtime }}" == "true" ]]; then
+              pkgs="$pkgs ./runtime/..."
+            fi
+            if [[ "${{ steps.filter.outputs.utils }}" == "true" ]]; then
+              pkgs="$pkgs ./utils/..."
+            fi
+          fi
+
+          # 去掉前导空格
+          pkgs=$(echo "$pkgs" | xargs)
+
+          if [[ -z "$pkgs" ]]; then
+            echo "packages=" >> "$GITHUB_OUTPUT"
+            echo "ℹ️  No Go packages affected"
+          else
+            echo "packages=$pkgs" >> "$GITHUB_OUTPUT"
+            echo "📦 Affected packages: $pkgs"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # 2. 仅对受影响的包执行 vet
+  # ---------------------------------------------------------------------------
   lint:
     name: Lint & Vet
+    needs: changes
+    if: needs.changes.outputs.packages != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: go vet
-        run: go vet ./...
+      - name: go vet (affected packages)
+        run: go vet ${{ needs.changes.outputs.packages }}
 
+  # ---------------------------------------------------------------------------
+  # 3. 仅对受影响的包执行 test
+  # ---------------------------------------------------------------------------
   test:
     name: Test
+    needs: changes
+    if: needs.changes.outputs.packages != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: Run tests
-        run: go test -count=1 -timeout 120s ./...
+      - name: Run tests (affected packages)
+        run: go test -count=1 -timeout 120s ${{ needs.changes.outputs.packages }}

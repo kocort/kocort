@@ -540,14 +540,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     {
                       "agents": {
                         "defaults": {
-                          "model": { "primary": "openai/gpt-4o-mini" },
                           "timeoutSeconds": 180
                         },
                         "catalog": [
                           {
                             "id": "main",
                             "name": "Main",
-                            "model": { "primary": "openai/gpt-4o-mini" },
                             "systemPrompt": "You are a helpful assistant."
                           }
                         ]

@@ -142,35 +142,18 @@ func BuildConfiguredAgentIdentity(
 			}
 		}
 	}
-	if provider == "" {
-		for key := range cfg.Models.Providers {
-			provider = normalizeProviderID(key)
-			break
-		}
-	}
 
 	// Resolve the model config; if provider/model are missing or stale
 	// (e.g. models.json was deleted), fall back to empty provider/model so
 	// the runtime can start and the user can configure one via the UI.
 	var modelCfgResolved ProviderModelConfig
-	if provider != "" {
-		if model == "" {
-			if defaultModel, resolveErr := ResolveDefaultConfiguredModel(cfg, provider); resolveErr == nil {
-				model = defaultModel.ID
-			} else {
-				// provider exists but has no models — clear provider too
-				provider = ""
-				model = ""
-			}
-		}
-		if provider != "" && model != "" {
-			if resolved, resolveErr := ResolveConfiguredModel(cfg, provider, model); resolveErr == nil {
-				modelCfgResolved = resolved
-			} else {
-				// referenced provider/model no longer exists — clear both
-				provider = ""
-				model = ""
-			}
+	if provider != "" && model != "" {
+		if resolved, resolveErr := ResolveConfiguredModel(cfg, provider, model); resolveErr == nil {
+			modelCfgResolved = resolved
+		} else {
+			// referenced provider/model no longer exists — clear both
+			provider = ""
+			model = ""
 		}
 	}
 	toolAllowlist := append([]string{}, toolCfg.Allow...)

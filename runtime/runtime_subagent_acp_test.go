@@ -51,8 +51,10 @@ func TestSubagentsToolListsAndSendsPersistentACPSession(t *testing.T) {
 				ToolAllowlist:   []string{"subagents"},
 			},
 			"worker": {
-				ID:          "worker",
-				RuntimeType: "acp",
+				ID:              "worker",
+				RuntimeType:     "acp",
+				DefaultProvider: "openai",
+				DefaultModel:    "gpt-4.1",
 			},
 		}),
 		Memory:     infra.NullMemoryProvider{},

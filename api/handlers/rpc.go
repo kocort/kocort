@@ -49,7 +49,7 @@ func (h *RPC) ChatSend(c *gin.Context) {
 	}
 	resp, err := h.Runtime.ChatSend(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeChatError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, resp)

@@ -78,7 +78,7 @@ func (h *Workspace) ChatSend(c *gin.Context) {
 		Attachments: attachments,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeChatError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, resp)

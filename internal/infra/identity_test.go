@@ -104,7 +104,7 @@ func TestStaticIdentityResolver_Resolve(t *testing.T) {
 		}
 	})
 
-	t.Run("fills_defaults", func(t *testing.T) {
+	t.Run("configured_identity_allows_empty_default_model", func(t *testing.T) {
 		dir := t.TempDir()
 		resolver := NewStaticIdentityResolver(map[string]core.AgentIdentity{
 			"bare": {WorkspaceDir: dir},
@@ -119,11 +119,11 @@ func TestStaticIdentityResolver_Resolve(t *testing.T) {
 		if identity.Name != "bare" {
 			t.Errorf("Name should default to ID")
 		}
-		if identity.DefaultProvider != "openai" {
-			t.Errorf("DefaultProvider should default to openai")
+		if identity.DefaultProvider != "" {
+			t.Errorf("DefaultProvider = %q, want empty", identity.DefaultProvider)
 		}
-		if identity.DefaultModel != "gpt-4.1" {
-			t.Errorf("DefaultModel should default to gpt-4.1")
+		if identity.DefaultModel != "" {
+			t.Errorf("DefaultModel = %q, want empty", identity.DefaultModel)
 		}
 	})
 

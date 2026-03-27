@@ -177,7 +177,7 @@ func TestCLIBackendRetriesAfterSessionExpired(t *testing.T) {
 		Command: core.CommandBackendConfig{
 			Command:    "sh",
 			Args:       []string{"-c", `printf '%s' '{"session_id":"fresh-2","text":"CLI-OK"}'`},
-			ResumeArgs: []string{"-c", `echo 'session expired' 1>&2; exit 1`},
+			ResumeArgs: []string{"-c", `echo 'session expired' >&2; exit 1`},
 			OutputMode: core.CommandBackendOutputJSON,
 		},
 	}
@@ -1042,10 +1042,16 @@ func TestCommandBackendSystemPromptModeAppendAndReplace(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			command := "cat"
+			args := []string{}
+			if tt.systemPromptArg != "" {
+				command = "sh"
+				args = []string{"-c", "cat"}
+			}
 			be := &backend.CommandBackend{
 				Config: core.CommandBackendConfig{
-					Command:          "sh",
-					Args:             []string{"-c", "cat"},
+					Command:          command,
+					Args:             args,
 					OutputMode:       core.CommandBackendOutputText,
 					InputMode:        core.CommandBackendInputStdin,
 					SystemPromptMode: tt.mode,
@@ -1063,6 +1069,9 @@ func TestCommandBackendSystemPromptModeAppendAndReplace(t *testing.T) {
 			_ = dispatcher.WaitForIdle(context.Background())
 			if err != nil {
 				t.Fatalf("command backend: %v", err)
+			}
+			if len(result.Payloads) != 1 {
+				t.Fatalf("expected one payload, got %+v", result)
 			}
 			got := strings.TrimSpace(result.Payloads[0].Text)
 			if tt.want != "" && got != tt.want {

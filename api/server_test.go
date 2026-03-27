@@ -253,6 +253,59 @@ func TestServerChatSendForwardsAttachments(t *testing.T) {
 	}
 }
 
+func TestServerChatSendReturnsNoDefaultModelCodeWhenUnset(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	rt, err := runtime.NewRuntimeFromConfig(config.AppConfig{
+		Models: config.ModelsConfig{
+			Providers: map[string]config.ProviderConfig{
+				"openai": {
+					BaseURL: "https://example.com/v1",
+					API:     "openai-completions",
+					APIKey:  "test-key",
+					Models:  []config.ProviderModelConfig{{ID: "gpt-4.1"}},
+				},
+			},
+		},
+		Agents: config.AgentsConfig{
+			List: []config.AgentConfig{{
+				ID:        "main",
+				Default:   true,
+				Workspace: workspace,
+			}},
+		},
+		Channels: config.ChannelsConfig{Entries: map[string]config.ChannelConfig{}},
+	}, config.RuntimeConfigParams{
+		StateDir:  t.TempDir(),
+		AgentID:   "main",
+		Deliverer: &delivery.MemoryDeliverer{},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntimeFromConfig: %v", err)
+	}
+	srv := NewServer(rt, config.GatewayConfig{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/workspace/chat/send", bytes.NewBufferString(`{"sessionKey":"agent:main:webchat:direct:webchat-user","message":"hello","channel":"webchat","to":"webchat-user"}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("chat.send status=%d body=%s", res.Code, res.Body.String())
+	}
+	var payload struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if payload.Error != "NO_DEFAULT_MODEL" {
+		t.Fatalf("unexpected error payload: %+v", payload)
+	}
+	if payload.Message != core.ErrNoDefaultModelConfigured.Error() {
+		t.Fatalf("unexpected error message: %+v", payload)
+	}
+}
+
 func TestServerTasksUpdateAndDelete(t *testing.T) {
 	srv := NewServer(testRuntime(t), config.GatewayConfig{})
 	createReq := httptest.NewRequest(http.MethodPost, "/api/workspace/tasks", bytes.NewBufferString(`{"title":"follow up","message":"ping later","intervalSeconds":60}`))

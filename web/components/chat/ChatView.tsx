@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bubble, FileCard, Sender } from '@ant-design/x';
 import { Dropdown, Select } from 'antd';
 import { Loader2, MessageSquare, Play, Plus, Search, ListChecks } from 'lucide-react';
 
 import { useI18n } from '@/lib/i18n/I18nContext';
 import {
+  APIClientError,
   apiGet,
   apiPost,
   apiURL,
@@ -47,6 +49,7 @@ function getPayloadFallbackText(payloads: ChatSendResponse['payloads'] | undefin
 
 export function ChatView() {
   const { t } = useI18n();
+  const router = useRouter();
   const isDark = useThemeSync();
 
   // --- Session key (selectable) -------------------------------------------
@@ -96,6 +99,7 @@ export function ChatView() {
   const [sending, setSending] = useState(false);
   const [composerResetKey, setComposerResetKey] = useState(0);
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState('');
   const [traces, setTraces] = useState<Record<string, RunTrace>>({});
   const [activeRunId, setActiveRunId] = useState('');
   // The real backend runId extracted from SSE events (may differ from
@@ -178,6 +182,7 @@ export function ChatView() {
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : t('chat.loadError'));
+          setErrorCode('');
           setHistoryLoading(false);
         }
       });
@@ -442,6 +447,7 @@ export function ChatView() {
     }
     setSending(true);
     setError('');
+    setErrorCode('');
     pendingTraceKeyRef.current = pendingKey;
     activeRunIdRef.current = pendingKey;
     realRunIdRef.current = '';
@@ -544,7 +550,13 @@ export function ChatView() {
       // by toBubbleItems / renderAssistantTurnContent without a history round-trip.
     } catch (err) {
       pendingTraceKeyRef.current = '';
-      setError(err instanceof Error ? err.message : t('chat.sendError'));
+      if (err instanceof APIClientError && err.code === 'NO_DEFAULT_MODEL') {
+        setError(t('chat.noDefaultModelConfigured'));
+        setErrorCode(err.code);
+      } else {
+        setError(err instanceof Error ? err.message : t('chat.sendError'));
+        setErrorCode('');
+      }
       setInput(text);
       if (hasComposerAttachments) {
         setAttachments(composerAttachments);
@@ -567,6 +579,7 @@ export function ChatView() {
   const handleCancel = async () => {
     if (!canCancel) return;
     setError('');
+    setErrorCode('');
     activeRunIdRef.current = '';
     try {
       // Prefer the real backend runId from SSE events; fall back to the
@@ -603,6 +616,7 @@ export function ChatView() {
       }
       setSending(false);
     } catch (err) {
+      setErrorCode('');
       setError(
         err instanceof Error ? err.message : t('chat.cancelError'),
       );
@@ -643,6 +657,7 @@ export function ChatView() {
         setNextHistoryBefore(next.nextBefore || 0);
       }
     } catch (err) {
+      setErrorCode('');
       prependScrollRestoreRef.current = null;
       setLoadMoreError(
         err instanceof Error ? err.message : t('chat.loadMoreError'),
@@ -796,7 +811,16 @@ export function ChatView() {
 
           {error ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">
-              {error}
+              <div>{error}</div>
+              {errorCode === 'NO_DEFAULT_MODEL' ? (
+                <button
+                  type="button"
+                  onClick={() => router.push('/brain')}
+                  className="mt-3 inline-flex rounded-md border border-rose-300 bg-white px-3 py-1.5 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-800 dark:bg-transparent dark:text-rose-300 dark:hover:bg-rose-900/40"
+                >
+                  {t('chat.configureModel')}
+                </button>
+              ) : null}
             </div>
           ) : null}
 

@@ -88,6 +88,10 @@ var (
 	// ErrNoConfiguredProviders is returned when no model providers are
 	// configured.
 	ErrNoConfiguredProviders = errors.New("no configured providers")
+
+	// ErrNoDefaultModelConfigured is returned when no usable default model
+	// is configured for the current agent/session.
+	ErrNoDefaultModelConfigured = errors.New("no default model configured")
 )
 
 // ---------------------------------------------------------------------------

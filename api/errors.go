@@ -70,6 +70,10 @@ func writeErrorFromErr(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 		code = "CONFLICT"
 
+	case errors.Is(err, core.ErrNoDefaultModelConfigured):
+		status = http.StatusBadRequest
+		code = "NO_DEFAULT_MODEL"
+
 	case errors.Is(err, core.ErrRuntimeNotReady),
 		errors.Is(err, core.ErrToolRegistryNotConfigured),
 		errors.Is(err, core.ErrTaskSchedulerNotConfigured),

@@ -191,11 +191,12 @@ func TestQQAccountsFromChannel_Accounts(t *testing.T) {
 	if len(accounts) != 2 {
 		t.Fatalf("expected 2 accounts, got %d", len(accounts))
 	}
-	if accounts[0].appID != "app1" {
-		t.Errorf("first account: expected 'app1', got %q", accounts[0].appID)
+	got := map[string]bool{}
+	for _, account := range accounts {
+		got[account.appID] = true
 	}
-	if accounts[1].appID != "app2" {
-		t.Errorf("second account: expected 'app2', got %q", accounts[1].appID)
+	if !got["app1"] || !got["app2"] {
+		t.Fatalf("expected app1 and app2, got %+v", accounts)
 	}
 }
 

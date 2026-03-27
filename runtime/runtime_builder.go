@@ -280,9 +280,7 @@ func (b *RuntimeBuilder) Build() (*Runtime, error) {
 		if buildErr != nil {
 			return nil, buildErr
 		}
-		if _, ok := identityMap[identity.ID]; !ok {
-			identityMap[identity.ID] = identity
-		}
+		identityMap[identity.ID] = identity
 		identities = infra.NewStaticIdentityResolver(identityMap)
 	}
 
