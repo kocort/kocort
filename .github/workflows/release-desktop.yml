@@ -295,17 +295,11 @@ jobs:
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh --linux --with-browser
 
-      - name: Install Vulkan SDK
+      - name: Install Vulkan build toolchain
         run: |
-          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc \
-            | gpg --dearmor | sudo tee /usr/share/keyrings/lunarg-archive-keyring.gpg > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/lunarg-archive-keyring.gpg] https://packages.lunarg.com/vulkan/1.4.313 jammy main" \
-            | sudo tee /etc/apt/sources.list.d/lunarg-vulkan.list > /dev/null
           sudo apt-get update
-          sudo apt-get install -y vulkan-sdk
-          if [ -d "/usr/lib/x86_64-linux-gnu/vulkan" ]; then
-            echo "VULKAN_SDK=/usr" >> "$GITHUB_ENV"
-          fi
+          sudo apt-get install -y libvulkan-dev glslc
+          echo "VULKAN_SDK=/usr" >> "$GITHUB_ENV"
 
       - name: Build Vulkan GPU backend
         run: |
