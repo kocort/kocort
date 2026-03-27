@@ -165,6 +165,14 @@ build_web_embed() {
     if [ "$WEB_EMBED_READY" = "1" ]; then
         return 0
     fi
+    if [ "${kocort_SKIP_WEB:-0}" = "1" ]; then
+        if [ ! -f "$EMBED_DIR/index.html" ]; then
+            fail "kocort_SKIP_WEB=1 but embedded web assets are missing in $EMBED_DIR"
+        fi
+        warn "Skipping web build because kocort_SKIP_WEB=1"
+        WEB_EMBED_READY=1
+        return 0
+    fi
     if ! command -v npm >/dev/null 2>&1; then
         fail "npm is required to build the embedded web UI"
     fi
@@ -198,11 +206,34 @@ resolve_prebuilt_driver_dir() {
     )
     local candidate
     for candidate in "${candidates[@]}"; do
-        if [ -d "$candidate" ]; then
-            echo "$candidate"
+        local resolved=""
+        if resolved="$(resolve_existing_dir "$candidate")"; then
+            echo "$resolved"
             return 0
         fi
     done
+    return 1
+}
+
+resolve_existing_dir() {
+    local raw="$1"
+    if [ -d "$raw" ]; then
+        echo "$raw"
+        return 0
+    fi
+    if command -v cygpath >/dev/null 2>&1; then
+        local alt=""
+        alt="$(cygpath -u "$raw" 2>/dev/null || true)"
+        if [ -n "$alt" ] && [ -d "$alt" ]; then
+            echo "$alt"
+            return 0
+        fi
+        alt="$(cygpath -m "$raw" 2>/dev/null || true)"
+        if [ -n "$alt" ] && [ -d "$alt" ]; then
+            echo "$alt"
+            return 0
+        fi
+    fi
     return 1
 }
 
@@ -247,6 +278,22 @@ bundle_playwright_driver() {
         if ! pre_built="$(resolve_prebuilt_driver_dir "$platform_label")"; then
             fail "Playwright driver not found after bundle-browser.sh for $platform_label"
         fi
+    fi
+
+    local pre_built_abs dest_dir_abs
+    pre_built_abs="$(cd "$pre_built" && pwd)"
+    mkdir -p "$(dirname "$dest_dir")"
+    if [ -d "$dest_dir" ]; then
+        dest_dir_abs="$(cd "$dest_dir" && pwd)"
+    else
+        dest_dir_abs="$(cd "$(dirname "$dest_dir")" && pwd)/$(basename "$dest_dir")"
+    fi
+
+    if [ "$pre_built_abs" = "$dest_dir_abs" ]; then
+        local driver_size
+        driver_size=$(du -sh "$dest_dir" | awk '{print $1}')
+        ok "Playwright driver already prepared at destination: $dest_dir ($driver_size)"
+        return 0
     fi
 
     rm -rf "$dest_dir"

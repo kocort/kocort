@@ -24,20 +24,32 @@ permissions:
   contents: write
 
 jobs:
+  web:
+    name: Build Web Artifact
+    if: inputs.build-cli || inputs.build-desktop
+    uses: ./.github/workflows/release-web.yml
+    with:
+      upload-artifacts: true
+      artifact-name: kocort-web-out
+
   cli:
     name: Build CLI Artifacts
     if: inputs.build-cli
+    needs: web
     uses: ./.github/workflows/release-cli.yml
     with:
       upload-artifacts: true
+      web-artifact-name: kocort-web-out
 
   desktop:
     name: Build Desktop Artifacts
     if: inputs.build-desktop
+    needs: web
     uses: ./.github/workflows/release-desktop.yml
     with:
       upload-artifacts: true
       include-gpu: ${{ inputs.build-desktop-gpu }}
+      web-artifact-name: kocort-web-out
 
   release:
     name: Create Release

@@ -8,6 +8,11 @@ on:
         required: false
         default: true
         type: boolean
+      web-artifact-name:
+        description: Artifact name for the prebuilt web output
+        required: false
+        default: kocort-web-out
+        type: string
 
 permissions:
   contents: read
@@ -34,6 +39,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          cp -R .web-dist/out/. api/static/dist/
 
       - name: Make build script executable
         run: chmod +x ./scripts/build.sh
@@ -90,6 +107,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          cp -R .web-dist/out/. api/static/dist/
+
       - name: Make build script executable
         run: chmod +x ./scripts/build.sh
 
@@ -138,6 +167,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        shell: bash
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          cp -R .web-dist/out/. api/static/dist/
 
       - uses: actions/setup-go@v5
         with:

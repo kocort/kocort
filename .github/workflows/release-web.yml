@@ -1,0 +1,47 @@
+name: Reusable Web Build
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifacts:
+        description: Upload built web assets as workflow artifacts
+        required: false
+        default: true
+        type: boolean
+      artifact-name:
+        description: Artifact name for the built web output
+        required: false
+        default: kocort-web-out
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-web:
+    name: Build Web Assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build frontend export
+        run: npm run build
+        working-directory: web
+
+      - name: Upload web artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: web/out

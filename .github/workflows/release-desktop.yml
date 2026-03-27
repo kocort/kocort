@@ -13,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      web-artifact-name:
+        description: Artifact name for the prebuilt web output
+        required: false
+        default: kocort-web-out
+        type: string
 
 permissions:
   contents: read
@@ -40,19 +45,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        shell: bash
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          cp -R .web-dist/out/. api/static/dist/
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: web
 
       - name: Install rg/fd
         shell: pwsh
@@ -70,6 +78,8 @@ jobs:
 
       - name: Build desktop bundle
         shell: bash
+        env:
+          kocort_SKIP_WEB: "1"
         run: |
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh ${{ matrix.action }} --with-browser
@@ -93,19 +103,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        shell: bash
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          cp -R .web-dist/out/. api/static/dist/
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: web
 
       - name: Install rg/fd
         shell: pwsh
@@ -127,6 +140,8 @@ jobs:
 
       - name: Build desktop bundle
         shell: bash
+        env:
+          kocort_SKIP_WEB: "1"
         run: |
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh --windows --with-browser
@@ -188,19 +203,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          cp -R .web-dist/out/. api/static/dist/
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: web
 
       - name: Install desktop build dependencies
         run: |
@@ -209,6 +226,8 @@ jobs:
           sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 
       - name: Build desktop bundle
+        env:
+          kocort_SKIP_WEB: "1"
         run: |
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh --linux --with-browser
@@ -231,19 +250,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          cp -R .web-dist/out/. api/static/dist/
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: web
 
       - name: Install desktop build dependencies
         run: |
@@ -252,6 +273,8 @@ jobs:
           sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 
       - name: Build desktop bundle
+        env:
+          kocort_SKIP_WEB: "1"
         run: |
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh --linux --with-browser
@@ -305,19 +328,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          cp -R .web-dist/out/. api/static/dist/
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: web
 
       - name: Install rg/fd
         run: brew install ripgrep fd
@@ -330,6 +355,7 @@ jobs:
           CGO_CFLAGS: "-O3 -mmacosx-version-min=${{ matrix.macos_version_min }}"
           CGO_CXXFLAGS: "-O3 -mmacosx-version-min=${{ matrix.macos_version_min }}"
           CGO_LDFLAGS: "-mmacosx-version-min=${{ matrix.macos_version_min }}"
+          kocort_SKIP_WEB: "1"
         run: |
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh ${{ matrix.action }} --with-browser
