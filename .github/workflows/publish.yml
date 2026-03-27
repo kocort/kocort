@@ -43,13 +43,24 @@ jobs:
 
   desktop:
     name: Build Desktop Artifacts
-    if: inputs.build-desktop || inputs.build-desktop-gpu
+    if: inputs.build-desktop
     needs: web
     uses: ./.github/workflows/release-desktop.yml
     with:
       upload-artifacts: true
-      include-regular: ${{ inputs.build-desktop }}
-      include-gpu: ${{ inputs.build-desktop-gpu }}
+      include-regular: true
+      include-gpu: false
+      web-artifact-name: kocort-web-out
+
+  desktop-gpu:
+    name: Build Desktop GPU Artifacts
+    if: inputs.build-desktop-gpu
+    needs: web
+    uses: ./.github/workflows/release-desktop.yml
+    with:
+      upload-artifacts: true
+      include-regular: false
+      include-gpu: true
       web-artifact-name: kocort-web-out
 
   release:
@@ -58,6 +69,7 @@ jobs:
     needs:
       - cli
       - desktop
+      - desktop-gpu
     # Allow release when optional build groups were intentionally skipped.
     if: ${{ always() && inputs.create-release && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     steps:
