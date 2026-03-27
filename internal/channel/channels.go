@@ -316,6 +316,15 @@ func (r *ChannelManager) ResolveOutboundMessage(ctx context.Context, target core
 	if outbound == nil {
 		return core.ChannelOutboundMessage{}, cfg, fmt.Errorf("channel outbound %q is not registered", channelID)
 	}
+	if resolver, ok := outbound.(interface {
+		ResolveTarget(context.Context, core.ChannelOutboundMessage, config.ChannelConfig) (core.ChannelOutboundMessage, error)
+	}); ok {
+		resolved, err := resolver.ResolveTarget(ctx, message, cfg)
+		if err != nil {
+			return core.ChannelOutboundMessage{}, cfg, err
+		}
+		message = resolved
+	}
 
 	// Post-resolver safety fallbacks — resolver may have cleared fields.
 	if strings.TrimSpace(message.Channel) == "" {
@@ -372,6 +381,24 @@ func (r *ChannelManager) NormalizeInbound(channelID string, msg *core.ChannelInb
 	out.AgentID = session.NormalizeAgentID(utils.NonEmpty(out.AgentID, cfg.Agent))
 	out.MessageID = strings.TrimSpace(out.MessageID)
 	return &out, nil
+}
+
+// EnsureStarted lazily initializes a registered channel adapter's callbacks.
+// This is primarily useful in tests or dynamic registration flows where an
+// adapter is added after the runtime's initial background startup.
+func (r *ChannelManager) EnsureStarted(ctx context.Context, channelID string, rt rtypes.RuntimeServices) error {
+	if r == nil {
+		return core.ErrChannelRegistryNotConfigured
+	}
+	channelID = adapter.NormalizeID(channelID)
+	if channelID == "" {
+		return core.ErrChannelRequired
+	}
+	ca := r.GetChannel(channelID)
+	if ca == nil {
+		return fmt.Errorf("channel %q is not registered", channelID)
+	}
+	return ca.StartBackground(ctx, channelID, r.ResolveConfig(channelID), r.dc, buildAdapterCallbacks(rt))
 }
 
 // =========================================================================

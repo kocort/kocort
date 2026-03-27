@@ -252,8 +252,8 @@ func TestResolveModelSelectionEmptyDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if sel.Provider != "openai" || sel.Model != "gpt-4.1" {
-		t.Errorf("expected fallback to openai/gpt-4.1, got %s/%s", sel.Provider, sel.Model)
+	if sel.Provider != "" || sel.Model != "" {
+		t.Errorf("expected empty selection without configured default, got %s/%s", sel.Provider, sel.Model)
 	}
 }
 

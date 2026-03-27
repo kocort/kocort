@@ -151,6 +151,24 @@ func NewSubagentRegistry() *SubagentRegistry {
 	}
 }
 
+func (r *SubagentRegistry) StopAnnouncementRetries() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	timers := make([]*time.Timer, 0, len(r.announceTimers))
+	for key, timer := range r.announceTimers {
+		if timer != nil {
+			timers = append(timers, timer)
+		}
+		delete(r.announceTimers, key)
+	}
+	r.mu.Unlock()
+	for _, timer := range timers {
+		timer.Stop()
+	}
+}
+
 func (r *SubagentRegistry) Register(record SubagentRunRecord) {
 	r.mu.Lock()
 	recordCopy := record

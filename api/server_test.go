@@ -849,6 +849,36 @@ func TestServerBrainModelCrudAndAssignments(t *testing.T) {
 	}
 }
 
+func TestServerBrainModelUpsertAutoAssignsDefaultWhenMissing(t *testing.T) {
+	rt, _ := testRuntimeWithConfigStore(t)
+	if err := service.ModifyAndPersist(rt, func(cfg *config.AppConfig) (service.ConfigSections, error) {
+		service.SetDefaultSystemPrompt(cfg, "test")
+		service.SetBrainModelDefault(cfg, "openai", "gpt-4.1")
+		if err := service.DeleteBrainModelRecord(cfg, "openai", "gpt-4.1"); err != nil {
+			return service.ConfigSections{}, err
+		}
+		return service.ConfigSections{Main: true, Models: true}, nil
+	}); err != nil {
+		t.Fatalf("clear default model: %v", err)
+	}
+
+	srv := NewServer(rt, config.GatewayConfig{})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/engine/brain/models/upsert", bytes.NewBufferString(`{"presetId":"nvidia","modelId":"nvidia/qwen3.5-plus","apiKey":"k1"}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRes := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(createRes, createReq)
+	if createRes.Code != http.StatusOK {
+		t.Fatalf("create model status=%d body=%s", createRes.Code, createRes.Body.String())
+	}
+	var created types.BrainState
+	if err := json.Unmarshal(createRes.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if !findModelRecord(created.ModelRecords, "nvidia", "nvidia/qwen3.5-plus").IsDefault {
+		t.Fatalf("expected first configured model to become default, got %+v", created.ModelRecords)
+	}
+}
+
 func containsModelRecord(records []types.BrainModelRecord, providerID string, modelID string) bool {
 	return findModelRecord(records, providerID, modelID).Key != ""
 }

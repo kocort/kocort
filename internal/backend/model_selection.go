@@ -128,7 +128,9 @@ func ResolveThinkingDefault(identity core.AgentIdentity, provider, model string)
 func BuildAllowedModelSet(identity core.AgentIdentity, defaultProvider, defaultModel string) (bool, map[string]struct{}) {
 	keys := map[string]struct{}{}
 	if len(identity.ModelAllowlist) == 0 {
-		keys[ModelKey(defaultProvider, defaultModel)] = struct{}{}
+		if strings.TrimSpace(defaultProvider) != "" && strings.TrimSpace(defaultModel) != "" {
+			keys[ModelKey(defaultProvider, defaultModel)] = struct{}{}
+		}
 		return true, keys
 	}
 	for _, raw := range identity.ModelAllowlist {
@@ -138,7 +140,9 @@ func BuildAllowedModelSet(identity core.AgentIdentity, defaultProvider, defaultM
 		}
 		keys[ModelKey(ref.Provider, ref.Model)] = struct{}{}
 	}
-	keys[ModelKey(defaultProvider, defaultModel)] = struct{}{}
+	if strings.TrimSpace(defaultProvider) != "" && strings.TrimSpace(defaultModel) != "" {
+		keys[ModelKey(defaultProvider, defaultModel)] = struct{}{}
+	}
 	return false, keys
 }
 
@@ -146,12 +150,6 @@ func BuildAllowedModelSet(identity core.AgentIdentity, defaultProvider, defaultM
 // applying overrides, allowlists, thinking levels, and fallback candidates.
 func ResolveModelSelection(_ context.Context, identity core.AgentIdentity, req core.AgentRunRequest, session core.SessionResolution) (core.ModelSelection, error) {
 	defaultRef := NormalizeModelRef(identity.DefaultProvider, identity.DefaultModel)
-	if defaultRef.Provider == "" {
-		defaultRef.Provider = "openai"
-	}
-	if defaultRef.Model == "" {
-		defaultRef.Model = "gpt-4.1"
-	}
 
 	allowAny, allowedKeys := BuildAllowedModelSet(identity, defaultRef.Provider, defaultRef.Model)
 

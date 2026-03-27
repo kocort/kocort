@@ -572,12 +572,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 let minimal = """
                     {
-                      "providers": {
-                        "openai": {
-                          "kind": "openai",
-                          "apiKey": "${OPENAI_API_KEY}"
-                        }
-                      }
+                      "providers": {}
                     }
                     """
                 fm.createFile(atPath: modelsJson, contents: minimal.data(using: .utf8))

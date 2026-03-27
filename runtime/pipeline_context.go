@@ -9,6 +9,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/kocort/kocort/internal/backend"
@@ -141,6 +142,9 @@ func (p *AgentPipeline) loadContext(ctx context.Context, state *PipelineState) e
 	selection, err := backend.ResolveModelSelection(ctx, *identity, *req, sess)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(selection.Provider) == "" || strings.TrimSpace(selection.Model) == "" {
+		return fmt.Errorf("no default model configured")
 	}
 
 	// Validate the selected model is configured.

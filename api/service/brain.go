@@ -286,8 +286,12 @@ func UpsertBrainModelRecord(cfg *config.AppConfig, req types.BrainModelUpsertReq
 	if req.ExistingProviderID != "" && req.ExistingModelID != "" && (renameProvider || renameModel) {
 		removeModelFromProvider(cfg, req.ExistingProviderID, req.ExistingModelID)
 		existingPrimary, existingFallbacks = replaceModelRef(existingPrimary, existingFallbacks, oldRef, newRef)
-		setDefaultAgentModelRefs(cfg, existingPrimary, existingFallbacks)
 	}
+	if strings.TrimSpace(existingPrimary) == "" {
+		setDefaultAgentModelRefs(cfg, newRef, removeModelRef(existingFallbacks, newRef))
+		return nil
+	}
+	setDefaultAgentModelRefs(cfg, existingPrimary, existingFallbacks)
 	return nil
 }
 
@@ -439,6 +443,21 @@ func removeModelFromProvider(cfg *config.AppConfig, providerID string, modelID s
 	}
 	provider.Models = next
 	cfg.Models.Providers[providerID] = provider
+}
+
+func removeModelRef(refs []string, target string) []string {
+	target = normalizeModelRefString(target)
+	if target == "" || len(refs) == 0 {
+		return append([]string{}, refs...)
+	}
+	next := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if normalizeModelRefString(ref) == target {
+			continue
+		}
+		next = append(next, ref)
+	}
+	return next
 }
 
 func replaceModelRef(primary string, fallbacks []string, oldRef string, newRef string) (string, []string) {

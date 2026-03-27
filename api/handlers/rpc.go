@@ -144,6 +144,10 @@ func (h *RPC) ChannelInbound(c *gin.Context) {
 		c.String(http.StatusNotImplemented, "channel transport not registered")
 		return
 	}
+	if err := h.Runtime.Channels.EnsureStarted(c.Request.Context(), channelID, h.Runtime); err != nil {
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 	transport.ServeHTTP(c.Writer, c.Request)
 }
 

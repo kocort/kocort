@@ -341,6 +341,7 @@ func TestRestoreSubagentAnnouncementRecoveryFlushesReadyAndSchedulesDeferred(t *
 		t.Fatalf("new session store: %v", err)
 	}
 	registry := task.NewSubagentRegistry()
+	t.Cleanup(registry.StopAnnouncementRetries)
 	registry.Register(task.SubagentRunRecord{
 		RunID:                    "run-ready",
 		ChildSessionKey:          "agent:worker:subagent:ready",
@@ -393,11 +394,18 @@ func TestRestoreSubagentAnnouncementRecoveryFlushesReadyAndSchedulesDeferred(t *
 		t.Fatalf("upsert parent session: %v", err)
 	}
 	readyDone := make(chan struct{}, 1)
+	deferredDone := make(chan struct{}, 1)
 	runtime.Backend = fakeBackend{
 		onRun: func(ctx context.Context, runCtx rtypes.AgentRunContext) (core.AgentRunResult, error) {
 			if strings.Contains(runCtx.Request.Message, "READY-CHILD-RESULT") {
 				select {
 				case readyDone <- struct{}{}:
+				default:
+				}
+			}
+			if strings.Contains(runCtx.Request.Message, "DEFERRED-CHILD-RESULT") {
+				select {
+				case deferredDone <- struct{}{}:
 				default:
 				}
 			}
@@ -410,6 +418,12 @@ func TestRestoreSubagentAnnouncementRecoveryFlushesReadyAndSchedulesDeferred(t *
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for ready announcement flush after restore")
 	}
+	select {
+	case <-deferredDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for deferred announcement flush after restore")
+	}
+	time.Sleep(100 * time.Millisecond)
 }
 
 func TestSpawnedSubagentAnnouncesCompletionBackToParentSession(t *testing.T) {
@@ -699,8 +713,8 @@ func TestPermanentAnnouncementFailureDoesNotScheduleRetry(t *testing.T) {
 		ExpectsCompletionMessage: true,
 		RequesterOrigin:          &core.DeliveryContext{Channel: "webchat", To: "user-1"},
 	})
-	if err := runtime.flushSubagentAnnouncements(context.Background(), parentSessionKey); err == nil {
-		t.Fatal("expected flush to return announcement error")
+	if err := runtime.flushSubagentAnnouncements(context.Background(), parentSessionKey); err != nil {
+		t.Fatalf("expected queued fallback to succeed without retry, got %v", err)
 	}
 	record := runtime.Subagents.Get("run-1")
 	if record == nil || record.CompletionMessageSentAt.IsZero() {
@@ -708,6 +722,9 @@ func TestPermanentAnnouncementFailureDoesNotScheduleRetry(t *testing.T) {
 	}
 	if !record.NextAnnounceAttemptAt.IsZero() {
 		t.Fatalf("expected no retry scheduling for permanent failure, got %+v", record)
+	}
+	if record.AnnounceDeliveryPath != task.DeliveryPathQueued {
+		t.Fatalf("expected permanent direct failure to fall back to queue, got %+v", record)
 	}
 }
 

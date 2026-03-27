@@ -2541,6 +2541,91 @@ func TestRunDropsInvalidStoredModelOverrideAndFallsBackToConfiguredDefault(t *te
 	}
 }
 
+func TestRunUsesUpdatedConfiguredDefaultWithoutRestart(t *testing.T) {
+	baseDir := t.TempDir()
+	cfg := config.AppConfig{
+		Models: config.ModelsConfig{
+			Providers: map[string]config.ProviderConfig{
+				"openai": {
+					BaseURL: "https://example.com/v1",
+					API:     "openai-completions",
+					Models: []config.ProviderModelConfig{
+						{ID: "gpt-4.1"},
+						{ID: "gpt-4.1-mini"},
+					},
+				},
+			},
+		},
+		Agents: config.AgentsConfig{
+			Defaults: &config.AgentDefaultsConfig{
+				Model: config.AgentModelConfig{Primary: "openai/gpt-4.1"},
+			},
+			List: []config.AgentConfig{{
+				ID:      "main",
+				Default: true,
+				Model:   config.AgentModelConfig{Primary: "openai/gpt-4.1"},
+			}},
+		},
+	}
+	rt, err := NewRuntimeFromConfig(cfg, config.RuntimeConfigParams{
+		StateDir:  baseDir,
+		AgentID:   "main",
+		Deliverer: &delivery.MemoryDeliverer{},
+	})
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+	sessionKey := session.BuildDirectSessionKey("main", "webchat", "webchat-user")
+	seen := make([]string, 0, 2)
+	stubBackend := backendFunc(func(ctx context.Context, runCtx rtypes.AgentRunContext) (core.AgentRunResult, error) {
+		seen = append(seen, runCtx.ModelSelection.Provider+"/"+runCtx.ModelSelection.Model)
+		return core.AgentRunResult{Payloads: []core.ReplyPayload{{Text: "OK"}}}, nil
+	})
+	rt.Backends = nil
+	rt.Backend = stubBackend
+
+	run := func(message string) {
+		if _, err := rt.Run(context.Background(), core.AgentRunRequest{
+			AgentID:    "main",
+			SessionKey: sessionKey,
+			Channel:    "webchat",
+			To:         "webchat-user",
+			Message:    message,
+		}); err != nil {
+			t.Fatalf("run %q: %v", message, err)
+		}
+	}
+
+	run("hello one")
+
+	cfg.Agents.Defaults.Model.Primary = "openai/gpt-4.1-mini"
+	cfg.Agents.List[0].Model.Primary = "openai/gpt-4.1-mini"
+	if err := rt.ApplyConfig(cfg); err != nil {
+		t.Fatalf("apply config: %v", err)
+	}
+	rt.Backends = nil
+	rt.Backend = stubBackend
+
+	run("hello two")
+
+	if len(seen) != 2 {
+		t.Fatalf("expected two runs, got %+v", seen)
+	}
+	if seen[0] != "openai/gpt-4.1" {
+		t.Fatalf("expected first run to use old default, got %+v", seen)
+	}
+	if seen[1] != "openai/gpt-4.1-mini" {
+		t.Fatalf("expected second run to use updated default without restart, got %+v", seen)
+	}
+	entry := rt.Sessions.Entry(sessionKey)
+	if entry == nil {
+		t.Fatal("expected session entry")
+	}
+	if entry.ProviderOverride != "" || entry.ModelOverride != "" {
+		t.Fatalf("expected configured default not to be persisted as session override, got %+v", entry)
+	}
+}
+
 func TestRunWithModelFallbackRetriesNextCandidate(t *testing.T) {
 	selection := core.ModelSelection{
 		Provider:   "openai",
