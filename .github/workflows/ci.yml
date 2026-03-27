@@ -22,9 +22,13 @@ jobs:
     outputs:
       api:      ${{ steps.filter.outputs.api }}
       cmd:      ${{ steps.filter.outputs.cmd }}
+      desktop:  ${{ steps.filter.outputs.desktop }}
       internal: ${{ steps.filter.outputs.internal }}
+      scripts:  ${{ steps.filter.outputs.scripts }}
       runtime:  ${{ steps.filter.outputs.runtime }}
       utils:    ${{ steps.filter.outputs.utils }}
+      web:      ${{ steps.filter.outputs.web }}
+      workflows: ${{ steps.filter.outputs.workflows }}
       gomod:    ${{ steps.filter.outputs.gomod }}
       packages: ${{ steps.affected.outputs.packages }}
     steps:
@@ -38,12 +42,20 @@ jobs:
               - 'api/**'
             cmd:
               - 'cmd/**'
+            desktop:
+              - 'desktop/**'
             internal:
               - 'internal/**'
+            scripts:
+              - 'scripts/**'
             runtime:
               - 'runtime/**'
             utils:
               - 'utils/**'
+            web:
+              - 'web/**'
+            workflows:
+              - '.github/workflows/**'
             gomod:
               - 'go.mod'
               - 'go.sum'
@@ -85,6 +97,45 @@ jobs:
             echo "packages=$pkgs" >> "$GITHUB_OUTPUT"
             echo "📦 Affected packages: $pkgs"
           fi
+
+  # ---------------------------------------------------------------------------
+  # 2. 校验构建脚本 / workflow / web 构建
+  # ---------------------------------------------------------------------------
+  packaging-sanity:
+    name: Packaging Sanity
+    needs: changes
+    if: |
+      needs.changes.outputs.scripts == 'true' ||
+      needs.changes.outputs.desktop == 'true' ||
+      needs.changes.outputs.web == 'true' ||
+      needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Validate shell scripts
+        run: |
+          bash -n scripts/build.sh
+          bash -n scripts/build-desktop.sh
+          bash -n scripts/bundle-browser.sh
+          bash -n scripts/sign-and-release.sh
+
+      - name: Validate workflow YAML
+        run: ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].sort.each { |f| YAML.load_file(f) }'
+
+      - name: Build frontend export
+        run: npm run build
+        working-directory: web
 
   # ---------------------------------------------------------------------------
   # 2. 仅对受影响的包执行 vet

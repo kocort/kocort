@@ -40,10 +40,7 @@ func TestProcessRegistryStartAndGet(t *testing.T) {
 		t.Errorf("expected status=running, got %q", rec.Status)
 	}
 
-	// Wait for completion.
-	time.Sleep(500 * time.Millisecond)
-
-	got, ok := r.Get(rec.ID)
+	got, ok := r.Poll(rec.ID, 2*time.Second)
 	if !ok {
 		t.Fatal("expected to find process")
 	}

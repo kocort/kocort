@@ -617,11 +617,12 @@ func TestBuildSandboxPromptSection(t *testing.T) {
 		Enabled:         true,
 		Mode:            "all",
 		WorkspaceAccess: "ro",
-		WorkspaceDir:    "/tmp/sandbox",
+		DefaultWorkdir:  "/repo",
+		SandboxWorkspace: "/tmp/sandbox",
 		AgentWorkspace:  "/repo",
 		Scope:           "agent",
 	})
-	for _, needle := range []string{"## Sandbox", "Sandbox mode: all", "Workspace access: ro", "Sandbox scope: agent"} {
+	for _, needle := range []string{"## Sandbox", "Sandbox mode: all", "Workspace access: ro", "Sandbox scope: agent", "Default working directory: /repo", "Sandbox workspace: /tmp/sandbox"} {
 		if !strings.Contains(result, needle) {
 			t.Fatalf("expected sandbox prompt to contain %q, got %q", needle, result)
 		}

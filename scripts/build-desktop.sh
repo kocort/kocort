@@ -22,6 +22,8 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DIST_DIR="$PROJECT_ROOT/dist"
 DESKTOP_DIR="$PROJECT_ROOT/desktop"
 ICONS_DIR="$DESKTOP_DIR/icons"
+WEB_DIR="$PROJECT_ROOT/web"
+EMBED_DIR="$PROJECT_ROOT/api/static/dist"
 
 # ---------- external tool binaries (rg, fd) ----------
 # Pre-built binaries can be placed in bin/tools/ under the project root,
@@ -44,6 +46,7 @@ TOOL_BINS_NAMES=(rg fd)
 # Set via --with-browser or --with-chromium flags, or KOCORT_WITH_BROWSER env.
 # Values: "" (skip), "driver" (driver only ~50MB), "chromium" (driver+chromium ~200MB)
 WITH_BROWSER="${KOCORT_WITH_BROWSER:-}"
+WEB_EMBED_READY=0
 
 # ---------- signing ----------
 # Set --no-sign or KOCORT_NO_SIGN=1 to produce an unsigned .app bundle.
@@ -125,9 +128,134 @@ normalize_macos_arch() {
     esac
 }
 
+host_platform_label() {
+    local os arch
+    os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    arch="$(uname -m)"
+    case "$os" in
+        mingw*|msys*|cygwin*) os="windows" ;;
+        darwin) os="darwin" ;;
+        linux) os="linux" ;;
+    esac
+    case "$arch" in
+        x86_64) arch="amd64" ;;
+        aarch64) arch="arm64" ;;
+        arm64) arch="arm64" ;;
+    esac
+    echo "${os}_${arch}"
+}
+
+target_platform_label() {
+    local target_os="$1"
+    local target_arch="$2"
+    case "$target_arch" in
+        x86_64) target_arch="amd64" ;;
+        aarch64) target_arch="arm64" ;;
+        arm64|amd64) ;;
+    esac
+    echo "${target_os}_${target_arch}"
+}
+
 # ---------- common ----------
 build_ldflags() {
     echo "-s -w -X=kocort/version.Version=$VERSION -X=kocort/version.Commit=$COMMIT -X=kocort/version.BuildDate=$BUILD_DATE"
+}
+
+build_web_embed() {
+    if [ "$WEB_EMBED_READY" = "1" ]; then
+        return 0
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+        fail "npm is required to build the embedded web UI"
+    fi
+    if [ ! -d "$WEB_DIR/node_modules" ]; then
+        fail "web/node_modules is missing. Run 'npm install' in web/ first."
+    fi
+
+    info "Building web UI for desktop embed"
+    (
+        cd "$WEB_DIR"
+        npm run build
+    )
+
+    if [ ! -d "$WEB_DIR/out" ]; then
+        fail "web build finished but web/out was not generated"
+    fi
+
+    mkdir -p "$EMBED_DIR"
+    find "$EMBED_DIR" -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+    cp -R "$WEB_DIR/out"/. "$EMBED_DIR"/
+    WEB_EMBED_READY=1
+    ok "Embedded web assets refreshed: $EMBED_DIR"
+}
+
+resolve_prebuilt_driver_dir() {
+    local platform_label="$1"
+    local candidates=(
+        "$DIST_DIR/$platform_label/playwright-driver"
+        "$DIST_DIR/playwright-driver"
+        "$PROJECT_ROOT/playwright-driver"
+    )
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        if [ -d "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+bundle_playwright_driver() {
+    local platform_label="$1"
+    local dest_dir="$2"
+
+    if [ -z "$WITH_BROWSER" ]; then
+        info "Skipping Playwright driver bundling (use --with-browser or --with-chromium)"
+        return 0
+    fi
+
+    local pre_built=""
+    if pre_built="$(resolve_prebuilt_driver_dir "$platform_label")"; then
+        info "Using pre-built Playwright driver from: $pre_built"
+    else
+        local host_label
+        host_label="$(host_platform_label)"
+        if [ "$platform_label" = "windows_arm64" ] && [ "$host_label" = "windows_amd64" ]; then
+            if pre_built="$(resolve_prebuilt_driver_dir "$host_label")"; then
+                warn "Using Windows amd64 Playwright driver for windows_arm64 package. This relies on Windows x64 emulation."
+            fi
+        fi
+    fi
+
+    if [ -z "$pre_built" ]; then
+        local host_label
+        host_label="$(host_platform_label)"
+        if [ "$platform_label" != "$host_label" ]; then
+            warn "No pre-built Playwright driver found for $platform_label. Auto-download only works on matching host platform ($host_label)."
+            warn "Skipping Playwright driver for $platform_label."
+            return 0
+        fi
+
+        info "Downloading Playwright driver (mode: $WITH_BROWSER) for $platform_label..."
+        local bundle_flags=""
+        if [ "$WITH_BROWSER" = "chromium" ]; then
+            bundle_flags="--with-chromium"
+        fi
+        KOCORT_BROWSER_DIST="$DIST_DIR/$platform_label" "$SCRIPT_DIR/bundle-browser.sh" $bundle_flags
+
+        if ! pre_built="$(resolve_prebuilt_driver_dir "$platform_label")"; then
+            fail "Playwright driver not found after bundle-browser.sh for $platform_label"
+        fi
+    fi
+
+    rm -rf "$dest_dir"
+    mkdir -p "$(dirname "$dest_dir")"
+    cp -R "$pre_built" "$dest_dir"
+
+    local driver_size
+    driver_size=$(du -sh "$dest_dir" | awk '{print $1}')
+    ok "Playwright driver bundled: $dest_dir ($driver_size)"
 }
 
 ensure_tray_icon_windows() {
@@ -155,10 +283,53 @@ ensure_tray_icon_windows() {
     fail "No tray icon found. Place tray.png in desktop/icons/ or tray.ico in cmd/kocort-desktop/"
 }
 
+resolve_windows_compilers() {
+    local arch="$1"
+    local cc_candidates=()
+    local cxx_candidates=()
+
+    case "$arch" in
+        amd64)
+            cc_candidates=("x86_64-w64-mingw32-gcc" "x86_64-w64-mingw32-clang")
+            cxx_candidates=("x86_64-w64-mingw32-g++" "x86_64-w64-mingw32-clang++")
+            ;;
+        arm64)
+            cc_candidates=("aarch64-w64-mingw32-gcc" "aarch64-w64-mingw32-clang")
+            cxx_candidates=("aarch64-w64-mingw32-g++" "aarch64-w64-mingw32-clang++")
+            ;;
+        *)
+            fail "Unsupported Windows architecture: $arch"
+            ;;
+    esac
+
+    local cc=""
+    local cxx=""
+    local candidate
+    for candidate in "${cc_candidates[@]}"; do
+        if command -v "$candidate" &>/dev/null; then
+            cc="$candidate"
+            break
+        fi
+    done
+    for candidate in "${cxx_candidates[@]}"; do
+        if command -v "$candidate" &>/dev/null; then
+            cxx="$candidate"
+            break
+        fi
+    done
+
+    if [ -z "$cc" ] || [ -z "$cxx" ]; then
+        fail "Windows cross-compiler for $arch not found. Install mingw-w64 or llvm-mingw."
+    fi
+
+    echo "$cc $cxx"
+}
+
 # ---------- Windows build ----------
 build_windows() {
     local arch="${1:-amd64}"
     info "Building Windows desktop (tray) — windows/$arch"
+    build_web_embed
 
     local out_dir="$DIST_DIR/windows_${arch}"
     local out_path="$out_dir/kocort-desktop.exe"
@@ -167,25 +338,11 @@ build_windows() {
     local ldflags
     ldflags="$(build_ldflags) -H windowsgui"
 
-    # Set up MinGW cross-compiler for CGo
-    local cc cxx
-    case "$arch" in
-        amd64)
-            cc="x86_64-w64-mingw32-gcc"
-            cxx="x86_64-w64-mingw32-g++"
-            ;;
-        arm64)
-            cc="aarch64-w64-mingw32-gcc"
-            cxx="aarch64-w64-mingw32-g++"
-            ;;
-        *)
-            fail "Unsupported Windows architecture: $arch"
-            ;;
-    esac
+    ensure_tray_icon_windows
 
-    if ! command -v "$cc" &>/dev/null; then
-        fail "Cross-compiler $cc not found. Install mingw-w64: sudo apt-get install gcc-mingw-w64"
-    fi
+    # Set up MinGW/LLVM MinGW cross-compiler for CGo
+    local cc cxx
+    read -r cc cxx <<<"$(resolve_windows_compilers "$arch")"
 
     cd "$PROJECT_ROOT"
     CGO_ENABLED=1 GOOS=windows GOARCH="$arch" \
@@ -198,7 +355,8 @@ build_windows() {
         ./cmd/kocort-desktop
 
     # Embed external tool binaries (rg, fd)
-    embed_tool_bins_windows "$out_dir"
+    embed_tool_bins_windows "$out_dir" "$arch"
+    bundle_playwright_driver "$(target_platform_label windows "$arch")" "$out_dir/playwright-driver"
 
     ok "Windows build: $out_path"
     ls -lh "$out_path" >&2
@@ -216,6 +374,7 @@ build_linux() {
     esac
 
     info "Building Linux desktop (Ubuntu tray) — linux/$arch"
+    build_web_embed
 
     local out_dir="$DIST_DIR/linux_${arch}"
     local out_path="$out_dir/kocort-desktop"
@@ -240,6 +399,9 @@ build_linux() {
         cp "$ICONS_DIR/icon.png" "$out_dir/kocort.png"
     fi
 
+    embed_tool_bins_linux "$out_dir" "$arch"
+    bundle_playwright_driver "$(target_platform_label linux "$arch")" "$out_dir/playwright-driver"
+
     ok "Linux build: $out_path"
     ls -lh "$out_path" >&2
 }
@@ -258,6 +420,7 @@ build_macos_go_binary() {
     esac
 
     info "Building kocort Go binary for macOS/$arch..."
+    build_web_embed
 
     local out_path="$DIST_DIR/macos_${arch}/kocort"
     mkdir -p "$(dirname "$out_path")"
@@ -389,7 +552,7 @@ build_macos_app_bundle() {
     embed_tool_bins_macos
 
     # 5. Embed Playwright driver (if requested)
-    embed_playwright_driver_macos
+    embed_playwright_driver_macos "$arch"
 
     # 6. Compile Asset Catalog and embed icons
     #    Modern macOS (Big Sur+) reads icons from Assets.car compiled by actool.
@@ -454,55 +617,15 @@ build_macos_app_bundle() {
 embed_playwright_driver_macos() {
     local app_dir="$DIST_DIR/Kocort.app"
     local resources="$app_dir/Contents/Resources"
-    local dest_dir="$resources/playwright-driver"
-
-    if [ -z "$WITH_BROWSER" ]; then
-        info "Skipping Playwright driver bundling (use --with-browser or --with-chromium)"
-        return 0
-    fi
-
-    # Check for pre-built driver in dist/
+    local arch="${1:-$(uname -m)}"
+    arch="$(normalize_macos_arch "$arch")"
     local platform_label
-    platform_label="$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/')"
-    local pre_built_dirs=(
-        "$DIST_DIR/$platform_label/playwright-driver"
-        "$DIST_DIR/playwright-driver"
-        "$PROJECT_ROOT/playwright-driver"
-    )
-    local pre_built=""
-    for d in "${pre_built_dirs[@]}"; do
-        if [ -d "$d" ]; then
-            pre_built="$d"
-            break
-        fi
-    done
-
-    if [ -n "$pre_built" ]; then
-        info "Using pre-built Playwright driver from: $pre_built"
-        cp -R "$pre_built" "$dest_dir"
+    if [ "$arch" = "universal" ]; then
+        platform_label="$(host_platform_label)"
     else
-        info "Downloading Playwright driver (mode: $WITH_BROWSER)..."
-        local bundle_flags=""
-        if [ "$WITH_BROWSER" = "chromium" ]; then
-            bundle_flags="--with-chromium"
-        fi
-        # Use the existing bundle-browser.sh script
-        KOCORT_BROWSER_DIST="$DIST_DIR" "$SCRIPT_DIR/bundle-browser.sh" $bundle_flags
-
-        # Find the downloaded driver
-        local downloaded="$DIST_DIR/$platform_label/playwright-driver"
-        if [ ! -d "$downloaded" ]; then
-            downloaded="$DIST_DIR/playwright-driver"
-        fi
-        if [ ! -d "$downloaded" ]; then
-            fail "Playwright driver not found after bundle-browser.sh"
-        fi
-        cp -R "$downloaded" "$dest_dir"
+        platform_label="$(target_platform_label darwin "$arch")"
     fi
-
-    local driver_size
-    driver_size=$(du -sh "$dest_dir" | awk '{print $1}')
-    ok "Playwright driver embedded: $dest_dir ($driver_size)"
+    bundle_playwright_driver "$platform_label" "$resources/playwright-driver"
 }
 
 # ---------- embed external tool binaries into app bundle ----------
@@ -548,12 +671,13 @@ embed_tool_bins_macos() {
 
 embed_tool_bins_windows() {
     local out_dir="$1"
+    local arch="${2:-amd64}"
     local dest_dir="$out_dir/bin/tools"
     mkdir -p "$dest_dir"
 
     for tool_name in "${TOOL_BINS_NAMES[@]}"; do
         local found=""
-        for arch_dir in "windows_amd64" "windows_arm64"; do
+        for arch_dir in "windows_${arch}" "windows_amd64" "windows_arm64"; do
             local src="$TOOL_BINS_DIR/$arch_dir/${tool_name}.exe"
             if [ -f "$src" ]; then
                 found="$src"
@@ -568,6 +692,38 @@ embed_tool_bins_windows() {
             ok "Embedded tool binary: ${tool_name}.exe (from $found)"
         else
             warn "Tool binary not found: ${tool_name}.exe — grep/find will use pure-Go fallback"
+        fi
+    done
+}
+
+embed_tool_bins_linux() {
+    local out_dir="$1"
+    local arch="${2:-amd64}"
+    local dest_dir="$out_dir/bin/tools"
+    mkdir -p "$dest_dir"
+
+    for tool_name in "${TOOL_BINS_NAMES[@]}"; do
+        local found=""
+        for arch_dir in "linux_${arch}" "linux_amd64" "linux_arm64"; do
+            local src="$TOOL_BINS_DIR/$arch_dir/$tool_name"
+            if [ -f "$src" ]; then
+                found="$src"
+                break
+            fi
+        done
+        if [ -z "$found" ] && [ -f "$TOOL_BINS_DIR/$tool_name" ]; then
+            found="$TOOL_BINS_DIR/$tool_name"
+        fi
+        if [ -z "$found" ] && command -v "$tool_name" &>/dev/null; then
+            found="$(command -v "$tool_name")"
+            warn "Using system-installed $tool_name from $found"
+        fi
+        if [ -n "$found" ]; then
+            cp "$found" "$dest_dir/$tool_name"
+            chmod +x "$dest_dir/$tool_name"
+            ok "Embedded tool binary: $tool_name (from $found)"
+        else
+            warn "Tool binary not found: $tool_name — grep/find will use pure-Go fallback"
         fi
     done
 }

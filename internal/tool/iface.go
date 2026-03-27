@@ -170,9 +170,9 @@ type SandboxContext struct {
 	Scope           string
 	ScopeKey        string
 	WorkspaceRoot   string
-	WorkspaceDir    string
-	SandboxDirs     []string // multiple sandbox directories (user-configurable)
-	AgentWorkspace  string
+	WorkspaceDir    string   // sandbox-owned workspace path; not the tool's default working directory
+	SandboxDirs     []string // explicit access-boundary directories in addition to the default working directory
+	AgentWorkspace  string   // agent/default working directory used as the tool's default pwd
 }
 
 // ---------------------------------------------------------------------------

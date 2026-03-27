@@ -12,7 +12,7 @@ import (
 var toolUserHomeDir = os.UserHomeDir
 
 func resolveWorkspaceToolPath(toolCtx ToolContext, value string) (workspaceDir string, relative string, absPath string, err error) {
-	workspaceDir, err = resolveToolWorkingDir(toolCtx)
+	workspaceDir, err = resolveToolDefaultWorkingDir(toolCtx)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -30,7 +30,7 @@ func resolveWorkspaceToolPath(toolCtx ToolContext, value string) (workspaceDir s
 	return workspaceDir, displayToolPath(workspaceDir, absPath), absPath, nil
 }
 
-func resolveToolWorkingDir(toolCtx ToolContext) (string, error) {
+func resolveToolDefaultWorkingDir(toolCtx ToolContext) (string, error) {
 	workspaceDir := strings.TrimSpace(toolCtx.Run.WorkspaceDir)
 	if workspaceDir == "" {
 		return "", fmt.Errorf("working directory is not configured")
@@ -38,12 +38,27 @@ func resolveToolWorkingDir(toolCtx ToolContext) (string, error) {
 	return normalizeConfiguredToolPath(workspaceDir)
 }
 
-func resolveToolSandboxDirs(toolCtx ToolContext) ([]string, error) {
-	if toolCtx.Sandbox == nil || !toolCtx.Sandbox.Enabled || len(toolCtx.Sandbox.SandboxDirs) == 0 {
+// resolveToolAccessBoundaryDirs returns every directory that should be treated
+// as inside the sandbox boundary for the current tool invocation.
+//
+// This always includes the tool's default working directory. When sandboxing is
+// enabled, it also includes the sandbox-owned workspace plus any additional
+// configured sandbox directories.
+func resolveToolAccessBoundaryDirs(toolCtx ToolContext) ([]string, error) {
+	if toolCtx.Sandbox == nil || !toolCtx.Sandbox.Enabled {
 		return nil, nil
 	}
-	dirs := make([]string, 0, len(toolCtx.Sandbox.SandboxDirs))
-	for _, raw := range toolCtx.Sandbox.SandboxDirs {
+	rawDirs := make([]string, 0, len(toolCtx.Sandbox.SandboxDirs)+2)
+	if workdir := strings.TrimSpace(toolCtx.Run.WorkspaceDir); workdir != "" {
+		rawDirs = append(rawDirs, workdir)
+	}
+	if sandboxDir := strings.TrimSpace(toolCtx.Sandbox.WorkspaceDir); sandboxDir != "" {
+		rawDirs = append(rawDirs, sandboxDir)
+	}
+	rawDirs = append(rawDirs, toolCtx.Sandbox.SandboxDirs...)
+	dirs := make([]string, 0, len(rawDirs))
+	seen := map[string]struct{}{}
+	for _, raw := range rawDirs {
 		trimmed := strings.TrimSpace(raw)
 		if trimmed == "" {
 			continue
@@ -52,6 +67,10 @@ func resolveToolSandboxDirs(toolCtx ToolContext) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+		if _, ok := seen[absDir]; ok {
+			continue
+		}
+		seen[absDir] = struct{}{}
 		dirs = append(dirs, absDir)
 	}
 	if len(dirs) == 0 {
@@ -61,14 +80,14 @@ func resolveToolSandboxDirs(toolCtx ToolContext) ([]string, error) {
 }
 
 func ensurePathWithinToolSandbox(toolCtx ToolContext, absPath string) error {
-	workingDir, err := resolveToolWorkingDir(toolCtx)
+	workingDir, err := resolveToolDefaultWorkingDir(toolCtx)
 	if err != nil {
 		return err
 	}
 	if pathWithinBase(absPath, workingDir) {
 		return nil
 	}
-	sandboxDirs, err := resolveToolSandboxDirs(toolCtx)
+	sandboxDirs, err := resolveToolAccessBoundaryDirs(toolCtx)
 	if err != nil {
 		return err
 	}

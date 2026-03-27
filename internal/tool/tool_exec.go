@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -117,15 +116,17 @@ func (t *ExecTool) Execute(ctx context.Context, toolCtx ToolContext, args map[st
 	if canBackground && !backgroundRequested && !yieldRequested && defaultBackgroundWindow > 0 {
 		yieldDelay = defaultBackgroundWindow
 	}
-	workdir := strings.TrimSpace(toolCtx.Run.WorkspaceDir)
-	if strings.TrimSpace(workdir) == "" {
-		return core.ToolResult{}, fmt.Errorf("working directory is not configured")
+	workdir, err := resolveToolDefaultWorkingDir(toolCtx)
+	if err != nil {
+		return core.ToolResult{}, err
 	}
 	if strings.TrimSpace(workdirArg) != "" {
-		workdir = strings.TrimSpace(workdirArg)
+		workdir, err = normalizeToolInputPath(workdir, workdirArg)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
 	}
-	workdir, err = filepath.Abs(workdir)
-	if err != nil {
+	if err := ensurePathWithinToolSandbox(toolCtx, workdir); err != nil {
 		return core.ToolResult{}, err
 	}
 	baseEnv, err := infra.AppendAgentRuntimeEnv(os.Environ(), toolCtx.Run.Identity, toolCtx.Runtime.GetEnvironment(), envOverrides)
@@ -133,7 +134,7 @@ func (t *ExecTool) Execute(ctx context.Context, toolCtx ToolContext, args map[st
 		return core.ToolResult{}, err
 	}
 	if toolCtx.Sandbox != nil && toolCtx.Sandbox.Enabled {
-		sandboxDirs, err := resolveToolSandboxDirs(toolCtx)
+		sandboxDirs, err := resolveToolAccessBoundaryDirs(toolCtx)
 		if err != nil {
 			return core.ToolResult{}, err
 		}

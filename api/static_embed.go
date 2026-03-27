@@ -16,11 +16,46 @@ import (
 //go:embed all:static/dist
 var embeddedWebFS embed.FS
 
-func (s *Server) registerStaticRoutes(engine *gin.Engine) {
+//go:embed all:static_fallback
+var embeddedFallbackWebFS embed.FS
+
+func resolveEmbeddedStaticFS() fs.FS {
 	distFS, err := fs.Sub(embeddedWebFS, "static/dist")
+	if err == nil && embeddedStaticFSUsable(distFS) {
+		return distFS
+	}
+	fallbackFS, err := fs.Sub(embeddedFallbackWebFS, "static_fallback")
 	if err != nil {
 		panic(err)
 	}
+	return fallbackFS
+}
+
+func embeddedStaticFSUsable(webFS fs.FS) bool {
+	if _, err := fs.Stat(webFS, "index.html"); err != nil {
+		return false
+	}
+	entries, err := fs.ReadDir(webFS, ".")
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == ".gitkeep" {
+			continue
+		}
+		if entry.IsDir() {
+			return true
+		}
+		if name != "index.html" && name != "404.html" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) registerStaticRoutes(engine *gin.Engine) {
+	distFS := resolveEmbeddedStaticFS()
 	fileServer := http.FileServer(http.FS(distFS))
 
 	engine.GET("/", s.serveEmbeddedIndex(distFS))

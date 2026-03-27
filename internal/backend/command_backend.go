@@ -128,8 +128,8 @@ func (b *CommandBackend) Run(ctx context.Context, runCtx rtypes.AgentRunContext)
 		defer wg.Done()
 		collector.readStderr(stderr, watchdog)
 	}()
-	waitErr := cmd.Wait()
 	wg.Wait()
+	waitErr := cmd.Wait()
 
 	if watchdog != nil && watchdog.TimedOut() {
 		event.RecordModelEvent(execCtx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "command_timed_out", "error", "command backend produced no output before timeout", map[string]any{

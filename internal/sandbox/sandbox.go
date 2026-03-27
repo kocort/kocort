@@ -12,8 +12,14 @@ import (
 	"github.com/kocort/kocort/utils"
 )
 
-// ResolveSandboxContext returns the SandboxContext for a tool invocation,
-// determined by the agent identity's sandbox configuration.
+// ResolveSandboxContext returns the sandbox metadata for a tool invocation.
+//
+// The resulting SandboxContext intentionally tracks concepts that are related
+// but not identical:
+//   - runCtx.WorkspaceDir: the tool's default working directory (default pwd)
+//   - SandboxContext.WorkspaceDir: the sandbox-owned workspace path, if any
+//   - SandboxContext.SandboxDirs: extra access-boundary directories layered on
+//     top of the default working directory
 //
 // Moved from runtime/sandbox.go; the function already took a
 // rtypes.RuntimeServices interface so no callers need updating beyond the

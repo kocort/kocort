@@ -62,7 +62,7 @@ func resolveReasoningHint(thinkLevel string) string {
 		"Content outside these tags is visible to the user."
 }
 
-func buildPromptSandboxInfo(identity core.AgentIdentity, workspaceDir string) infra.PromptSandboxInfo {
+func buildPromptSandboxInfo(identity core.AgentIdentity, defaultWorkdir string) infra.PromptSandboxInfo {
 	mode := strings.TrimSpace(strings.ToLower(identity.SandboxMode))
 	if mode == "" || mode == "off" {
 		return infra.PromptSandboxInfo{}
@@ -73,7 +73,7 @@ func buildPromptSandboxInfo(identity core.AgentIdentity, workspaceDir string) in
 		WorkspaceAccess: strings.TrimSpace(identity.SandboxWorkspaceAccess),
 		Scope:           strings.TrimSpace(identity.SandboxScope),
 		WorkspaceRoot:   strings.TrimSpace(identity.SandboxWorkspaceRoot),
-		WorkspaceDir:    strings.TrimSpace(workspaceDir),
+		DefaultWorkdir:  strings.TrimSpace(defaultWorkdir),
 		AgentWorkspace:  strings.TrimSpace(identity.WorkspaceDir),
 	}
 }

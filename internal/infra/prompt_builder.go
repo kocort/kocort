@@ -199,7 +199,8 @@ type PromptSandboxInfo struct {
 	WorkspaceAccess string
 	Scope           string
 	WorkspaceRoot   string
-	WorkspaceDir    string
+	DefaultWorkdir  string
+	SandboxWorkspace string
 	AgentWorkspace  string
 }
 
@@ -597,7 +598,10 @@ func BuildSandboxPromptSection(info PromptSandboxInfo) string {
 	if mode := strings.TrimSpace(info.Mode); mode != "" {
 		lines = append(lines, "Sandbox mode: "+mode)
 	}
-	if workspaceDir := strings.TrimSpace(info.WorkspaceDir); workspaceDir != "" {
+	if workdir := strings.TrimSpace(info.DefaultWorkdir); workdir != "" {
+		lines = append(lines, "Default working directory: "+workdir)
+	}
+	if workspaceDir := strings.TrimSpace(info.SandboxWorkspace); workspaceDir != "" {
 		lines = append(lines, "Sandbox workspace: "+workspaceDir)
 	}
 	if agentWorkspace := strings.TrimSpace(info.AgentWorkspace); agentWorkspace != "" {

@@ -527,7 +527,7 @@ func TestGatewayEmbeddedStaticAssetsServeAndFallback(t *testing.T) {
 	})), config.GatewayConfig{})
 
 	var assetPath string
-	err := fs.WalkDir(embeddedWebFS, "static/dist", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(resolveEmbeddedStaticFS(), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -535,7 +535,7 @@ func TestGatewayEmbeddedStaticAssetsServeAndFallback(t *testing.T) {
 			return nil
 		}
 		if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") {
-			assetPath = strings.TrimPrefix(path, "static/dist")
+			assetPath = "/" + strings.TrimPrefix(strings.TrimPrefix(path, "."), "/")
 			return fs.SkipAll
 		}
 		return nil

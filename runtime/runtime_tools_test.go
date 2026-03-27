@@ -439,7 +439,7 @@ func TestDetectToolCallLoopBlocksPingPongNoProgressAtCriticalThreshold(t *testin
 	}
 }
 
-func TestExecToolUsesSandboxWorkspaceWhenEnabled(t *testing.T) {
+func TestExecToolKeepsAgentWorkspaceAsDefaultPwdWhenSandboxEnabled(t *testing.T) {
 	store := storeForTests(t)
 	runtime := &Runtime{Sessions: store}
 	workspace := t.TempDir()
@@ -454,6 +454,10 @@ func TestExecToolUsesSandboxWorkspaceWhenEnabled(t *testing.T) {
 		},
 		WorkspaceDir: workspace,
 	}
+	sandboxWorkspace := filepath.Join(store.BaseDir(), "sandboxes", "agent_main_main")
+	if err := os.MkdirAll(sandboxWorkspace, 0o755); err != nil {
+		t.Fatalf("mkdir sandbox workspace: %v", err)
+	}
 	result, err := tool.NewExecTool().Execute(context.Background(), rtypes.ToolContext{
 		Runtime: runtime,
 		Run:     runCtx,
@@ -461,15 +465,44 @@ func TestExecToolUsesSandboxWorkspaceWhenEnabled(t *testing.T) {
 			Enabled:         true,
 			WorkspaceAccess: "ro",
 			Scope:           "session",
-			WorkspaceDir:    filepath.Join(store.BaseDir(), "sandboxes", "agent_main_main"),
+			WorkspaceDir:    sandboxWorkspace,
 			AgentWorkspace:  workspace,
 		},
-	}, map[string]any{"command": "pwd"})
+	}, map[string]any{"command": "printf '%s\n%s\n%s' \"$PWD\" \"$KOCORT_SANDBOX_WORKSPACE\" \"$KOCORT_SANDBOX_DIRS\""})
 	if err != nil {
 		t.Fatalf("exec in sandbox: %v", err)
 	}
-	if strings.TrimSpace(result.Text) == workspace {
-		t.Fatalf("expected sandbox workspace, got agent workspace %q", result.Text)
+	lines := strings.Split(strings.TrimSpace(result.Text), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected pwd/workspace/dirs output, got %q", result.Text)
+	}
+	resolvedWorkspace, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		resolvedWorkspace = workspace
+	}
+	resolvedPwd, err := filepath.EvalSymlinks(strings.TrimSpace(lines[0]))
+	if err != nil {
+		resolvedPwd = strings.TrimSpace(lines[0])
+	}
+	if resolvedPwd != resolvedWorkspace {
+		t.Fatalf("expected agent workspace pwd %q, got %q", resolvedWorkspace, resolvedPwd)
+	}
+	if got := strings.TrimSpace(lines[1]); got != sandboxWorkspace {
+		t.Fatalf("expected sandbox workspace env %q, got %q", sandboxWorkspace, got)
+	}
+	dirs := filepath.SplitList(strings.TrimSpace(lines[2]))
+	if len(dirs) == 0 {
+		t.Fatalf("expected sandbox dirs to be populated, got %q", lines[2])
+	}
+	var foundWorkspace bool
+	for _, dir := range dirs {
+		if strings.TrimSpace(dir) == workspace {
+			foundWorkspace = true
+			break
+		}
+	}
+	if !foundWorkspace {
+		t.Fatalf("expected sandbox dirs to include workdir %q, got %+v", workspace, dirs)
 	}
 }
 
