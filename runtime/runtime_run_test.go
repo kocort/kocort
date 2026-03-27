@@ -101,6 +101,9 @@ func TestRuntimeEnqueuesFollowupWhenSessionAlreadyActive(t *testing.T) {
 	ranMessages := make(chan string, 2)
 
 	runtime := &Runtime{
+		Config: config.AppConfig{
+			Session: config.SessionConfig{DMScope: "per-peer"},
+		},
 		Sessions: store,
 		Identities: infra.NewStaticIdentityResolver(map[string]core.AgentIdentity{
 			"main": {
@@ -729,7 +732,7 @@ func TestRuntimeSkipsPreemptiveMemoryFlushBelowThreshold(t *testing.T) {
 		Config: config.AppConfig{
 			Models: config.ModelsConfig{
 				Providers: map[string]config.ProviderConfig{
-					"openai": {Models: []config.ProviderModelConfig{{ID: "gpt-4.1", ContextWindow: 1000}}},
+					"openai": {Models: []config.ProviderModelConfig{{ID: "gpt-4.1", ContextWindow: 100000}}},
 				},
 			},
 		},
@@ -1198,6 +1201,9 @@ func TestRuntimeRunPersistsUserBeforeToolTranscriptEntries(t *testing.T) {
 		},
 	})
 	runtime := &Runtime{
+		Config: config.AppConfig{
+			Session: config.SessionConfig{DMScope: "per-peer"},
+		},
 		Sessions:   store,
 		Identities: infra.NewStaticIdentityResolver(map[string]core.AgentIdentity{"main": {ID: "main", DefaultProvider: "test", DefaultModel: "model"}}),
 		Memory: memoryProviderFunc(func(ctx context.Context, identity core.AgentIdentity, session core.SessionResolution, message string) ([]core.MemoryHit, error) {

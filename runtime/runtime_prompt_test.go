@@ -29,6 +29,9 @@ func TestRuntimePersistsTranscriptAndMemoryAwarePrompt(t *testing.T) {
 	}
 	deliverer := &delivery.MemoryDeliverer{}
 	runtime := &Runtime{
+		Config: config.AppConfig{
+			Session: config.SessionConfig{DMScope: "per-peer"},
+		},
 		Sessions: store,
 		Identities: infra.NewStaticIdentityResolver(map[string]core.AgentIdentity{
 			"main": {
@@ -803,6 +806,9 @@ func TestRuntimeDispatchesExplicitSkillCommandsToExecTool(t *testing.T) {
 	}
 	deliverer := &delivery.MemoryDeliverer{}
 	runtime := &Runtime{
+		Config: config.AppConfig{
+			Session: config.SessionConfig{DMScope: "per-peer"},
+		},
 		Sessions: store,
 		Identities: infra.NewStaticIdentityResolver(map[string]core.AgentIdentity{
 			"main": {

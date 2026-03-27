@@ -317,6 +317,9 @@ func TestSessionsSendAllowsCrossAgentWhenVisibilityAllAndA2AEnabled(t *testing.T
 		t.Fatalf("new session store: %v", err)
 	}
 	targetSessionKey := session.BuildDirectSessionKey("worker", "webchat", "peer-2")
+	if err := store.Upsert(targetSessionKey, core.SessionEntry{SessionID: "sess-target", UpdatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
 	runtime := &Runtime{
 		Sessions: store,
 		Identities: infra.NewStaticIdentityResolver(map[string]core.AgentIdentity{
@@ -722,6 +725,9 @@ func TestSessionsSendToolRunsTargetSessionWithNestedLane(t *testing.T) {
 
 	parentSessionKey := session.BuildMainSessionKey("main")
 	targetSessionKey := session.BuildDirectSessionKey("worker", "webchat", "peer-2")
+	if err := store.Upsert(targetSessionKey, core.SessionEntry{SessionID: "sess-nested-target", UpdatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("upsert target: %v", err)
+	}
 
 	runtime := &Runtime{
 		Sessions: store,

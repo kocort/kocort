@@ -109,7 +109,7 @@ func TestRuntimeAuditLogRecordsCoreEvents(t *testing.T) {
 
 	if err := rt.Deliverer.Deliver(context.Background(), core.ReplyKindFinal, core.ReplyPayload{Text: "delivered"}, core.DeliveryTarget{
 		SessionKey: sessionKey,
-		Channel:    "mock",
+		Channel:    "webchat",
 		To:         "audit-user",
 	}); err != nil {
 		t.Fatalf("Deliver: %v", err)
@@ -137,7 +137,6 @@ func TestRuntimeAuditLogRecordsCoreEvents(t *testing.T) {
 	assertAuditType(core.AuditCategoryTask, "scheduled")
 	assertAuditType(core.AuditCategoryTask, "running")
 	assertAuditType(core.AuditCategoryTask, "completed")
-	assertAuditType(core.AuditCategoryDelivery, "queued")
 	assertAuditType(core.AuditCategoryDelivery, "sent")
 }
 

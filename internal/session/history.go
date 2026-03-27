@@ -128,7 +128,7 @@ func isInternalMessage(msg core.TranscriptMessage) bool {
 	switch msgType {
 	case "subagent_completion":
 		return true
-	case "tool_call", "tool_result", "compaction":
+	case "compaction":
 		return true
 	}
 	return false

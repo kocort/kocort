@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kocort/kocort/internal/config"
+	"github.com/kocort/kocort/internal/core"
 )
 
 func TestBuildWorkspaceSkillSnapshotUsesVersionedCache(t *testing.T) {
@@ -61,7 +62,7 @@ func TestBuildWorkspaceSkillStatusUsesVersionedCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildWorkspaceSkillStatus first: %v", err)
 	}
-	if len(first.Skills) != 1 || first.Skills[0].Description != "Initial triage description" {
+	if findSkillByName(first.Skills, "test-skill") == nil || findSkillByName(first.Skills, "test-skill").Description != "Initial triage description" {
 		t.Fatalf("unexpected initial status report: %+v", first)
 	}
 
@@ -71,7 +72,7 @@ func TestBuildWorkspaceSkillStatusUsesVersionedCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildWorkspaceSkillStatus cached: %v", err)
 	}
-	if len(cached.Skills) != 1 || cached.Skills[0].Description != "Initial triage description" {
+	if findSkillByName(cached.Skills, "test-skill") == nil || findSkillByName(cached.Skills, "test-skill").Description != "Initial triage description" {
 		t.Fatalf("expected cached report to retain initial content before version bump, got %+v", cached)
 	}
 
@@ -81,12 +82,21 @@ func TestBuildWorkspaceSkillStatusUsesVersionedCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildWorkspaceSkillStatus reloaded: %v", err)
 	}
-	if len(reloaded.Skills) != 1 || reloaded.Skills[0].Description != "Updated triage description" {
+	if findSkillByName(reloaded.Skills, "test-skill") == nil || findSkillByName(reloaded.Skills, "test-skill").Description != "Updated triage description" {
 		t.Fatalf("expected bumped report to include updated content, got %+v", reloaded)
 	}
 	if reloaded.Version == cached.Version {
 		t.Fatalf("expected status version to change after bump, got %d", reloaded.Version)
 	}
+}
+
+func findSkillByName(skills []core.SkillStatusEntry, name string) *core.SkillStatusEntry {
+	for i, s := range skills {
+		if s.Name == name {
+			return &skills[i]
+		}
+	}
+	return nil
 }
 
 func writeTestSkillFile(t *testing.T, path string, description string) {

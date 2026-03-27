@@ -35,7 +35,16 @@ func TestStartWithoutModelReturnsError(t *testing.T) {
 	}
 }
 
+func skipIfStubBackend(t *testing.T) {
+	t.Helper()
+	m := NewManager(config.CerebellumConfig{})
+	if m.Local().IsStub() {
+		t.Skip("test requires llama.cpp support (use -tags llamacpp)")
+	}
+}
+
 func TestStartStopLifecycle(t *testing.T) {
+	skipIfStubBackend(t)
 	dir := t.TempDir()
 	createFakeModel(t, dir, "test-model.gguf")
 
@@ -63,6 +72,7 @@ func TestStartStopLifecycle(t *testing.T) {
 }
 
 func TestRestartLifecycle(t *testing.T) {
+	skipIfStubBackend(t)
 	dir := t.TempDir()
 	createFakeModel(t, dir, "model-a.gguf")
 
@@ -104,6 +114,7 @@ func TestSelectModelNotFound(t *testing.T) {
 }
 
 func TestSelectModelWhileRunningRestarts(t *testing.T) {
+	skipIfStubBackend(t)
 	dir := t.TempDir()
 	createFakeModel(t, dir, "model-x.gguf")
 	createFakeModel(t, dir, "model-y.gguf")
@@ -126,6 +137,7 @@ func TestSelectModelWhileRunningRestarts(t *testing.T) {
 }
 
 func TestSnapshotReturnsCorrectState(t *testing.T) {
+	skipIfStubBackend(t)
 	dir := t.TempDir()
 	createFakeModel(t, dir, "snap-model.gguf")
 
@@ -168,6 +180,7 @@ func TestDiscoverModelsIgnoresNonGGUF(t *testing.T) {
 }
 
 func TestStartIdempotent(t *testing.T) {
+	skipIfStubBackend(t)
 	dir := t.TempDir()
 	createFakeModel(t, dir, "m.gguf")
 
@@ -192,6 +205,7 @@ func TestStopIdempotent(t *testing.T) {
 }
 
 func TestConfiguredModelIDUsed(t *testing.T) {
+	skipIfStubBackend(t)
 	dir := t.TempDir()
 	createFakeModel(t, dir, "first.gguf")
 	createFakeModel(t, dir, "second.gguf")

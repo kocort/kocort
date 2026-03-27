@@ -688,14 +688,16 @@ func TestPermanentAnnouncementFailureDoesNotScheduleRetry(t *testing.T) {
 	}
 	runtime.Queue.SetSleep(func(context.Context, time.Duration) error { return nil })
 	runtime.Subagents.Register(task.SubagentRunRecord{
-		RunID:               "run-1",
-		ChildSessionKey:     "agent:worker:subagent:one",
-		RequesterSessionKey: parentSessionKey,
-		Label:               "worker-1",
-		CreatedAt:           time.Now().UTC(),
-		StartedAt:           time.Now().UTC(),
-		EndedAt:             time.Now().UTC(),
-		FrozenResultText:    "result",
+		RunID:                    "run-1",
+		ChildSessionKey:          "agent:worker:subagent:one",
+		RequesterSessionKey:      parentSessionKey,
+		Label:                    "worker-1",
+		CreatedAt:                time.Now().UTC(),
+		StartedAt:                time.Now().UTC(),
+		EndedAt:                  time.Now().UTC(),
+		FrozenResultText:         "result",
+		ExpectsCompletionMessage: true,
+		RequesterOrigin:          &core.DeliveryContext{Channel: "webchat", To: "user-1"},
 	})
 	if err := runtime.flushSubagentAnnouncements(context.Background(), parentSessionKey); err == nil {
 		t.Fatal("expected flush to return announcement error")
