@@ -4,19 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       build-cli:
-        description: "Build CLI artifacts (6 platforms)"
+        description: "构建 CLI (linux/darwin/windows × amd64/arm64)"
         type: boolean
         default: true
-      build-desktop-gpu:
-        description: "Build optional Desktop GPU variants (windows/linux amd64 Vulkan)"
-        type: boolean
-        default: false
       build-desktop:
-        description: "Build Desktop artifacts (macOS/Windows/Linux)"
+        description: "构建 Desktop (6 平台, win/linux amd64 含 Vulkan GPU)"
         type: boolean
         default: true
       create-release:
-        description: "Create GitHub Release from latest tag"
+        description: "创建 GitHub Release (基于最新 tag)"
         type: boolean
         default: true
 
@@ -26,7 +22,7 @@ permissions:
 jobs:
   web:
     name: Build Web Artifact
-    if: inputs.build-cli || inputs.build-desktop || inputs.build-desktop-gpu
+    if: inputs.build-cli || inputs.build-desktop
     uses: ./.github/workflows/release-web.yml
     with:
       upload-artifacts: true
@@ -50,22 +46,12 @@ jobs:
       upload-artifacts: true
       web-artifact-name: kocort-web-out
 
-  desktop-gpu:
-    name: Build Desktop GPU Artifacts
-    if: inputs.build-desktop-gpu
-    needs: web
-    uses: ./.github/workflows/release-desktop-gpu.yml
-    with:
-      upload-artifacts: true
-      web-artifact-name: kocort-web-out
-
   release:
     name: Create Release
     runs-on: ubuntu-latest
     needs:
       - cli
       - desktop
-      - desktop-gpu
     # Allow release when optional build groups were intentionally skipped.
     if: ${{ always() && inputs.create-release && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     steps:

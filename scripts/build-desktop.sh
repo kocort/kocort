@@ -914,6 +914,7 @@ Build kocort desktop editions (system tray / menubar).
 Options:
     (no flags)        Build for current platform
     --linux           Build Linux tray binary (amd64)
+    --linux-arm       Build Linux tray binary (arm64)
   --windows         Build Windows tray .exe (amd64)
   --windows-arm     Build Windows tray .exe (arm64)
     --macos           Build macOS .app bundle (native arch)
@@ -973,6 +974,7 @@ main() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --linux)           action="linux";         shift ;;
+            --linux-arm|--linux-arm64) action="linux-arm"; shift ;;
             --windows)         action="windows";       shift ;;
             --windows-arm)     action="windows-arm";   shift ;;
             --macos)           action="macos";         shift ;;
@@ -998,6 +1000,9 @@ main() {
     case "${action:-auto}" in
         linux)
             build_linux "amd64"
+            ;;
+        linux-arm)
+            build_linux "arm64"
             ;;
         windows)
             build_windows "amd64"
