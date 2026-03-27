@@ -22,8 +22,7 @@ env:
 
 jobs:
   build-desktop-windows:
-    name: Desktop windows-${{ matrix.arch }}${{ matrix.include_gpu && ' gpu' || '' }}
-    if: ${{ !matrix.include_gpu || inputs.include-gpu }}
+    name: Desktop windows-${{ matrix.arch }}
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -33,17 +32,63 @@ jobs:
             action: --windows
             dist_dir: dist/windows_amd64
             artifact_name: kocort-desktop-windows-amd64
-            include_gpu: false
-          - arch: amd64
-            action: --windows
-            dist_dir: dist/windows_amd64
-            artifact_name: kocort-desktop-windows-amd64-gpu
-            include_gpu: true
           - arch: arm64
             action: --windows-arm
             dist_dir: dist/windows_arm64
             artifact_name: kocort-desktop-windows-arm64
-            include_gpu: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Install rg/fd
+        shell: pwsh
+        run: choco install -y --no-progress ripgrep fd
+
+      - name: Install LLVM MinGW
+        shell: bash
+        run: |
+          LLVM_MINGW_VER="llvm-mingw-20250114-ucrt-x86_64"
+          curl -fsSL \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/20250114/${LLVM_MINGW_VER}.zip" \
+            -o llvm-mingw.zip
+          unzip -q llvm-mingw.zip -d /c/
+          echo "C:/${LLVM_MINGW_VER}/bin" >> "$GITHUB_PATH"
+
+      - name: Build desktop bundle
+        shell: bash
+        run: |
+          chmod +x ./scripts/build-desktop.sh
+          ./scripts/build-desktop.sh ${{ matrix.action }} --with-browser
+
+      - name: Package artifact
+        shell: pwsh
+        run: Compress-Archive -Path "${{ matrix.dist_dir }}\*" -DestinationPath "${{ matrix.artifact_name }}.zip" -Force
+
+      - name: Upload artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.zip
+
+  build-desktop-windows-gpu:
+    name: Desktop windows-amd64 gpu
+    if: inputs.include-gpu
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -67,7 +112,6 @@ jobs:
         run: choco install -y --no-progress ripgrep fd
 
       - name: Install GPU build dependencies
-        if: matrix.include_gpu
         shell: pwsh
         run: choco install -y --no-progress ccache ninja
 
@@ -85,10 +129,9 @@ jobs:
         shell: bash
         run: |
           chmod +x ./scripts/build-desktop.sh
-          ./scripts/build-desktop.sh ${{ matrix.action }} --with-browser
+          ./scripts/build-desktop.sh --windows --with-browser
 
       - name: Cache Vulkan SDK
-        if: matrix.include_gpu
         id: cache-install
         uses: actions/cache/restore@v4
         with:
@@ -97,7 +140,6 @@ jobs:
           key: vulkan-sdk-1.4.321.1
 
       - name: Install Vulkan SDK
-        if: matrix.include_gpu
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -110,7 +152,7 @@ jobs:
           echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Save Vulkan SDK cache
-        if: ${{ matrix.include_gpu && !cancelled() && steps.cache-install.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && steps.cache-install.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: |
@@ -118,42 +160,30 @@ jobs:
           key: vulkan-sdk-1.4.321.1
 
       - name: Build Vulkan GPU backend
-        if: matrix.include_gpu
         shell: pwsh
         run: |
           Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
           Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -no_logo'
           cmake --preset Vulkan
           cmake --build --preset Vulkan --parallel
-          cmake --install build --prefix ${{ matrix.dist_dir }}
+          cmake --install build --prefix dist/windows_amd64
         env:
           CMAKE_GENERATOR: Ninja
 
       - name: Package artifact
         shell: pwsh
-        run: Compress-Archive -Path "${{ matrix.dist_dir }}\*" -DestinationPath "${{ matrix.artifact_name }}.zip" -Force
+        run: Compress-Archive -Path "dist\windows_amd64\*" -DestinationPath "kocort-desktop-windows-amd64-gpu.zip" -Force
 
       - name: Upload artifact
         if: inputs.upload-artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}.zip
+          name: kocort-desktop-windows-amd64-gpu
+          path: kocort-desktop-windows-amd64-gpu.zip
 
   build-desktop-linux:
-    name: Desktop linux-amd64${{ matrix.include_gpu && ' gpu' || '' }}
-    if: ${{ !matrix.include_gpu || inputs.include-gpu }}
+    name: Desktop linux-amd64
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - artifact_name: kocort-desktop-linux-amd64
-            dist_dir: dist/linux_amd64
-            include_gpu: false
-          - artifact_name: kocort-desktop-linux-amd64-gpu
-            dist_dir: dist/linux_amd64
-            include_gpu: true
 
     steps:
       - uses: actions/checkout@v4
@@ -183,11 +213,51 @@ jobs:
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh --linux --with-browser
 
-      - name: Install Vulkan SDK
-        if: matrix.include_gpu
+      - name: Package artifact
+        run: tar -czf kocort-desktop-linux-amd64.tar.gz -C dist/linux_amd64 .
+
+      - name: Upload artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kocort-desktop-linux-amd64
+          path: kocort-desktop-linux-amd64.tar.gz
+
+  build-desktop-linux-gpu:
+    name: Desktop linux-amd64 gpu
+    if: inputs.include-gpu
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Install desktop build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget gnupg software-properties-common
+          sudo apt-get install -y build-essential cmake ripgrep fd-find wget gnupg software-properties-common
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
+      - name: Build desktop bundle
+        run: |
+          chmod +x ./scripts/build-desktop.sh
+          ./scripts/build-desktop.sh --linux --with-browser
+
+      - name: Install Vulkan SDK
+        run: |
           wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc \
             | gpg --dearmor | sudo tee /usr/share/keyrings/lunarg-archive-keyring.gpg > /dev/null
           echo "deb [signed-by=/usr/share/keyrings/lunarg-archive-keyring.gpg] https://packages.lunarg.com/vulkan/1.4.313 jammy main" \
@@ -199,21 +269,20 @@ jobs:
           fi
 
       - name: Build Vulkan GPU backend
-        if: matrix.include_gpu
         run: |
           cmake --preset Vulkan
           cmake --build --preset Vulkan --parallel
-          cmake --install build --prefix ${{ matrix.dist_dir }}
+          cmake --install build --prefix dist/linux_amd64
 
       - name: Package artifact
-        run: tar -czf ${{ matrix.artifact_name }}.tar.gz -C ${{ matrix.dist_dir }} .
+        run: tar -czf kocort-desktop-linux-amd64-gpu.tar.gz -C dist/linux_amd64 .
 
       - name: Upload artifact
         if: inputs.upload-artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}.tar.gz
+          name: kocort-desktop-linux-amd64-gpu
+          path: kocort-desktop-linux-amd64-gpu.tar.gz
 
   build-desktop-macos:
     name: Desktop macos-${{ matrix.arch }}
