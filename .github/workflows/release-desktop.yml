@@ -8,6 +8,11 @@ on:
         required: false
         default: true
         type: boolean
+      include-regular:
+        description: Build regular desktop variants
+        required: false
+        default: true
+        type: boolean
       include-gpu:
         description: Build optional desktop variants with bundled Vulkan GPU backends
         required: false
@@ -28,6 +33,7 @@ env:
 jobs:
   build-desktop-windows:
     name: Desktop windows-${{ matrix.arch }}
+    if: inputs.include-regular
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -206,6 +212,7 @@ jobs:
 
   build-desktop-linux:
     name: Desktop linux-amd64
+    if: inputs.include-regular
     runs-on: ubuntu-latest
 
     steps:
@@ -319,6 +326,7 @@ jobs:
 
   build-desktop-macos:
     name: Desktop macos-${{ matrix.arch }}
+    if: inputs.include-regular
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

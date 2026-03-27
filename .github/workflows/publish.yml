@@ -48,6 +48,7 @@ jobs:
     uses: ./.github/workflows/release-desktop.yml
     with:
       upload-artifacts: true
+      include-regular: ${{ inputs.build-desktop }}
       include-gpu: ${{ inputs.build-desktop-gpu }}
       web-artifact-name: kocort-web-out
 
