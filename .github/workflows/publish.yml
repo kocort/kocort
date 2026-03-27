@@ -98,14 +98,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Sync website downloads.js
-        if: ${{ secrets.WEBSITE_REPO_TOKEN != '' }}
         env:
           GH_TOKEN: ${{ secrets.WEBSITE_REPO_TOKEN }}
           WEBSITE_PROXY_PREFIX_ZH: https://g.cource.com/
         run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "WEBSITE_REPO_TOKEN is not set; skipping website downloads.js sync."
+            exit 0
+          fi
           chmod +x ./scripts/sync-website-downloads.sh
           ./scripts/sync-website-downloads.sh "${{ needs.release.outputs.tag }}"
-
-      - name: Skip notice when website token is missing
-        if: ${{ secrets.WEBSITE_REPO_TOKEN == '' }}
-        run: echo "WEBSITE_REPO_TOKEN is not set; skipping website downloads.js sync."
