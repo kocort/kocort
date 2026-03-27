@@ -3,7 +3,7 @@ import type { BubbleItemType } from '@ant-design/x';
 import { ThoughtChain } from '@ant-design/x';
 import { XMarkdown } from '@ant-design/x-markdown';
 import { Avatar, Button, Tag, Image, Space, Tooltip } from 'antd';
-import { Bot, BrainCircuit, Check, Copy, Loader2, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Wrench } from 'lucide-react';
+import { BrainCircuit, Check, Copy, Loader2, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Wrench } from 'lucide-react';
 import { useI18n } from '@/lib/i18n/I18nContext';
 import type { TranslationKey } from '@/lib/i18n/translations';
 import { apiURL } from '@/lib/api';
@@ -842,7 +842,7 @@ export const BUBBLE_ROLES = {
         placement: 'start' as const,
         variant: 'outlined' as const,
         avatar: (
-            <Avatar size={36} className="bg-blue-600 text-white" icon={<Bot className="h-4 w-4" />} />
+            <img src="/logo.svg" alt="logo" className="h-7 w-7" />
         ),
     },
     tool_call: {

@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bubble, FileCard, Sender } from '@ant-design/x';
-import { Avatar, Dropdown, Select } from 'antd';
-import { Bot, Loader2, Plus } from 'lucide-react';
+import { Dropdown, Select } from 'antd';
+import { Loader2, MessageSquare, Play, Plus, Search, ListChecks } from 'lucide-react';
 
 import { useI18n } from '@/lib/i18n/I18nContext';
 import {
@@ -753,21 +753,37 @@ export function ChatView() {
           ) : null}
 
           {!bubbleItems.length ? (
-            <div className="rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center gap-3">
-                <Avatar
-                  size={44}
-                  className="bg-indigo-600 text-white"
-                  icon={<Bot className="h-5 w-5" />}
-                />
-                <div>
-                  <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-                    {t('chat.emptyTitle')}
-                  </h3>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    {t('chat.emptyDesc')}
-                  </p>
-                </div>
+            <div className="flex flex-col items-center pt-8 pb-4">
+              {/* Greeting */}
+              <img src="/logo.svg" alt="logo" className="mb-2 h-14 w-14" />
+              <h2 className="mt-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+                {t('chat.emptyTitle')}
+              </h2>
+              <p className="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+                {t('chat.emptyDesc')}
+              </p>
+
+              {/* Quick-start suggestion cards */}
+              <div className="mt-8 grid w-full max-w-lg grid-cols-2 gap-3">
+                {([
+                  { icon: MessageSquare, title: t('chat.emptyHintChat'), desc: t('chat.emptyHintChatDesc'), color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-950/40' },
+                  { icon: Play, title: t('chat.emptyHintExecute'), desc: t('chat.emptyHintExecuteDesc'), color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
+                  { icon: ListChecks, title: t('chat.emptyHintPlan'), desc: t('chat.emptyHintPlanDesc'), color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/40' },
+                  { icon: Search, title: t('chat.emptyHintResearch'), desc: t('chat.emptyHintResearchDesc'), color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-950/40' },
+                ] as const).map(({ icon: Icon, title, desc, color, bg }) => (
+                  <button
+                    key={title}
+                    type="button"
+                    onClick={() => setInput(desc)}
+                    className="group flex flex-col gap-1.5 rounded-xl border border-zinc-200 bg-white p-4 text-left transition-all hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+                  >
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${bg}`}>
+                      <Icon className={`h-4 w-4 ${color}`} />
+                    </div>
+                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{title}</span>
+                    <span className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">{desc}</span>
+                  </button>
+                ))}
               </div>
             </div>
           ) : (
