@@ -1,0 +1,188 @@
+name: Reusable Desktop GPU Build
+
+on:
+  workflow_call:
+    inputs:
+      upload-artifacts:
+        description: Upload packaged desktop GPU builds as workflow artifacts
+        required: false
+        default: true
+        type: boolean
+      web-artifact-name:
+        description: Artifact name for the prebuilt web output
+        required: false
+        default: kocort-web-out
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.23"
+
+jobs:
+  build-desktop-windows-gpu:
+    name: Desktop windows-amd64 gpu
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        shell: bash
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          if [ -d .web-dist/out ]; then
+            cp -R .web-dist/out/. api/static/dist/
+          else
+            cp -R .web-dist/. api/static/dist/
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install rg/fd
+        shell: pwsh
+        run: choco install -y --no-progress ripgrep fd
+
+      - name: Install GPU build dependencies
+        shell: pwsh
+        run: choco install -y --no-progress ccache ninja
+
+      - name: Install LLVM MinGW
+        shell: bash
+        run: |
+          LLVM_MINGW_VER="llvm-mingw-20250114-ucrt-x86_64"
+          curl -fsSL \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/20250114/${LLVM_MINGW_VER}.zip" \
+            -o llvm-mingw.zip
+          unzip -q llvm-mingw.zip -d /c/
+          echo "C:/${LLVM_MINGW_VER}/bin" >> "$GITHUB_PATH"
+
+      - name: Build desktop bundle
+        shell: bash
+        env:
+          kocort_SKIP_WEB: "1"
+        run: |
+          chmod +x ./scripts/build-desktop.sh
+          ./scripts/build-desktop.sh --windows --with-browser
+
+      - name: Cache Vulkan SDK
+        id: cache-install
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            C:\VulkanSDK
+          key: vulkan-sdk-1.4.321.1
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ("${{ steps.cache-install.outputs.cache-hit }}" -ne 'true') {
+            Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/1.4.321.1/windows/vulkansdk-windows-X64-1.4.321.1.exe" -OutFile "install.exe"
+            Start-Process -FilePath .\install.exe -ArgumentList "-c","--am","--al","in" -NoNewWindow -Wait
+          }
+          $vulkanPath = (Resolve-Path "C:\VulkanSDK\*").path
+          echo "$vulkanPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Save Vulkan SDK cache
+        if: ${{ !cancelled() && steps.cache-install.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            C:\VulkanSDK
+          key: vulkan-sdk-1.4.321.1
+
+      - name: Build Vulkan GPU backend
+        shell: pwsh
+        run: |
+          Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
+          Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -no_logo'
+          cmake --preset Vulkan
+          cmake --build --preset Vulkan --parallel
+          cmake --install build --prefix dist/windows_amd64
+        env:
+          CMAKE_GENERATOR: Ninja
+
+      - name: Package artifact
+        shell: pwsh
+        run: Compress-Archive -Path "dist\windows_amd64\*" -DestinationPath "kocort-desktop-windows-amd64-gpu.zip" -Force
+
+      - name: Upload artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kocort-desktop-windows-amd64-gpu
+          path: kocort-desktop-windows-amd64-gpu.zip
+
+  build-desktop-linux-gpu:
+    name: Desktop linux-amd64 gpu
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download prebuilt web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.web-artifact-name }}
+          path: .web-dist
+
+      - name: Prepare embedded web assets
+        run: |
+          mkdir -p api/static/dist
+          find api/static/dist -mindepth 1 -not -name '.gitkeep' -exec rm -rf {} +
+          if [ -d .web-dist/out ]; then
+            cp -R .web-dist/out/. api/static/dist/
+          else
+            cp -R .web-dist/. api/static/dist/
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ripgrep fd-find wget gnupg software-properties-common
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
+      - name: Build desktop bundle
+        env:
+          kocort_SKIP_WEB: "1"
+        run: |
+          chmod +x ./scripts/build-desktop.sh
+          ./scripts/build-desktop.sh --linux --with-browser
+
+      - name: Install Vulkan build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan-dev glslc
+          echo "VULKAN_SDK=/usr" >> "$GITHUB_ENV"
+
+      - name: Build Vulkan GPU backend
+        run: |
+          cmake --preset Vulkan
+          cmake --build --preset Vulkan --parallel
+          cmake --install build --prefix dist/linux_amd64
+
+      - name: Package artifact
+        run: tar -czf kocort-desktop-linux-amd64-gpu.tar.gz -C dist/linux_amd64 .
+
+      - name: Upload artifact
+        if: inputs.upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kocort-desktop-linux-amd64-gpu
+          path: kocort-desktop-linux-amd64-gpu.tar.gz
