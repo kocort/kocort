@@ -129,7 +129,7 @@ deploy skill
 	})
 	result, err := rt.Run(context.Background(), core.AgentRunRequest{
 		AgentID: "main",
-		Message: "/deploy printf %s \"$DEPLOY_API_KEY\"",
+		Message: "/deploy " + newTestShellHelper(t).JoinedEnvScript("DEPLOY_API_KEY"),
 		Channel: "test",
 		To:      "user",
 		Deliver: false,
@@ -145,10 +145,12 @@ deploy skill
 
 func TestCommandBackendInjectsAgentDirEnv(t *testing.T) {
 	agentDir := filepath.Join(t.TempDir(), "agent")
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.JoinedEnvScript("KOCORT_AGENT_DIR", "PI_CODING_AGENT_DIR"))
 	backend := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
-			Command:    "/bin/sh",
-			Args:       []string{"-lc", "printf %s \"$KOCORT_AGENT_DIR|$PI_CODING_AGENT_DIR\""},
+			Command:    command,
+			Args:       args,
 			InputMode:  core.CommandBackendInputStdin,
 			OutputMode: core.CommandBackendOutputText,
 		},

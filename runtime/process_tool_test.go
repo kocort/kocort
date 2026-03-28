@@ -104,7 +104,7 @@ func TestExecToolYieldMsBackgroundsAndProcessPollCompletes(t *testing.T) {
 	}
 
 	result, err := runtime.ExecuteTool(context.Background(), runCtx, "exec", map[string]any{
-		"command": "printf start; sleep 1; printf end",
+		"command": newTestShellHelper(t).DelayedOutputScript("start", "end", 1),
 		"yieldMs": 10.0,
 	})
 	if err != nil {
@@ -173,7 +173,7 @@ func TestExecToolUsesDefaultBackgroundWindowWhenYieldNotSpecified(t *testing.T) 
 	}
 
 	result, err := runtime.ExecuteTool(context.Background(), runCtx, "exec", map[string]any{
-		"command": "printf alpha; sleep 1; printf omega",
+		"command": newTestShellHelper(t).DelayedOutputScript("alpha", "omega", 1),
 	})
 	if err != nil {
 		t.Fatalf("exec default background window: %v", err)

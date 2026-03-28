@@ -220,12 +220,25 @@ func (h *Workspace) Media(c *gin.Context) {
 	// Parse file URI to OS-native path using standard library.
 	path = utils.FileURIToPath(path)
 
-	// Security: only allow files within workspace directory
-	workspaceDir := ""
-	if h.Runtime.Config.Agents.Defaults != nil {
-		workspaceDir = strings.TrimSpace(h.Runtime.Config.Agents.Defaults.Workspace)
+	// Resolve the default workspace through the runtime identity so implicit
+	// state-dir workspaces are treated the same as explicit config values.
+	if h.Runtime == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "workspace not configured"})
+		return
 	}
-	if workspaceDir == "" {
+	identity, err := service.ResolveDefaultIdentityPublic(c.Request.Context(), h.Runtime)
+	workspaceDir := ""
+	if err == nil {
+		workspaceDir = strings.TrimSpace(identity.WorkspaceDir)
+	}
+	if workspaceDir == "" && h.Runtime.Sessions != nil {
+		workspaceDir = infra.ResolveDefaultAgentWorkspaceDirForState(
+			h.Runtime.Sessions.BaseDir(),
+			config.ResolveDefaultConfiguredAgentID(h.Runtime.Config),
+		)
+	}
+	workspaceDir, err = infra.EnsureWorkspaceDir(workspaceDir)
+	if err != nil || workspaceDir == "" {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "workspace not configured"})
 		return
 	}

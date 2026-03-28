@@ -3,7 +3,6 @@ package backend
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,8 +20,6 @@ import (
 	"github.com/kocort/kocort/internal/delivery"
 	"github.com/kocort/kocort/internal/infra"
 	toolfn "github.com/kocort/kocort/internal/tool"
-
-	"github.com/kocort/kocort/utils"
 )
 
 type agentEventBuilder struct {
@@ -80,6 +77,17 @@ type openAIStreamingRoundResult struct {
 	FinishReason string
 	ResponseID   string
 	Usage        map[string]any
+}
+
+type openAIModelToolLoopState struct {
+	request            openai.ChatCompletionRequest
+	messages           []openAIChatMessage
+	policy             TranscriptPolicy
+	allowedNames       map[string]bool
+	adapters           StreamChunkAdapter
+	client             *openai.Client
+	rawToolCalls       []openAIToolCallWire
+	validatedToolCalls []openAIToolCallWire
 }
 
 // OpenAICompatBackend implements a backend using the OpenAI-compatible API.
@@ -206,197 +214,93 @@ func (b *OpenAICompatBackend) runStreamingToolLoop(
 	runCtx rtypes.AgentRunContext,
 	policy TranscriptPolicy,
 ) (core.AgentRunResult, error) {
-	messages := append([]openAIChatMessage{}, request.Messages...)
-	usage := map[string]any{}
-	events := newAgentEventBuilder(runCtx)
-	allowedNames := collectAllowedToolNamesFromRtypes(runCtx.AvailableTools)
-	streamAdapters := ResolveStreamAdapters(policy)
-	var accumulatedMediaURLs []string
-	for round := 0; round < defaultStreamingToolLoopMaxRounds; round++ {
-		if ctx.Err() != nil {
-			return core.AgentRunResult{}, ctx.Err()
-		}
-		current := request
-		current.Messages = SanitizeHistoryPipeline(append([]openAIChatMessage{}, messages...), policy, allowedNames)
-		roundResult, err := b.runStreamingRound(ctx, cancel, client, current, runCtx, events, streamAdapters)
-		if err != nil {
+	return runStandardModelToolLoop(ctx, cancel, runCtx, StandardModelToolLoopConfig[openAIModelToolLoopState]{
+		InitialState: openAIModelToolLoopState{
+			request:      request,
+			messages:     append([]openAIChatMessage{}, request.Messages...),
+			policy:       policy,
+			allowedNames: collectAllowedToolNamesFromRtypes(runCtx.AvailableTools),
+			adapters:     ResolveStreamAdapters(policy),
+			client:       client,
+		},
+		MaxRounds:    defaultStreamingToolLoopMaxRounds,
+		BackendKind:  "embedded",
+		ProviderKind: "openai-completions",
+		ExecuteRound: func(ctx context.Context, cancel context.CancelFunc, state *openAIModelToolLoopState, runCtx rtypes.AgentRunContext, events *agentEventBuilder) (StandardModelRoundResult, error) {
+			current := state.request
+			current.Messages = SanitizeHistoryPipeline(append([]openAIChatMessage{}, state.messages...), state.policy, state.allowedNames)
+			roundResult, err := b.runStreamingRound(ctx, cancel, state.client, current, runCtx, events, state.adapters)
+			if err != nil {
+				return StandardModelRoundResult{}, err
+			}
+			state.rawToolCalls = roundResult.ToolCalls
+			state.validatedToolCalls = nil
+			return StandardModelRoundResult{
+				FinalText:  roundResult.FinalText,
+				StopReason: roundResult.FinishReason,
+				ResponseID: roundResult.ResponseID,
+				Usage:      roundResult.Usage,
+			}, nil
+		},
+		NormalizeToolCalls: func(state *openAIModelToolLoopState, _ StandardModelRoundResult) ([]StandardModelToolCall, error) {
+			validatedCalls, err := ValidateOpenAICompatToolCalls(state.rawToolCalls)
+			if err != nil {
+				return nil, err
+			}
+			state.validatedToolCalls = validatedCalls
+			calls := make([]StandardModelToolCall, 0, len(validatedCalls))
+			for _, call := range validatedCalls {
+				calls = append(calls, StandardModelToolCall{
+					ID:        call.ID,
+					Name:      call.Function.Name,
+					Arguments: strings.TrimSpace(call.Function.Arguments),
+				})
+			}
+			return calls, nil
+		},
+		AppendAssistantToolCalls: func(state *openAIModelToolLoopState, round StandardModelRoundResult) error {
+			state.messages = append(state.messages, openAIChatMessage{
+				Role:      openai.ChatMessageRoleAssistant,
+				Content:   strings.TrimSpace(round.FinalText),
+				ToolCalls: state.validatedToolCalls,
+			})
+			return nil
+		},
+		AppendToolResult: func(state *openAIModelToolLoopState, call StandardModelToolCall, historyText string, _ bool) error {
+			state.messages = append(state.messages, openAIChatMessage{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: call.ID,
+				Name:       call.Name,
+				Content:    historyText,
+			})
+			return nil
+		},
+		IsToolCallStopReason: func(reason string) bool {
+			return reason == string(openai.FinishReasonToolCalls)
+		},
+		MissingToolCallsError: func(_ string) error {
+			return fmt.Errorf("provider returned finish_reason=tool_calls with no tool calls")
+		},
+		LoopExceededError: func(maxRounds int) error {
+			return fmt.Errorf("tool loop exceeded max rounds (%d)", maxRounds)
+		},
+		RecordRoundError: func(ctx context.Context, runCtx rtypes.AgentRunContext, err error) {
 			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "request_failed", "error", "openai-compatible request failed", map[string]any{
 				"provider": runCtx.ModelSelection.Provider,
 				"model":    runCtx.ModelSelection.Model,
 				"error":    err.Error(),
 			})
-			return core.AgentRunResult{}, err
-		}
-		MergeUsageMaps(usage, roundResult.Usage)
-		if strings.TrimSpace(roundResult.ResponseID) != "" {
-			usage["previousResponseId"] = strings.TrimSpace(roundResult.ResponseID)
-		}
-		if roundResult.FinishReason != string(openai.FinishReasonToolCalls) {
-			finalText := strings.TrimSpace(roundResult.FinalText)
-			if finalText == "" && len(accumulatedMediaURLs) == 0 {
-				return core.AgentRunResult{}, core.ErrProviderEmptyResponse
-			}
-			payload := core.ReplyPayload{
-				Text:      finalText,
-				MediaURLs: accumulatedMediaURLs,
-			}
-			if len(accumulatedMediaURLs) == 1 {
-				payload.MediaURL = accumulatedMediaURLs[0]
-				payload.MediaURLs = nil
-			}
-			runCtx.ReplyDispatcher.SendFinalReply(payload)
-			events.Add("assistant", map[string]any{
-				"type":         "final",
-				"text":         finalText,
-				"mediaUrl":     payload.MediaURL,
-				"mediaUrls":    payload.MediaURLs,
-				"stopReason":   roundResult.FinishReason,
-				"toolRounds":   round,
-				"responseId":   roundResult.ResponseID,
-				"backendKind":  "embedded",
-				"providerKind": "openai-completions",
+		},
+		RecordToolRoundComplete: func(ctx context.Context, runCtx rtypes.AgentRunContext, round int, pendingCalls []string, stopReason string) {
+			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "tool_round_complete", "info", "openai-compatible tool round completed", map[string]any{
+				"provider":         runCtx.ModelSelection.Provider,
+				"model":            runCtx.ModelSelection.Model,
+				"round":            round,
+				"pendingToolCalls": pendingCalls,
+				"stopReason":       stopReason,
 			})
-			if len(roundResult.Usage) > 0 {
-				events.Add("lifecycle", map[string]any{
-					"type":  "usage",
-					"usage": CloneAnyMap(roundResult.Usage),
-				})
-			}
-			return core.AgentRunResult{
-				Payloads:   []core.ReplyPayload{payload},
-				Events:     events.Events(),
-				Usage:      usage,
-				StopReason: roundResult.FinishReason,
-				Meta: map[string]any{
-					"backendKind": "embedded",
-					"toolRounds":  round,
-				},
-			}, nil
-		}
-		if len(roundResult.ToolCalls) == 0 {
-			return core.AgentRunResult{}, fmt.Errorf("provider returned finish_reason=tool_calls with no tool calls")
-		}
-		validatedCalls, err := ValidateOpenAICompatToolCalls(roundResult.ToolCalls)
-		if err != nil {
-			return core.AgentRunResult{}, err
-		}
-		messages = append(messages, openAIChatMessage{
-			Role:      openai.ChatMessageRoleAssistant,
-			Content:   strings.TrimSpace(roundResult.FinalText),
-			ToolCalls: validatedCalls,
-		})
-		pendingCalls := make([]string, 0, len(validatedCalls))
-		for _, call := range validatedCalls {
-			pendingCalls = append(pendingCalls, call.Function.Name)
-			events.Add("tool", map[string]any{
-				"type":       "tool_call",
-				"toolCallId": call.ID,
-				"toolName":   call.Function.Name,
-				"arguments":  strings.TrimSpace(call.Function.Arguments),
-				"round":      round + 1,
-			})
-			args := map[string]any{}
-			if strings.TrimSpace(call.Function.Arguments) != "" {
-				if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
-					return core.AgentRunResult{}, fmt.Errorf("tool %q returned invalid arguments JSON: %w", call.Function.Name, err)
-				}
-			}
-			args["__toolCallId"] = call.ID
-			result, err := runCtx.Runtime.ExecuteTool(ctx, runCtx, call.Function.Name, args)
-			if err != nil {
-				var toolErr *core.ToolExecutionFailure
-				if !errors.As(err, &toolErr) {
-					return core.AgentRunResult{}, err
-				}
-				events.Add("tool", map[string]any{
-					"type":       "tool_result",
-					"toolCallId": call.ID,
-					"toolName":   call.Function.Name,
-					"text":       strings.TrimSpace(toolErr.HistoryText),
-					"error":      strings.TrimSpace(toolErr.Message),
-					"round":      round + 1,
-				})
-				messages = append(messages, openAIChatMessage{
-					Role:       openai.ChatMessageRoleTool,
-					ToolCallID: call.ID,
-					Name:       call.Function.Name,
-					Content:    utils.NonEmpty(strings.TrimSpace(toolErr.HistoryText), "ERROR"),
-				})
-				continue
-			}
-			visibleText := toolfn.ResolveToolResultText(result)
-			historyText := toolfn.ResolveToolResultHistoryContent(result)
-			if result.MediaURL != "" {
-				accumulatedMediaURLs = append(accumulatedMediaURLs, result.MediaURL)
-			}
-			if len(result.MediaURLs) > 0 {
-				accumulatedMediaURLs = append(accumulatedMediaURLs, result.MediaURLs...)
-			}
-			if visibleText != "" || result.MediaURL != "" || len(result.MediaURLs) > 0 {
-				runCtx.ReplyDispatcher.SendToolResult(core.ReplyPayload{
-					Text:      visibleText,
-					MediaURL:  result.MediaURL,
-					MediaURLs: result.MediaURLs,
-				})
-			}
-			events.Add("tool", map[string]any{
-				"type":       "tool_result",
-				"toolCallId": call.ID,
-				"toolName":   call.Function.Name,
-				"text":       visibleText,
-				"round":      round + 1,
-			})
-			messages = append(messages, openAIChatMessage{
-				Role:       openai.ChatMessageRoleTool,
-				ToolCallID: call.ID,
-				Name:       call.Function.Name,
-				Content:    historyText,
-			})
-		}
-		events.Add("lifecycle", map[string]any{
-			"type":             "tool_round_complete",
-			"round":            round + 1,
-			"pendingToolCalls": pendingCalls,
-			"stopReason":       roundResult.FinishReason,
-		})
-		event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "tool_round_complete", "info", "openai-compatible tool round completed", map[string]any{
-			"provider":         runCtx.ModelSelection.Provider,
-			"model":            runCtx.ModelSelection.Model,
-			"round":            round + 1,
-			"pendingToolCalls": pendingCalls,
-			"stopReason":       roundResult.FinishReason,
-		})
-
-		// ---- Yield detection: sessions_yield sets RunState.Yielded ----
-		if runCtx.RunState != nil && runCtx.RunState.Yielded {
-			yieldMsg := runCtx.RunState.YieldMessage
-			if yieldMsg == "" {
-				yieldMsg = "Turn yielded."
-			}
-			payload := core.ReplyPayload{Text: yieldMsg}
-			runCtx.ReplyDispatcher.SendFinalReply(payload)
-			events.Add("assistant", map[string]any{
-				"type":         "yield",
-				"text":         yieldMsg,
-				"stopReason":   "end_turn",
-				"toolRounds":   round + 1,
-				"backendKind":  "embedded",
-				"providerKind": "openai-completions",
-			})
-			return core.AgentRunResult{
-				Payloads:   []core.ReplyPayload{payload},
-				Events:     events.Events(),
-				Usage:      usage,
-				StopReason: "end_turn",
-				Meta: map[string]any{
-					"backendKind": "embedded",
-					"toolRounds":  round + 1,
-					"yielded":     true,
-				},
-			}, nil
-		}
-	}
-	return core.AgentRunResult{}, fmt.Errorf("tool loop exceeded max rounds (%d)", defaultStreamingToolLoopMaxRounds)
+		},
+	})
 }
 
 func (b *OpenAICompatBackend) runStreamingRound(
@@ -435,13 +339,13 @@ func (b *OpenAICompatBackend) runStreamingRound(
 	defer pipeline.Stop()
 
 	var (
-		fullText       strings.Builder
-		responseID     string
-		finish         string
-		usage          map[string]any
-		accumulators   []*openAIToolCallWire
-		hadReasoning   bool // tracks whether we received any reasoning deltas
-		reasoningDone  bool // true once reasoning_complete has been emitted
+		fullText      strings.Builder
+		responseID    string
+		finish        string
+		usage         map[string]any
+		accumulators  []*openAIToolCallWire
+		hadReasoning  bool // tracks whether we received any reasoning deltas
+		reasoningDone bool // true once reasoning_complete has been emitted
 	)
 
 	for {

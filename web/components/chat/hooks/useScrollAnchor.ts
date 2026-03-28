@@ -22,6 +22,7 @@ export function useScrollAnchor(_bubbleItems: unknown[]) {
      */
     const contentContainerRef = useRef<HTMLDivElement>(null);
     const isNearBottomRef = useRef(true);
+    const stableScrollCleanupRef = useRef<(() => void) | null>(null);
 
     // Track whether user is scrolled near the bottom (used for load-more guard).
     useEffect(() => {
@@ -39,6 +40,13 @@ export function useScrollAnchor(_bubbleItems: unknown[]) {
     const scrollToBottomInstant = () => {
         const viewport = messagesViewportRef.current;
         if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    };
+
+    const clearStableScroll = () => {
+        if (stableScrollCleanupRef.current) {
+            stableScrollCleanupRef.current();
+            stableScrollCleanupRef.current = null;
+        }
     };
 
     /**
@@ -63,6 +71,54 @@ export function useScrollAnchor(_bubbleItems: unknown[]) {
         isNearBottomRef.current = false;
     };
 
+    /**
+     * Re-applies the user-bubble anchor for a short stabilization window.
+     * This overrides browser scroll restoration on refresh and late layout
+     * shifts from hydrated content inside assistant bubbles.
+     */
+    const scrollToLastUserBubbleWhenStable = () => {
+        const viewport = messagesViewportRef.current;
+        const content = contentContainerRef.current;
+        if (!viewport) return;
+
+        clearStableScroll();
+        scrollToLastUserBubble();
+
+        let frameId = 0;
+        let timeoutId = 0;
+        let observer: ResizeObserver | null = null;
+        let remainingFrames = 6;
+
+        const resync = () => {
+            scrollToLastUserBubble();
+            if (remainingFrames <= 0) return;
+            remainingFrames -= 1;
+            frameId = window.requestAnimationFrame(resync);
+        };
+
+        frameId = window.requestAnimationFrame(resync);
+
+        if (content && typeof ResizeObserver !== 'undefined') {
+            observer = new ResizeObserver(() => {
+                scrollToLastUserBubble();
+            });
+            observer.observe(content);
+        }
+
+        timeoutId = window.setTimeout(() => {
+            clearStableScroll();
+        }, 500);
+
+        stableScrollCleanupRef.current = () => {
+            if (frameId) window.cancelAnimationFrame(frameId);
+            if (timeoutId) window.clearTimeout(timeoutId);
+            observer?.disconnect();
+            observer = null;
+        };
+    };
+
+    useEffect(() => clearStableScroll, []);
+
     return {
         messagesViewportRef,
         historyTopSentinelRef,
@@ -70,5 +126,6 @@ export function useScrollAnchor(_bubbleItems: unknown[]) {
         isNearBottomRef,
         scrollToBottomInstant,
         scrollToLastUserBubble,
+        scrollToLastUserBubbleWhenStable,
     };
 }

@@ -213,6 +213,7 @@ func (r *Runtime) RunHeartbeatTurn(ctx context.Context, req heartbeat.HeartbeatW
 					To:         target.To,
 					AccountID:  target.AccountID,
 					ThreadID:   target.ThreadID,
+					RunID:      runReq.RunID,
 				}); err != nil {
 					return heartbeat.HeartbeatRunResult{}, err
 				}

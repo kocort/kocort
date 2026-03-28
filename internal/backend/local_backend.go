@@ -13,7 +13,6 @@ package backend
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -26,10 +25,6 @@ import (
 	"github.com/kocort/kocort/internal/localmodel"
 	"github.com/kocort/kocort/internal/localmodel/llamawrapper"
 	"github.com/kocort/kocort/internal/rtypes"
-
-	toolfn "github.com/kocort/kocort/internal/tool"
-
-	"github.com/kocort/kocort/utils"
 )
 
 // maxLocalToolRounds is the circuit-breaker limit for the tool loop.
@@ -49,6 +44,13 @@ type localStreamingRoundResult struct {
 	FinishReason string
 	ResponseID   string
 	Usage        map[string]any
+}
+
+type localModelToolLoopState struct {
+	messages           []llamawrapper.ChatMessage
+	tools              []llamawrapper.Tool
+	rawToolCalls       []llamawrapper.ToolCall
+	validatedToolCalls []llamawrapper.ToolCall
 }
 
 // LocalModelBackend implements rtypes.Backend by delegating to a
@@ -167,20 +169,73 @@ func (b *LocalModelBackend) runStreamingToolLoop(
 	tools []llamawrapper.Tool,
 	runCtx rtypes.AgentRunContext,
 ) (core.AgentRunResult, error) {
-	usage := map[string]any{}
-	events := newAgentEventBuilder(runCtx)
-	var accumulatedMediaURLs []string
-
-	for round := 0; round < maxLocalToolRounds; round++ {
-		if ctx.Err() != nil {
-			return core.AgentRunResult{}, ctx.Err()
-		}
-
-		// Sanitize messages for this round.
-		sanitized := sanitizeLlamaMessages(messages)
-
-		roundResult, err := b.runStreamingRound(ctx, cancel, sanitized, tools, runCtx, events)
-		if err != nil {
+	return runStandardModelToolLoop(ctx, cancel, runCtx, StandardModelToolLoopConfig[localModelToolLoopState]{
+		InitialState: localModelToolLoopState{
+			messages: append([]llamawrapper.ChatMessage{}, messages...),
+			tools:    tools,
+		},
+		MaxRounds:                      maxLocalToolRounds,
+		BackendKind:                    "local",
+		ProviderKind:                   "local",
+		IncludeAccumulatedMediaOnYield: true,
+		ExecuteRound: func(ctx context.Context, cancel context.CancelFunc, state *localModelToolLoopState, runCtx rtypes.AgentRunContext, events *agentEventBuilder) (StandardModelRoundResult, error) {
+			sanitized := sanitizeLlamaMessages(state.messages)
+			roundResult, err := b.runStreamingRound(ctx, cancel, sanitized, state.tools, runCtx, events)
+			if err != nil {
+				return StandardModelRoundResult{}, err
+			}
+			state.rawToolCalls = roundResult.ToolCalls
+			state.validatedToolCalls = nil
+			return StandardModelRoundResult{
+				FinalText:  roundResult.FinalText,
+				StopReason: roundResult.FinishReason,
+				ResponseID: roundResult.ResponseID,
+				Usage:      roundResult.Usage,
+			}, nil
+		},
+		NormalizeToolCalls: func(state *localModelToolLoopState, _ StandardModelRoundResult) ([]StandardModelToolCall, error) {
+			validatedCalls, err := validateLlamaToolCalls(state.rawToolCalls)
+			if err != nil {
+				return nil, err
+			}
+			state.validatedToolCalls = validatedCalls
+			calls := make([]StandardModelToolCall, 0, len(validatedCalls))
+			for _, call := range validatedCalls {
+				calls = append(calls, StandardModelToolCall{
+					ID:        call.ID,
+					Name:      call.Function.Name,
+					Arguments: strings.TrimSpace(call.Function.Arguments),
+				})
+			}
+			return calls, nil
+		},
+		AppendAssistantToolCalls: func(state *localModelToolLoopState, round StandardModelRoundResult) error {
+			state.messages = append(state.messages, llamawrapper.ChatMessage{
+				Role:      "assistant",
+				Content:   strings.TrimSpace(round.FinalText),
+				ToolCalls: state.validatedToolCalls,
+			})
+			return nil
+		},
+		AppendToolResult: func(state *localModelToolLoopState, call StandardModelToolCall, historyText string, _ bool) error {
+			state.messages = append(state.messages, llamawrapper.ChatMessage{
+				Role:       "tool",
+				ToolCallID: call.ID,
+				Name:       call.Name,
+				Content:    historyText,
+			})
+			return nil
+		},
+		IsToolCallStopReason: func(reason string) bool {
+			return reason == localFinishToolCalls
+		},
+		MissingToolCallsError: func(_ string) error {
+			return fmt.Errorf("provider returned finish_reason=tool_calls with no tool calls")
+		},
+		LoopExceededError: func(maxRounds int) error {
+			return fmt.Errorf("local model tool loop exceeded max rounds (%d)", maxRounds)
+		},
+		RecordRoundError: func(ctx context.Context, runCtx rtypes.AgentRunContext, err error) {
 			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil,
 				runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID,
 				"request_failed", "error", "local model request failed", map[string]any{
@@ -188,201 +243,19 @@ func (b *LocalModelBackend) runStreamingToolLoop(
 					"model":    b.Manager.ModelID(),
 					"error":    err.Error(),
 				})
-			return core.AgentRunResult{}, err
-		}
-
-		MergeUsageMaps(usage, roundResult.Usage)
-		if strings.TrimSpace(roundResult.ResponseID) != "" {
-			usage["previousResponseId"] = strings.TrimSpace(roundResult.ResponseID)
-		}
-
-		// Non-tool-call finish: return final text.
-		if roundResult.FinishReason != localFinishToolCalls {
-			finalText := strings.TrimSpace(roundResult.FinalText)
-			if finalText == "" && len(accumulatedMediaURLs) == 0 {
-				return core.AgentRunResult{}, core.ErrProviderEmptyResponse
-			}
-			payload := core.ReplyPayload{
-				Text:      finalText,
-				MediaURLs: accumulatedMediaURLs,
-			}
-			if len(accumulatedMediaURLs) == 1 {
-				payload.MediaURL = accumulatedMediaURLs[0]
-				payload.MediaURLs = nil
-			}
-			runCtx.ReplyDispatcher.SendFinalReply(payload)
-
-			events.Add("assistant", map[string]any{
-				"type":         "final",
-				"text":         finalText,
-				"mediaUrl":     payload.MediaURL,
-				"mediaUrls":    payload.MediaURLs,
-				"stopReason":   roundResult.FinishReason,
-				"toolRounds":   round,
-				"responseId":   roundResult.ResponseID,
-				"backendKind":  "local",
-				"providerKind": "local",
-			})
-
-			if len(roundResult.Usage) > 0 {
-				events.Add("lifecycle", map[string]any{
-					"type":  "usage",
-					"usage": CloneAnyMap(roundResult.Usage),
+		},
+		RecordToolRoundComplete: func(ctx context.Context, runCtx rtypes.AgentRunContext, round int, pendingCalls []string, stopReason string) {
+			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil,
+				runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID,
+				"tool_round_complete", "info", "local model tool round completed", map[string]any{
+					"provider":         "local",
+					"model":            b.Manager.ModelID(),
+					"round":            round,
+					"pendingToolCalls": pendingCalls,
+					"stopReason":       stopReason,
 				})
-			}
-
-			return core.AgentRunResult{
-				Payloads:   []core.ReplyPayload{payload},
-				Events:     events.Events(),
-				Usage:      usage,
-				StopReason: roundResult.FinishReason,
-				Meta: map[string]any{
-					"backendKind": "local",
-					"toolRounds":  round,
-				},
-			}, nil
-		}
-
-		// Tool-call finish: validate calls, execute tools, append results.
-		if len(roundResult.ToolCalls) == 0 {
-			return core.AgentRunResult{}, fmt.Errorf("provider returned finish_reason=tool_calls with no tool calls")
-		}
-
-		validatedCalls, err := validateLlamaToolCalls(roundResult.ToolCalls)
-		if err != nil {
-			return core.AgentRunResult{}, err
-		}
-
-		messages = append(messages, llamawrapper.ChatMessage{
-			Role:      "assistant",
-			Content:   strings.TrimSpace(roundResult.FinalText),
-			ToolCalls: validatedCalls,
-		})
-
-		pendingCalls := make([]string, 0, len(validatedCalls))
-		for _, call := range validatedCalls {
-			pendingCalls = append(pendingCalls, call.Function.Name)
-
-			events.Add("tool", map[string]any{
-				"type":       "tool_call",
-				"toolCallId": call.ID,
-				"toolName":   call.Function.Name,
-				"arguments":  strings.TrimSpace(call.Function.Arguments),
-				"round":      round + 1,
-			})
-
-			args := map[string]any{}
-			if strings.TrimSpace(call.Function.Arguments) != "" {
-				if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
-					return core.AgentRunResult{}, fmt.Errorf("tool %q returned invalid arguments JSON: %w", call.Function.Name, err)
-				}
-			}
-			args["__toolCallId"] = call.ID
-
-			result, err := runCtx.Runtime.ExecuteTool(ctx, runCtx, call.Function.Name, args)
-			if err != nil {
-				var toolErr *core.ToolExecutionFailure
-				if !errors.As(err, &toolErr) {
-					return core.AgentRunResult{}, err
-				}
-				events.Add("tool", map[string]any{
-					"type":       "tool_result",
-					"toolCallId": call.ID,
-					"toolName":   call.Function.Name,
-					"text":       strings.TrimSpace(toolErr.HistoryText),
-					"error":      strings.TrimSpace(toolErr.Message),
-					"round":      round + 1,
-				})
-				messages = append(messages, llamawrapper.ChatMessage{
-					Role:       "tool",
-					ToolCallID: call.ID,
-					Name:       call.Function.Name,
-					Content:    utils.NonEmpty(strings.TrimSpace(toolErr.HistoryText), "ERROR"),
-				})
-				continue
-			}
-
-			visibleText := toolfn.ResolveToolResultText(result)
-			historyText := toolfn.ResolveToolResultHistoryContent(result)
-			if result.MediaURL != "" {
-				accumulatedMediaURLs = append(accumulatedMediaURLs, result.MediaURL)
-			}
-			if len(result.MediaURLs) > 0 {
-				accumulatedMediaURLs = append(accumulatedMediaURLs, result.MediaURLs...)
-			}
-			if visibleText != "" || result.MediaURL != "" || len(result.MediaURLs) > 0 {
-				runCtx.ReplyDispatcher.SendToolResult(core.ReplyPayload{
-					Text:      visibleText,
-					MediaURL:  result.MediaURL,
-					MediaURLs: result.MediaURLs,
-				})
-			}
-
-			events.Add("tool", map[string]any{
-				"type":       "tool_result",
-				"toolCallId": call.ID,
-				"toolName":   call.Function.Name,
-				"text":       visibleText,
-				"round":      round + 1,
-			})
-			messages = append(messages, llamawrapper.ChatMessage{
-				Role:       "tool",
-				ToolCallID: call.ID,
-				Name:       call.Function.Name,
-				Content:    historyText,
-			})
-		}
-
-		events.Add("lifecycle", map[string]any{
-			"type":             "tool_round_complete",
-			"round":            round + 1,
-			"pendingToolCalls": pendingCalls,
-			"stopReason":       roundResult.FinishReason,
-		})
-		event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil,
-			runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID,
-			"tool_round_complete", "info", "local model tool round completed", map[string]any{
-				"provider":         "local",
-				"model":            b.Manager.ModelID(),
-				"round":            round + 1,
-				"pendingToolCalls": pendingCalls,
-				"stopReason":       roundResult.FinishReason,
-			})
-
-		// ---- Yield detection: sessions_yield sets RunState.Yielded ----
-		if runCtx.RunState != nil && runCtx.RunState.Yielded {
-			yieldMsg := runCtx.RunState.YieldMessage
-			if yieldMsg == "" {
-				yieldMsg = "Turn yielded."
-			}
-			payload := core.ReplyPayload{Text: yieldMsg, MediaURLs: accumulatedMediaURLs}
-			if len(accumulatedMediaURLs) == 1 {
-				payload.MediaURL = accumulatedMediaURLs[0]
-				payload.MediaURLs = nil
-			}
-			runCtx.ReplyDispatcher.SendFinalReply(payload)
-			events.Add("assistant", map[string]any{
-				"type":        "yield",
-				"text":        yieldMsg,
-				"stopReason":  "end_turn",
-				"toolRounds":  round + 1,
-				"backendKind": "local",
-			})
-			return core.AgentRunResult{
-				Payloads:   []core.ReplyPayload{payload},
-				Events:     events.Events(),
-				Usage:      usage,
-				StopReason: "end_turn",
-				Meta: map[string]any{
-					"backendKind": "local",
-					"toolRounds":  round + 1,
-					"yielded":     true,
-				},
-			}, nil
-		}
-	}
-
-	return core.AgentRunResult{}, fmt.Errorf("local model tool loop exceeded max rounds (%d)", maxLocalToolRounds)
+		},
+	})
 }
 
 // ---------------------------------------------------------------------------

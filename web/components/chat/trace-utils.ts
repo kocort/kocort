@@ -397,7 +397,26 @@ export function createEmptyTrace(runId: string): RunTrace {
 export function parseDebugPayload(raw: string) {
     try {
         const payload = JSON.parse(raw) as Record<string, unknown>;
-        const agentEvent = asRecord(payload.agentEvent ?? payload.AgentEvent);
+        const envelope = asRecord(payload);
+        const directData = asRecord(envelope.data ?? envelope.Data);
+        const directRunId = readString(envelope.runId ?? envelope.RunID ?? envelope.runID);
+        const directStream = readString(envelope.stream ?? envelope.Stream).toLowerCase();
+        const directOccurredAt = readString(envelope.occurredAt ?? envelope.OccurredAt ?? envelope.createdAt ?? envelope.CreatedAt);
+
+        if (directStream || directRunId || Object.keys(directData).length > 0) {
+            const type = readString(directData.type).toLowerCase();
+            const text = readText(directData.text);
+            return {
+                runId: directRunId,
+                stream: directStream,
+                type,
+                text,
+                data: directData,
+                occurredAt: directOccurredAt,
+            };
+        }
+
+        const agentEvent = asRecord(envelope.agentEvent ?? envelope.AgentEvent);
         const data = asRecord(agentEvent.Data ?? agentEvent.data);
         const runId = readString(
             agentEvent.RunID ?? agentEvent.runID ?? agentEvent.runId,

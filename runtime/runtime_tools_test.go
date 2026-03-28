@@ -468,7 +468,7 @@ func TestExecToolKeepsAgentWorkspaceAsDefaultPwdWhenSandboxEnabled(t *testing.T)
 			WorkspaceDir:    sandboxWorkspace,
 			AgentWorkspace:  workspace,
 		},
-	}, map[string]any{"command": "printf '%s\n%s\n%s' \"$PWD\" \"$KOCORT_SANDBOX_WORKSPACE\" \"$KOCORT_SANDBOX_DIRS\""})
+	}, map[string]any{"command": newTestShellHelper(t).PwdAndSandboxEnvScript()})
 	if err != nil {
 		t.Fatalf("exec in sandbox: %v", err)
 	}

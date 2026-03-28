@@ -148,6 +148,7 @@ func (t *MessageTool) Execute(ctx context.Context, toolCtx ToolContext, args map
 		To:         firstNonEmpty(to, toolCtx.Run.Request.To),
 		AccountID:  firstNonEmpty(accountID, toolCtx.Run.Request.AccountID),
 		ThreadID:   firstNonEmpty(threadID, toolCtx.Run.Request.ThreadID),
+		RunID:      strings.TrimSpace(toolCtx.Run.Request.RunID),
 	}
 	currentTarget := core.DeliveryTarget{
 		SessionKey: strings.TrimSpace(toolCtx.Run.Session.SessionKey),
@@ -155,6 +156,7 @@ func (t *MessageTool) Execute(ctx context.Context, toolCtx ToolContext, args map
 		To:         strings.TrimSpace(toolCtx.Run.Request.To),
 		AccountID:  strings.TrimSpace(toolCtx.Run.Request.AccountID),
 		ThreadID:   strings.TrimSpace(toolCtx.Run.Request.ThreadID),
+		RunID:      strings.TrimSpace(toolCtx.Run.Request.RunID),
 	}
 	for _, nextTarget := range buildMessageDeliveryTargets(currentTarget, target) {
 		if err := runtime.DeliverMessage(ctx, core.ReplyKindFinal, payload, nextTarget); err != nil {

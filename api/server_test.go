@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	stdruntime "runtime"
@@ -24,6 +25,7 @@ import (
 	"github.com/kocort/kocort/internal/infra"
 	"github.com/kocort/kocort/internal/rtypes"
 	"github.com/kocort/kocort/runtime"
+	"github.com/kocort/kocort/utils"
 )
 
 type blockingBackend struct {
@@ -161,6 +163,69 @@ func TestServerTasksCreateAndCancel(t *testing.T) {
 	}
 	if canceled.Status != core.TaskStatusCanceled {
 		t.Fatalf("expected canceled task, got %+v", canceled)
+	}
+}
+
+func TestServerWorkspaceMediaUsesResolvedDefaultWorkspace(t *testing.T) {
+	stateDir := t.TempDir()
+	mediaDir := filepath.Join(stateDir, "browser")
+	mediaPath := filepath.Join(mediaDir, "sample.png")
+	if err := os.MkdirAll(mediaDir, 0o755); err != nil {
+		t.Fatalf("mkdir media dir: %v", err)
+	}
+	if err := os.WriteFile(mediaPath, []byte("png"), 0o644); err != nil {
+		t.Fatalf("write media file: %v", err)
+	}
+
+	rt, err := runtime.NewRuntimeFromConfig(config.AppConfig{
+		Models: config.ModelsConfig{
+			Providers: map[string]config.ProviderConfig{
+				"openai": {
+					BaseURL: "https://example.com/v1",
+					API:     "openai-completions",
+					APIKey:  "test-key",
+					Models:  []config.ProviderModelConfig{{ID: "gpt-4.1"}},
+				},
+			},
+		},
+		Agents: config.AgentsConfig{
+			List: []config.AgentConfig{{
+				ID:      "main",
+				Default: true,
+				Model:   config.AgentModelConfig{Primary: "openai/gpt-4.1"},
+			}},
+		},
+		Channels: config.ChannelsConfig{Entries: map[string]config.ChannelConfig{}},
+	}, config.RuntimeConfigParams{
+		StateDir:  stateDir,
+		AgentID:   "main",
+		Deliverer: &delivery.MemoryDeliverer{},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntimeFromConfig: %v", err)
+	}
+	rt.HTTPClient = newMockDynamicHTTPClient(http.StatusOK)
+
+	identity, err := service.ResolveDefaultIdentityPublic(context.Background(), rt)
+	if err != nil {
+		t.Fatalf("resolve default identity: %v", err)
+	}
+	if identity.WorkspaceDir != filepath.Join(stateDir, "workspace") {
+		t.Fatalf("expected resolved default workspace, got %q", identity.WorkspaceDir)
+	}
+
+	srv := NewServer(rt, config.GatewayConfig{})
+	req := httptest.NewRequest(http.MethodGet, "/api/workspace/media?path="+url.QueryEscape(utils.FileURI(mediaPath)), nil)
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("media status=%d body=%s", res.Code, res.Body.String())
+	}
+	if got := res.Header().Get("Content-Type"); got != "image/png" {
+		t.Fatalf("expected image/png content type, got %q", got)
+	}
+	if got := res.Body.String(); got != "png" {
+		t.Fatalf("expected media body, got %q", got)
 	}
 }
 

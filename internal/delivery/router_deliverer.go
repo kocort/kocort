@@ -144,6 +144,7 @@ func (d *RouterDeliverer) Deliver(ctx context.Context, kind core.ReplyKind, payl
 				}
 				if d.Events != nil {
 					d.Events.EmitAgentEvent(target.SessionKey, core.AgentEvent{
+						RunID:      target.RunID,
 						Stream:     "delivery",
 						OccurredAt: time.Now().UTC(),
 						SessionKey: target.SessionKey,
@@ -220,6 +221,7 @@ func (d *RouterDeliverer) Deliver(ctx context.Context, kind core.ReplyKind, payl
 		}
 		if d.Events != nil {
 			d.Events.EmitAgentEvent(target.SessionKey, core.AgentEvent{
+				RunID:      target.RunID,
 				Stream:     "delivery",
 				OccurredAt: time.Now().UTC(),
 				SessionKey: target.SessionKey,
@@ -457,6 +459,7 @@ func (d *RouterDeliverer) emitMessageSent(ctx context.Context, kind core.ReplyKi
 			lastMessageID = results[len(results)-1].MessageID
 		}
 		d.Events.EmitAgentEvent(target.SessionKey, core.AgentEvent{
+			RunID:      target.RunID,
 			Stream:     "delivery",
 			OccurredAt: time.Now().UTC(),
 			SessionKey: target.SessionKey,

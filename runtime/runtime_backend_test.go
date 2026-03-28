@@ -51,10 +51,12 @@ func TestSanitizeTranscriptForOpenAIKeepsCompactionSchemaFields(t *testing.T) {
 }
 
 func TestCommandBackendTextMode(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.StdinEchoScript())
 	backend := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
-			Command:    "sh",
-			Args:       []string{"-c", "cat"},
+			Command:    command,
+			Args:       args,
 			InputMode:  core.CommandBackendInputStdin,
 			OutputMode: core.CommandBackendOutputText,
 		},
@@ -79,10 +81,19 @@ func TestCommandBackendTextMode(t *testing.T) {
 }
 
 func TestCommandBackendJSONLModeStreamsBlocks(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.LinesScript(
+		`{"thread_id":"sess-cmd","text":"part 1","final":false}`,
+		`{"usage":{"tokens":7},"text":"done","final":true}`,
+	))
+	args = shell.Args(shell.AllowTrailingArgs(shell.LinesScript(
+		`{"thread_id":"sess-cmd","text":"part 1","final":false}`,
+		`{"usage":{"tokens":7},"text":"done","final":true}`,
+	)))
 	backend := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
-			Command:    "sh",
-			Args:       []string{"-c", `echo '{"thread_id":"sess-cmd","text":"part 1","final":false}'; echo '{"usage":{"tokens":7},"text":"done","final":true}'`},
+			Command:    command,
+			Args:       args,
 			InputMode:  core.CommandBackendInputArg,
 			OutputMode: core.CommandBackendOutputJSONL,
 		},
@@ -113,10 +124,12 @@ func TestCommandBackendJSONLModeStreamsBlocks(t *testing.T) {
 }
 
 func TestCommandBackendNoOutputWatchdog(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.SleepScript(1))
 	be := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
-			Command:         "sh",
-			Args:            []string{"-c", "sleep 1"},
+			Command:         command,
+			Args:            args,
 			OutputMode:      core.CommandBackendOutputText,
 			NoOutputTimeout: 40 * time.Millisecond,
 		},
@@ -139,6 +152,8 @@ func TestCommandBackendNoOutputWatchdog(t *testing.T) {
 }
 
 func TestBackendRegistryResolvesBackendFamilies(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.StdinEchoScript())
 	registry := backend.NewBackendRegistry(config.AppConfig{
 		Models: config.ModelsConfig{
 			Providers: map[string]config.ProviderConfig{
@@ -146,15 +161,15 @@ func TestBackendRegistryResolvesBackendFamilies(t *testing.T) {
 				"cli": {
 					API: "cli",
 					Command: &core.CommandBackendConfig{
-						Command: "sh",
-						Args:    []string{"-c", "cat"},
+						Command: command,
+						Args:    args,
 					},
 				},
 				"acp": {
 					API: "acp",
 					Command: &core.CommandBackendConfig{
-						Command: "sh",
-						Args:    []string{"-c", "cat"},
+						Command: command,
+						Args:    args,
 					},
 				},
 			},
@@ -172,12 +187,14 @@ func TestBackendRegistryResolvesBackendFamilies(t *testing.T) {
 }
 
 func TestCLIBackendRetriesAfterSessionExpired(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.LinesScript(`{"session_id":"fresh-2","text":"CLI-OK"}`))
 	be := &backend.CLIBackend{
 		Provider: "claude-cli",
 		Command: core.CommandBackendConfig{
-			Command:    "sh",
-			Args:       []string{"-c", `echo '{"session_id":"fresh-2","text":"CLI-OK"}'`},
-			ResumeArgs: []string{"-c", `echo 'session expired' >&2; exit 1`},
+			Command:    command,
+			Args:       args,
+			ResumeArgs: shell.Args(shell.StderrExitScript("session expired", 1)),
 			OutputMode: core.CommandBackendOutputJSON,
 		},
 	}
@@ -973,10 +990,15 @@ func TestOpenAICompatBackendUsesJSONToolResultForContinuation(t *testing.T) {
 }
 
 func TestCommandBackendJSONLTracksStopReasonAndToolEvents(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.LinesScript(
+		`{"type":"tool_call","text":"tool output"}`,
+		`{"type":"final","text":"done","stopReason":"completed"}`,
+	))
 	be := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
-			Command:    "sh",
-			Args:       []string{"-c", `echo '{"type":"tool_call","text":"tool output"}'; echo '{"type":"final","text":"done","stopReason":"completed"}'`},
+			Command:    command,
+			Args:       args,
 			OutputMode: core.CommandBackendOutputJSONL,
 		},
 	}
@@ -1001,10 +1023,12 @@ func TestCommandBackendJSONLTracksStopReasonAndToolEvents(t *testing.T) {
 }
 
 func TestCommandBackendJSONModeDispatchesFinalReply(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.LinesScript(`{"text":"JSON-OK","session_id":"sess-json"}`))
 	be := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
-			Command:    "sh",
-			Args:       []string{"-c", `echo '{"text":"JSON-OK","session_id":"sess-json"}'`},
+			Command:    command,
+			Args:       args,
 			OutputMode: core.CommandBackendOutputJSON,
 		},
 	}
@@ -1042,12 +1066,12 @@ func TestCommandBackendSystemPromptModeAppendAndReplace(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			command := "cat"
-			args := []string{}
+			shell := newTestShellHelper(t)
+			script := shell.StdinEchoScript()
 			if tt.systemPromptArg != "" {
-				command = "sh"
-				args = []string{"-c", "cat"}
+				script = shell.AllowTrailingArgs(script)
 			}
+			command, args := shell.Command(script)
 			be := &backend.CommandBackend{
 				Config: core.CommandBackendConfig{
 					Command:          command,
@@ -1085,6 +1109,8 @@ func TestCommandBackendSystemPromptModeAppendAndReplace(t *testing.T) {
 }
 
 func TestCLIBackendSessionExpiredClearsStoredSessionIDAndReportsMeta(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.LinesScript("CLI-OK"))
 	entry := &core.SessionEntry{
 		SessionID:     "sess-cli",
 		CLISessionIDs: map[string]string{"demo-cli": "stale-session"},
@@ -1092,12 +1118,11 @@ func TestCLIBackendSessionExpiredClearsStoredSessionIDAndReportsMeta(t *testing.
 	be := &backend.CLIBackend{
 		Provider: "demo-cli",
 		Command: core.CommandBackendConfig{
-			Command: "sh",
-			Args:    []string{"-c", `echo 'CLI-OK'`},
-			ResumeArgs: []string{
-				"-c",
-				`echo 'session expired' >&2; exit 1`,
-			},
+			Command: command,
+			Args:    args,
+			ResumeArgs: shell.Args(
+				shell.StderrExitScript("session expired", 1),
+			),
 			OutputMode:         core.CommandBackendOutputText,
 			SessionExpiredText: []string{"session expired"},
 		},
@@ -1637,6 +1662,80 @@ func TestOpenAICompatBackendToolLoopIncludesToolEventsAndResponseID(t *testing.T
 	}
 }
 
+func TestOpenAICompatBackendFallsBackToToolResultWhenProviderEndsEmptyAfterTool(t *testing.T) {
+	callCount := 0
+	serverURL, cleanup := newLoopbackHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		_ = r.Body.Close()
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		if callCount == 1 {
+			_, _ = io.WriteString(w, "data: {\"id\":\"resp_tool_only_1\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_exec_tool_only\",\"type\":\"function\",\"function\":{\"name\":\"test_tool\",\"arguments\":\"{}\"}}]}}]}\n\n")
+			flusher.Flush()
+			_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n")
+			flusher.Flush()
+			return
+		}
+		_, _ = io.WriteString(w, "data: {\"id\":\"resp_tool_only_2\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"completion_tokens\":1}}\n\n")
+		flusher.Flush()
+	}))
+	defer cleanup()
+
+	be := backend.NewOpenAICompatBackend(config.AppConfig{
+		Models: config.ModelsConfig{
+			Providers: map[string]config.ProviderConfig{
+				"nvidia": {
+					BaseURL: serverURL + "/v1",
+					APIKey:  "test-key",
+					API:     "openai-completions",
+					Models:  []config.ProviderModelConfig{{ID: "z-ai/glm4.7", MaxTokens: 8192}},
+				},
+			},
+		},
+	}, nil, nil)
+	runtime := &Runtime{Tools: tool.NewToolRegistry()}
+	runtime.Tools.Register(&stubTool{
+		name: "test_tool",
+		execute: func(ctx context.Context, toolCtx rtypes.ToolContext, args map[string]any) (core.ToolResult, error) {
+			return core.ToolResult{Text: "TOOL-ONLY-OK"}, nil
+		},
+	})
+	deliverer := &delivery.MemoryDeliverer{}
+	dispatcher := delivery.NewReplyDispatcher(deliverer, core.DeliveryTarget{SessionKey: "agent:main:main"})
+	result, err := be.Run(context.Background(), rtypes.AgentRunContext{
+		Runtime:         runtime,
+		Request:         core.AgentRunRequest{RunID: "run-tool-only", Message: "Use tool and stop"},
+		Session:         core.SessionResolution{SessionID: "sess-tool-only", SessionKey: "agent:main:main"},
+		Identity:        core.AgentIdentity{ID: "main", ToolAllowlist: []string{"test_tool"}},
+		ModelSelection:  core.ModelSelection{Provider: "nvidia", Model: "z-ai/glm4.7"},
+		AvailableTools:  []tool.Tool{runtime.Tools.Get("test_tool")},
+		SystemPrompt:    "You are Kocort.",
+		WorkspaceDir:    t.TempDir(),
+		ReplyDispatcher: dispatcher,
+	})
+	dispatcher.MarkComplete()
+	_ = dispatcher.WaitForIdle(context.Background())
+	if err != nil {
+		t.Fatalf("backend run: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected two provider requests, got %d", callCount)
+	}
+	if len(result.Payloads) != 1 || result.Payloads[0].Text != "TOOL-ONLY-OK" {
+		t.Fatalf("expected tool result fallback payload, got %+v", result.Payloads)
+	}
+	if len(deliverer.Records) < 2 {
+		t.Fatalf("expected tool and final deliveries, got %+v", deliverer.Records)
+	}
+	if deliverer.Records[0].Kind != core.ReplyKindTool || deliverer.Records[0].Payload.Text != "TOOL-ONLY-OK" {
+		t.Fatalf("unexpected tool delivery: %+v", deliverer.Records)
+	}
+	last := deliverer.Records[len(deliverer.Records)-1]
+	if last.Kind != core.ReplyKindFinal || last.Payload.Text != "TOOL-ONLY-OK" {
+		t.Fatalf("unexpected final delivery: %+v", deliverer.Records)
+	}
+}
+
 func TestOpenAICompatBackendSupportsMoreThanFourToolRounds(t *testing.T) {
 	callCount := 0
 	serverURL, cleanup := newLoopbackHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2040,6 +2139,114 @@ func TestAnthropicCompatBackendExecutesNativeToolUse(t *testing.T) {
 	}
 	if !foundToolCall {
 		t.Fatalf("expected tool_call event, got %+v", result.Events)
+	}
+}
+
+func TestAnthropicCompatBackendFallsBackToToolResultWhenProviderEndsEmptyAfterTool(t *testing.T) {
+	round := 0
+	serverURL, cleanup := newLoopbackHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		round++
+		_ = r.Body.Close()
+		w.Header().Set("content-type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		switch round {
+		case 1:
+			_, _ = io.WriteString(w, "event: message_start\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_tool_only_1\",\"content\":[],\"model\":\"claude-test\",\"role\":\"assistant\",\"stop_reason\":\"\",\"stop_sequence\":\"\",\"type\":\"message\",\"usage\":{\"input_tokens\":3,\"output_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0}}}\n\n")
+			_, _ = io.WriteString(w, "event: content_block_start\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_only\",\"name\":\"test_tool\",\"input\":{}}}\n\n")
+			_, _ = io.WriteString(w, "event: content_block_stop\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+			_, _ = io.WriteString(w, "event: message_delta\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":\"\"},\"usage\":{\"output_tokens\":1}}\n\n")
+			_, _ = io.WriteString(w, "event: message_stop\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"message_stop\"}\n\n")
+		case 2:
+			_, _ = io.WriteString(w, "event: message_start\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_tool_only_2\",\"content\":[],\"model\":\"claude-test\",\"role\":\"assistant\",\"stop_reason\":\"\",\"stop_sequence\":\"\",\"type\":\"message\",\"usage\":{\"input_tokens\":4,\"output_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0}}}\n\n")
+			_, _ = io.WriteString(w, "event: message_delta\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":\"\"},\"usage\":{\"output_tokens\":1}}\n\n")
+			_, _ = io.WriteString(w, "event: message_stop\n")
+			_, _ = io.WriteString(w, "data: {\"type\":\"message_stop\"}\n\n")
+		default:
+			t.Fatalf("unexpected round %d", round)
+		}
+		flusher.Flush()
+	}))
+	defer cleanup()
+
+	be := backend.NewAnthropicCompatBackend(config.AppConfig{
+		Models: config.ModelsConfig{
+			Providers: map[string]config.ProviderConfig{
+				"anthropic": {
+					BaseURL: serverURL,
+					APIKey:  "test-key",
+					API:     "anthropic-messages",
+					Models: []config.ProviderModelConfig{{
+						ID:        "claude-test",
+						MaxTokens: 128,
+					}},
+				},
+			},
+		},
+	}, nil, nil)
+	runtime := &Runtime{Tools: tool.NewToolRegistry()}
+	runtime.Tools.Register(&stubTool{
+		name: "test_tool",
+		execute: func(ctx context.Context, toolCtx rtypes.ToolContext, args map[string]any) (core.ToolResult, error) {
+			return core.ToolResult{Text: "TOOL-RESULT"}, nil
+		},
+	})
+	deliverer := &delivery.MemoryDeliverer{}
+	dispatcher := delivery.NewReplyDispatcher(deliverer, core.DeliveryTarget{SessionKey: "agent:main:main"})
+	runCtx := rtypes.AgentRunContext{
+		Runtime: runtime,
+		Request: core.AgentRunRequest{
+			RunID:   "run_anthropic_tool_only",
+			Message: "use a tool",
+			Timeout: 5 * time.Second,
+		},
+		Session: core.SessionResolution{
+			SessionID:  "sess_anthropic_tool_only",
+			SessionKey: "agent:main:main",
+		},
+		Identity: core.AgentIdentity{
+			ID:            "main",
+			ToolProfile:   "coding",
+			ToolAllowlist: []string{"test_tool"},
+			MemoryEnabled: false,
+		},
+		ModelSelection: core.ModelSelection{
+			Provider: "anthropic",
+			Model:    "claude-test",
+		},
+		AvailableTools:  []tool.Tool{runtime.Tools.Get("test_tool")},
+		SystemPrompt:    "You are helpful.",
+		ReplyDispatcher: dispatcher,
+	}
+
+	result, err := be.Run(context.Background(), runCtx)
+	if err != nil {
+		t.Fatalf("backend run failed: %v", err)
+	}
+	dispatcher.MarkComplete()
+	_ = dispatcher.WaitForIdle(context.Background())
+
+	if round != 2 {
+		t.Fatalf("expected two provider rounds, got %d", round)
+	}
+	if len(result.Payloads) != 1 || strings.TrimSpace(result.Payloads[0].Text) != "TOOL-RESULT" {
+		t.Fatalf("unexpected result payloads: %+v", result.Payloads)
+	}
+	if len(deliverer.Records) < 2 {
+		t.Fatalf("expected tool and final deliveries, got %+v", deliverer.Records)
+	}
+	if deliverer.Records[0].Kind != core.ReplyKindTool || strings.TrimSpace(deliverer.Records[0].Payload.Text) != "TOOL-RESULT" {
+		t.Fatalf("unexpected tool delivery: %+v", deliverer.Records[0])
+	}
+	last := deliverer.Records[len(deliverer.Records)-1]
+	if last.Kind != core.ReplyKindFinal || strings.TrimSpace(last.Payload.Text) != "TOOL-RESULT" {
+		t.Fatalf("unexpected final delivery: %+v", last)
 	}
 }
 

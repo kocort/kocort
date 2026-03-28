@@ -34,6 +34,15 @@ import (
 	"github.com/kocort/kocort/utils"
 )
 
+type chatEventEnvelope struct {
+	Event     string                 `json:"event"`
+	RunID     string                 `json:"runId"`
+	Stream    string                 `json:"stream"`
+	Data      map[string]any         `json:"data"`
+	Record    map[string]any         `json:"record"`
+	AgentEvent map[string]any        `json:"agentEvent"`
+}
+
 type backendFunc func(context.Context, rtypes.AgentRunContext) (core.AgentRunResult, error)
 
 func (f backendFunc) Run(ctx context.Context, runCtx rtypes.AgentRunContext) (core.AgentRunResult, error) {
@@ -1369,18 +1378,55 @@ func TestGatewayChatEventsStreamsWebchatRecords(t *testing.T) {
 
 	select {
 	case first := <-done:
-		foundMessage := first.name == "message" && strings.Contains(first.body, "\"text\":\"stream hello\"")
-		foundDebug := first.name == "lifecycle" || first.name == "debug"
+		foundMessage := false
+		foundDebug := false
+		assertEnvelope := func(evt sseEvent) {
+			var envelope chatEventEnvelope
+			if err := json.Unmarshal([]byte(evt.body), &envelope); err != nil {
+				t.Fatalf("unmarshal SSE event %q: %v\nbody=%s", evt.name, err, evt.body)
+			}
+			if strings.TrimSpace(envelope.Event) != evt.name {
+				t.Fatalf("expected envelope event %q, got %q", evt.name, envelope.Event)
+			}
+			switch evt.name {
+			case "message":
+				if strings.TrimSpace(envelope.RunID) == "" {
+					t.Fatalf("message event missing top-level runId: %+v", envelope)
+				}
+				if envelope.Stream != "message" {
+					t.Fatalf("message event stream=%q, want %q", envelope.Stream, "message")
+				}
+				if strings.TrimSpace(stringValue(envelope.Data["kind"])) == "" {
+					t.Fatalf("message event missing top-level data.kind: %+v", envelope)
+				}
+				if _, ok := envelope.Data["payload"]; !ok {
+					t.Fatalf("message event missing top-level data.payload: %+v", envelope)
+				}
+				if _, ok := envelope.Data["target"]; !ok {
+					t.Fatalf("message event missing top-level data.target: %+v", envelope)
+				}
+				if strings.Contains(evt.body, "\"text\":\"stream hello\"") {
+					foundMessage = true
+				}
+			case "lifecycle", "debug":
+				if strings.TrimSpace(envelope.RunID) == "" {
+					t.Fatalf("debug event missing top-level runId: %+v", envelope)
+				}
+				if envelope.Stream != "lifecycle" {
+					t.Fatalf("debug event stream=%q, want %q", envelope.Stream, "lifecycle")
+				}
+				if stringValue(envelope.Data["type"]) == "run_started" {
+					foundDebug = true
+				}
+			}
+		}
+
+		assertEnvelope(first)
 		timeout := time.After(2 * time.Second)
 		for !(foundMessage && foundDebug) {
 			select {
 			case next := <-done:
-				if next.name == "message" && strings.Contains(next.body, "\"text\":\"stream hello\"") {
-					foundMessage = true
-				}
-				if (next.name == "lifecycle" || next.name == "debug") && strings.Contains(next.body, "\"type\":\"run_started\"") {
-					foundDebug = true
-				}
+				assertEnvelope(next)
 			case <-timeout:
 				t.Fatalf("timed out waiting for message/debug events; first=%+v", first)
 			}
@@ -1388,6 +1434,11 @@ func TestGatewayChatEventsStreamsWebchatRecords(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for event stream data")
 	}
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
 }
 
 func TestGatewayChatSendReminderPreservesVisibleReplyWhenBackendTimesOutAfterSchedulingTask(t *testing.T) {

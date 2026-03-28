@@ -104,7 +104,27 @@ func (l *AuditLog) Record(_ context.Context, event core.AuditEvent) error {
 		return err
 	}
 	l.currentSize += int64(n)
+	if err := l.currentFile.Close(); err != nil {
+		l.currentFile = nil
+		return err
+	}
+	l.currentFile = nil
 	return nil
+}
+
+// Close releases any currently open audit log file handle.
+func (l *AuditLog) Close() error {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.currentFile == nil {
+		return nil
+	}
+	err := l.currentFile.Close()
+	l.currentFile = nil
+	return err
 }
 
 // maybeRotateLocked checks if rotation is needed and performs it.

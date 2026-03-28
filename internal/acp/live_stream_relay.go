@@ -82,6 +82,7 @@ func StartLiveStreamRelay(
 		To:         req.RouteTo,
 		AccountID:  req.RouteAccountID,
 		ThreadID:   req.RouteThreadID,
+		RunID:      strings.TrimSpace(result.RunID),
 	}
 	if strings.TrimSpace(target.Channel) == "" || strings.TrimSpace(target.To) == "" {
 		return nil

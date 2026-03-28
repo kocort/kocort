@@ -43,6 +43,19 @@ function getPayloadFallbackText(payloads: ChatSendResponse['payloads'] | undefin
   return '';
 }
 
+function getPrimaryRunId(runId: string): string {
+  const normalized = runId.trim();
+  if (!normalized) return '';
+  const separatorIndex = normalized.indexOf(':');
+  return separatorIndex === -1 ? normalized : normalized.slice(0, separatorIndex);
+}
+
+function isDerivedRunId(runId: string): boolean {
+  const normalized = runId.trim();
+  if (!normalized) return false;
+  return getPrimaryRunId(normalized) !== normalized;
+}
+
 // ---------------------------------------------------------------------------
 // ChatView component
 // ---------------------------------------------------------------------------
@@ -114,6 +127,7 @@ export function ChatView() {
   // --- Refs ----------------------------------------------------------------
   const loadedHistoryCountRef = useRef(HISTORY_PAGE_SIZE);
   const activeRunIdRef = useRef('');
+  const localTurnsRef = useRef<LocalTurn[]>([]);
   const pendingTraceKeyRef = useRef('');
   const prependScrollRestoreRef = useRef<{ top: number; height: number } | null>(null);
   // Set to true after adding a local turn; cleared once the scroll fires.
@@ -139,6 +153,7 @@ export function ChatView() {
     historyTopSentinelRef,
     contentContainerRef,
     scrollToLastUserBubble,
+    scrollToLastUserBubbleWhenStable,
   } = useScrollAnchor(bubbleItems);
 
   // --- Keep refs in sync ---------------------------------------------------
@@ -152,6 +167,10 @@ export function ChatView() {
   useEffect(() => {
     activeRunIdRef.current = activeRunId;
   }, [activeRunId]);
+
+  useEffect(() => {
+    localTurnsRef.current = localTurns;
+  }, [localTurns]);
 
   // --- Initial history load ------------------------------------------------
   useEffect(() => {
@@ -221,27 +240,38 @@ export function ChatView() {
       const parsed = parseDebugPayload(event.data);
       if (!parsed) return;
 
-      const eventRunId = parsed.runId;
+      const eventRunId = parsed.runId.trim();
+      const primaryRunId = getPrimaryRunId(eventRunId);
+      const derivedRun = eventRunId ? isDerivedRunId(eventRunId) : false;
       const pendingKey = pendingTraceKeyRef.current;
+      const hasPrimaryTurn = primaryRunId
+        ? localTurnsRef.current.some((turn) => turn.runIds.includes(primaryRunId))
+        : false;
 
-      // Track real backend runId for cancel.
-      if (eventRunId && !eventRunId.startsWith('pending-')) {
-        realRunIdRef.current = eventRunId;
+      // Ignore non-chat debug streams such as memory_flush / compaction.
+      if (!['assistant', 'tool', 'lifecycle', 'delivery'].includes(parsed.stream)) {
+        return;
+      }
+
+      // Track the primary backend runId for cancel. Derived runs such as
+      // :memory-flush or :image must not replace the visible turn's runId.
+      if (primaryRunId && !primaryRunId.startsWith('pending-') && (!derivedRun || pendingKey || hasPrimaryTurn)) {
+        realRunIdRef.current = primaryRunId;
       }
 
       // ── Pending → Real migration (one-time) ──────────────────
       // First SSE event that carries the real backend runId while we
       // still have a pending trace:  migrate the pending trace to the
       // real key so all subsequent events and rendering use one key.
-      if (pendingKey && eventRunId && !eventRunId.startsWith('pending-')) {
+      if (pendingKey && primaryRunId && !primaryRunId.startsWith('pending-')) {
         pendingTraceKeyRef.current = '';
-        activeRunIdRef.current = eventRunId;
-        setActiveRunId(eventRunId);
+        activeRunIdRef.current = primaryRunId;
+        setActiveRunId(primaryRunId);
 
         setLocalTurns((current) =>
           current.map((turn) =>
             turn.runIds.includes(pendingKey)
-              ? { ...turn, runIds: turn.runIds.map(id => id === pendingKey ? eventRunId : id), status: 'running' }
+              ? { ...turn, runIds: turn.runIds.map(id => id === pendingKey ? primaryRunId : id), status: 'running' }
               : turn,
           ),
         );
@@ -250,13 +280,13 @@ export function ChatView() {
           const next = { ...prev };
           const pending = next[pendingKey];
           delete next[pendingKey];
-          const existing = next[eventRunId];
+          const existing = next[primaryRunId];
           const base = pending
             ? (existing
-              ? mergeTrace(existing, { ...pending, runId: eventRunId }) || { ...pending, runId: eventRunId }
-              : { ...pending, runId: eventRunId })
-            : (existing || createEmptyTrace(eventRunId));
-          next[eventRunId] = applyDebugEventToTrace(
+              ? mergeTrace(existing, { ...pending, runId: primaryRunId }) || { ...pending, runId: primaryRunId }
+              : { ...pending, runId: primaryRunId })
+            : (existing || createEmptyTrace(primaryRunId));
+          next[primaryRunId] = applyDebugEventToTrace(
             base,
             parsed.stream,
             parsed.type,
@@ -270,8 +300,19 @@ export function ChatView() {
 
         // Track yield even during pending→real migration.
         if (parsed.stream === 'assistant' && parsed.type === 'yield') {
-          lastYieldedRunIdRef.current = eventRunId;
+          lastYieldedRunIdRef.current = primaryRunId;
         }
+
+        // Derived child/internal runs belong to the primary run and should
+        // not render their own assistant bubble.
+        if (derivedRun) return;
+        return;
+      }
+
+      // Child/internal runs such as :memory-flush or :image can emit their
+      // own assistant/tool/lifecycle events on the same session. They should
+      // not create a separate visible turn in the chat UI.
+      if (derivedRun && (hasPrimaryTurn || activeRunIdRef.current === primaryRunId || realRunIdRef.current === primaryRunId)) {
         return;
       }
 
@@ -426,7 +467,7 @@ export function ChatView() {
   useEffect(() => {
     if (!scrollToLastUserBubblePendingRef.current) return;
     scrollToLastUserBubblePendingRef.current = false;
-    scrollToLastUserBubble();
+    scrollToLastUserBubbleWhenStable();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubbleItems]);
 

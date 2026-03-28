@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	stdruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -656,7 +657,13 @@ install-module: example.com/echo@latest
 	}
 	origPath := os.Getenv("PATH")
 	tmpBin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tmpBin, "go"), []byte("#!/bin/sh\necho GO-INSTALL-OK\n"), 0o755); err != nil {
+	stubName := "go"
+	stubBody := "#!/bin/sh\necho GO-INSTALL-OK\n"
+	if stdruntime.GOOS == "windows" {
+		stubName = "go.cmd"
+		stubBody = "@echo off\r\necho GO-INSTALL-OK\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(tmpBin, stubName), []byte(stubBody), 0o755); err != nil {
 		t.Fatalf("write fake go: %v", err)
 	}
 	if err := os.Setenv("PATH", tmpBin+string(os.PathListSeparator)+origPath); err != nil {

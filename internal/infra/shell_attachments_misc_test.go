@@ -171,6 +171,42 @@ func TestShellArgsFor(t *testing.T) {
 	}
 }
 
+func TestPrepareShellCommand(t *testing.T) {
+	t.Run("wraps powershell with utf8 bootstrap", func(t *testing.T) {
+		prepared := PrepareShellCommand(ShellSpec{Path: `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`}, `Write-Output "你好"`)
+		if prepared == `Write-Output "你好"` {
+			t.Fatal("expected powershell command to be wrapped")
+		}
+		checks := []string{
+			`New-Object System.Text.UTF8Encoding $false`,
+			`[Console]::OutputEncoding = $utf8NoBom`,
+			`$OutputEncoding = $utf8NoBom`,
+			`Write-Output "你好"`,
+		}
+		for _, check := range checks {
+			if !bytes.Contains([]byte(prepared), []byte(check)) {
+				t.Fatalf("prepared command missing %q: %s", check, prepared)
+			}
+		}
+	})
+
+	t.Run("does not wrap cmd", func(t *testing.T) {
+		command := `echo hello`
+		prepared := PrepareShellCommand(ShellSpec{Path: `C:\Windows\System32\cmd.exe`}, command)
+		if prepared != command {
+			t.Fatalf("expected cmd command unchanged, got %q", prepared)
+		}
+	})
+
+	t.Run("does not wrap empty command", func(t *testing.T) {
+		command := "   "
+		prepared := PrepareShellCommand(ShellSpec{Path: `pwsh.exe`}, command)
+		if prepared != command {
+			t.Fatalf("expected empty command unchanged, got %q", prepared)
+		}
+	})
+}
+
 func TestAttachmentDisplayName(t *testing.T) {
 	tests := []struct {
 		name     string

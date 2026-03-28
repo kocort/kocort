@@ -45,6 +45,9 @@ const (
 type SSEEvent struct {
 	Event      string           `json:"event"`
 	CreatedAt  time.Time        `json:"createdAt"`
+	RunID      string           `json:"runId,omitempty"`
+	Stream     string           `json:"stream,omitempty"`
+	Data       map[string]any   `json:"data,omitempty"`
 	Record     *EventRecord     `json:"record,omitempty"`
 	AgentEvent *core.AgentEvent `json:"agentEvent,omitempty"`
 }
@@ -85,11 +88,7 @@ func (h *EventHub) Record(target core.DeliveryTarget, kind core.ReplyKind, paylo
 	}
 	h.records[sessionKey] = append(h.records[sessionKey], record)
 	// Create SSE event for broadcasting
-	sseEvent := SSEEvent{
-		Event:     "message",
-		CreatedAt: record.CreatedAt,
-		Record:    &record,
-	}
+	sseEvent := newRecordSSEEvent(record)
 	subscribers := make([]chan SSEEvent, 0, len(h.subscribers[sessionKey]))
 	for _, ch := range h.subscribers[sessionKey] {
 		subscribers = append(subscribers, ch)
@@ -154,17 +153,54 @@ func (h *EventHub) EmitAgentEvent(sessionKey string, event core.AgentEvent) {
 		subscribers = append(subscribers, ch)
 	}
 	h.mu.Unlock()
-	out := SSEEvent{
-		Event:      ResolveSSEEventType(event),
-		CreatedAt:  time.Now().UTC(),
-		AgentEvent: &event,
-	}
+	out := newAgentSSEEvent(event)
 	for _, ch := range subscribers {
 		select {
 		case ch <- out:
 		default:
 		}
 	}
+}
+
+func newRecordSSEEvent(record EventRecord) SSEEvent {
+	return SSEEvent{
+		Event:     SSEEventMessage,
+		CreatedAt: record.CreatedAt,
+		RunID:     strings.TrimSpace(record.RunID),
+		Stream:    SSEEventMessage,
+		Data: map[string]any{
+			"kind":    record.Kind,
+			"payload": record.Payload,
+			"target":  record.Target,
+		},
+		Record: &record,
+	}
+}
+
+func newAgentSSEEvent(event core.AgentEvent) SSEEvent {
+	createdAt := event.OccurredAt.UTC()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	return SSEEvent{
+		Event:      ResolveSSEEventType(event),
+		CreatedAt:  createdAt,
+		RunID:      strings.TrimSpace(event.RunID),
+		Stream:     strings.TrimSpace(event.Stream),
+		Data:       cloneEventData(event.Data),
+		AgentEvent: &event,
+	}
+}
+
+func cloneEventData(data map[string]any) map[string]any {
+	if len(data) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(data))
+	for key, value := range data {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 // History returns all recorded events for a session, sorted by time.

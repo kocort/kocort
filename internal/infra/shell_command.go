@@ -19,8 +19,19 @@ func CommandShellContext(ctx context.Context, command string) (*exec.Cmd, error)
 	if err != nil {
 		return nil, err
 	}
-	args := append(append([]string{}, spec.Args...), command)
+	args := append(append([]string{}, spec.Args...), PrepareShellCommand(spec, command))
 	return exec.CommandContext(ctx, spec.Path, args...), nil
+}
+
+func PrepareShellCommand(spec ShellSpec, command string) string {
+	if !isPowerShellShell(spec.Path) {
+		return command
+	}
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return command
+	}
+	return "& { $utf8NoBom = New-Object System.Text.UTF8Encoding $false; [Console]::InputEncoding = $utf8NoBom; [Console]::OutputEncoding = $utf8NoBom; $OutputEncoding = $utf8NoBom; " + command + " }"
 }
 
 func ResolveCommandShell(goos string, getenv func(string) string, lookPath func(string) (string, error)) (ShellSpec, error) {
@@ -65,10 +76,15 @@ func ShellArgsFor(shellPath string, rawArgs string, goos string) []string {
 	}
 	lowerPath := strings.ToLower(strings.TrimSpace(shellPath))
 	if goos == "windows" {
-		if strings.Contains(lowerPath, "pwsh") || strings.Contains(lowerPath, "powershell") {
+		if isPowerShellShell(lowerPath) {
 			return []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-Command"}
 		}
 		return []string{"/C"}
 	}
 	return []string{"-lc"}
+}
+
+func isPowerShellShell(shellPath string) bool {
+	lowerPath := strings.ToLower(strings.TrimSpace(shellPath))
+	return strings.Contains(lowerPath, "pwsh") || strings.Contains(lowerPath, "powershell")
 }

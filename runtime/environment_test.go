@@ -99,10 +99,12 @@ func TestOpenAICompatBackendResolvesProviderAPIKeyFromEnvironmentConfig(t *testi
 }
 
 func TestCommandBackendInjectsEnvironmentRuntimeAndOverrides(t *testing.T) {
+	shell := newTestShellHelper(t)
+	command, args := shell.Command(shell.JoinedEnvScript("GLOBAL_KEY", "INLINE_KEY", "KOCORT_AGENT_DIR"))
 	backend := &backend.CommandBackend{
 		Config: core.CommandBackendConfig{
-			Command:    "/bin/sh",
-			Args:       []string{"-lc", "echo \"$GLOBAL_KEY|$INLINE_KEY|$KOCORT_AGENT_DIR\""},
+			Command:    command,
+			Args:       args,
 			OutputMode: core.CommandBackendOutputText,
 			Env: map[string]string{
 				"INLINE_KEY": "${INLINE_SOURCE}",

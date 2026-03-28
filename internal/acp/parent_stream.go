@@ -17,6 +17,7 @@ type ParentStreamRelay struct {
 	logPath   string
 	agentID   string
 	childKey  string
+	runID     string
 }
 
 func StartParentStreamRelay(deliverer core.Deliverer, req SessionSpawnRequest, result SessionSpawnResult) *ParentStreamRelay {
@@ -29,6 +30,7 @@ func StartParentStreamRelay(deliverer core.Deliverer, req SessionSpawnRequest, r
 		To:         req.RouteTo,
 		AccountID:  req.RouteAccountID,
 		ThreadID:   req.RouteThreadID,
+		RunID:      strings.TrimSpace(result.RunID),
 	}
 	if strings.TrimSpace(target.Channel) == "" || strings.TrimSpace(target.To) == "" {
 		return nil
@@ -40,6 +42,7 @@ func StartParentStreamRelay(deliverer core.Deliverer, req SessionSpawnRequest, r
 		logPath:   logPath,
 		agentID:   strings.TrimSpace(result.AgentID),
 		childKey:  strings.TrimSpace(result.ChildSessionKey),
+			runID:     strings.TrimSpace(result.RunID),
 	}
 	relay.appendLog("started", fmt.Sprintf("started child=%s agent=%s", relay.childKey, relay.agentID))
 	_ = relay.deliverer.Deliver(context.Background(), core.ReplyKindBlock, core.ReplyPayload{

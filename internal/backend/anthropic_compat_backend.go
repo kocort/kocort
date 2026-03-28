@@ -2,7 +2,6 @@ package backend
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -32,6 +31,14 @@ type anthropicStreamingRoundResult struct {
 	StopReason   string
 	ResponseID   string
 	Usage        map[string]any
+}
+
+type anthropicModelToolLoopState struct {
+	request             anthropic.MessageNewParams
+	messages            []anthropic.MessageParam
+	client              *anthropic.Client
+	lastRound           anthropicStreamingRoundResult
+	pendingResultBlocks []anthropic.ContentBlockParamUnion
 }
 
 // AnthropicCompatBackend implements a backend using the Anthropic-compatible API.
@@ -144,177 +151,83 @@ func (b *AnthropicCompatBackend) runStreamingToolLoop(
 	request anthropic.MessageNewParams,
 	runCtx rtypes.AgentRunContext,
 ) (core.AgentRunResult, error) {
-	messages := append([]anthropic.MessageParam{}, request.Messages...)
-	usage := map[string]any{}
-	events := newAgentEventBuilder(runCtx)
-	var accumulatedMediaURLs []string
-	for round := 0; round < defaultStreamingToolLoopMaxRounds; round++ {
-		if ctx.Err() != nil {
-			return core.AgentRunResult{}, ctx.Err()
-		}
-		current := request
-		current.Messages = SanitizeAnthropicMessages(append([]anthropic.MessageParam{}, messages...))
-		roundResult, err := b.runStreamingRound(ctx, cancel, client, current, runCtx, events)
-		if err != nil {
+	return runStandardModelToolLoop(ctx, cancel, runCtx, StandardModelToolLoopConfig[anthropicModelToolLoopState]{
+		InitialState: anthropicModelToolLoopState{
+			request:  request,
+			messages: append([]anthropic.MessageParam{}, request.Messages...),
+			client:   client,
+		},
+		MaxRounds:    defaultStreamingToolLoopMaxRounds,
+		BackendKind:  "embedded",
+		ProviderKind: "anthropic-messages",
+		ExecuteRound: func(ctx context.Context, cancel context.CancelFunc, state *anthropicModelToolLoopState, runCtx rtypes.AgentRunContext, events *agentEventBuilder) (StandardModelRoundResult, error) {
+			current := state.request
+			current.Messages = SanitizeAnthropicMessages(append([]anthropic.MessageParam{}, state.messages...))
+			roundResult, err := b.runStreamingRound(ctx, cancel, state.client, current, runCtx, events)
+			if err != nil {
+				return StandardModelRoundResult{}, err
+			}
+			state.lastRound = roundResult
+			return StandardModelRoundResult{
+				FinalText:  roundResult.FinalText,
+				StopReason: roundResult.StopReason,
+				ResponseID: roundResult.ResponseID,
+				Usage:      roundResult.Usage,
+			}, nil
+		},
+		NormalizeToolCalls: func(state *anthropicModelToolLoopState, _ StandardModelRoundResult) ([]StandardModelToolCall, error) {
+			calls := make([]StandardModelToolCall, 0, len(state.lastRound.ToolUses))
+			for _, toolUse := range state.lastRound.ToolUses {
+				calls = append(calls, StandardModelToolCall{
+					ID:        toolUse.ID,
+					Name:      toolUse.Name,
+					Arguments: string(toolUse.Input),
+				})
+			}
+			return calls, nil
+		},
+		AppendAssistantToolCalls: func(state *anthropicModelToolLoopState, _ StandardModelRoundResult) error {
+			state.messages = append(state.messages, state.lastRound.FinalMessage.ToParam())
+			return nil
+		},
+		BeforeToolResults: func(state *anthropicModelToolLoopState) error {
+			state.pendingResultBlocks = state.pendingResultBlocks[:0]
+			return nil
+		},
+		AppendToolResult: func(state *anthropicModelToolLoopState, call StandardModelToolCall, historyText string, isError bool) error {
+			state.pendingResultBlocks = append(state.pendingResultBlocks, anthropic.NewToolResultBlock(call.ID, historyText, isError))
+			return nil
+		},
+		AfterToolResults: func(state *anthropicModelToolLoopState) error {
+			state.messages = append(state.messages, anthropic.NewUserMessage(state.pendingResultBlocks...))
+			return nil
+		},
+		IsToolCallStopReason: func(reason string) bool {
+			return reason == string(anthropic.StopReasonToolUse)
+		},
+		MissingToolCallsError: func(_ string) error {
+			return fmt.Errorf("provider returned stop_reason=tool_use with no tool uses")
+		},
+		LoopExceededError: func(maxRounds int) error {
+			return fmt.Errorf("tool loop exceeded max rounds (%d)", maxRounds)
+		},
+		RecordRoundError: func(ctx context.Context, runCtx rtypes.AgentRunContext, err error) {
 			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "request_failed", "error", "anthropic-compatible request failed", map[string]any{
 				"provider": runCtx.ModelSelection.Provider,
 				"model":    runCtx.ModelSelection.Model,
 				"error":    err.Error(),
 			})
-			return core.AgentRunResult{}, err
-		}
-		MergeUsageMaps(usage, roundResult.Usage)
-		if strings.TrimSpace(roundResult.ResponseID) != "" {
-			usage["previousResponseId"] = strings.TrimSpace(roundResult.ResponseID)
-		}
-		if roundResult.StopReason != string(anthropic.StopReasonToolUse) {
-			finalText := strings.TrimSpace(roundResult.FinalText)
-			if finalText == "" && len(accumulatedMediaURLs) == 0 {
-				return core.AgentRunResult{}, core.ErrProviderEmptyResponse
-			}
-			payload := core.ReplyPayload{
-				Text:      finalText,
-				MediaURLs: accumulatedMediaURLs,
-			}
-			if len(accumulatedMediaURLs) == 1 {
-				payload.MediaURL = accumulatedMediaURLs[0]
-				payload.MediaURLs = nil
-			}
-			runCtx.ReplyDispatcher.SendFinalReply(payload)
-			events.Add("assistant", map[string]any{
-				"type":         "final",
-				"text":         finalText,
-				"mediaUrl":     payload.MediaURL,
-				"mediaUrls":    payload.MediaURLs,
-				"stopReason":   roundResult.StopReason,
-				"toolRounds":   round,
-				"responseId":   roundResult.ResponseID,
-				"backendKind":  "embedded",
-				"providerKind": "anthropic-messages",
+		},
+		RecordToolRoundComplete: func(ctx context.Context, runCtx rtypes.AgentRunContext, round int, pendingCalls []string, stopReason string) {
+			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "tool_round_complete", "info", "anthropic-compatible tool round completed", map[string]any{
+				"provider":         runCtx.ModelSelection.Provider,
+				"model":            runCtx.ModelSelection.Model,
+				"round":            round,
+				"pendingToolCalls": pendingCalls,
+				"stopReason":       stopReason,
 			})
-			if len(roundResult.Usage) > 0 {
-				events.Add("lifecycle", map[string]any{
-					"type":  "usage",
-					"usage": CloneAnyMap(roundResult.Usage),
-				})
-			}
-			return core.AgentRunResult{
-				Payloads:   []core.ReplyPayload{payload},
-				Events:     events.Events(),
-				Usage:      usage,
-				StopReason: roundResult.StopReason,
-				Meta: map[string]any{
-					"backendKind": "embedded",
-					"toolRounds":  round,
-				},
-			}, nil
-		}
-		if len(roundResult.ToolUses) == 0 {
-			return core.AgentRunResult{}, fmt.Errorf("provider returned stop_reason=tool_use with no tool uses")
-		}
-		messages = append(messages, roundResult.FinalMessage.ToParam())
-		resultBlocks := make([]anthropic.ContentBlockParamUnion, 0, len(roundResult.ToolUses))
-		pendingCalls := make([]string, 0, len(roundResult.ToolUses))
-		for _, toolUse := range roundResult.ToolUses {
-			args, err := DecodeAnthropicToolUseArgs(toolUse.Input)
-			if err != nil {
-				return core.AgentRunResult{}, fmt.Errorf("tool %q returned invalid arguments JSON: %w", toolUse.Name, err)
-			}
-			pendingCalls = append(pendingCalls, toolUse.Name)
-			events.Add("tool", map[string]any{
-				"type":       "tool_call",
-				"toolCallId": toolUse.ID,
-				"toolName":   toolUse.Name,
-				"arguments":  string(toolUse.Input),
-				"round":      round + 1,
-			})
-			args["__toolCallId"] = toolUse.ID
-			result, err := runCtx.Runtime.ExecuteTool(ctx, runCtx, toolUse.Name, args)
-			if err != nil {
-				var toolErr *core.ToolExecutionFailure
-				if !errors.As(err, &toolErr) {
-					return core.AgentRunResult{}, err
-				}
-				events.Add("tool", map[string]any{
-					"type":       "tool_result",
-					"toolCallId": toolUse.ID,
-					"toolName":   toolUse.Name,
-					"text":       strings.TrimSpace(toolErr.HistoryText),
-					"error":      strings.TrimSpace(toolErr.Message),
-					"round":      round + 1,
-				})
-				resultBlocks = append(resultBlocks, anthropic.NewToolResultBlock(toolUse.ID, utils.NonEmpty(strings.TrimSpace(toolErr.HistoryText), "ERROR"), true))
-				continue
-			}
-			visibleText := toolfn.ResolveToolResultText(result)
-			historyText := toolfn.ResolveToolResultHistoryContent(result)
-			if result.MediaURL != "" {
-				accumulatedMediaURLs = append(accumulatedMediaURLs, result.MediaURL)
-			}
-			if len(result.MediaURLs) > 0 {
-				accumulatedMediaURLs = append(accumulatedMediaURLs, result.MediaURLs...)
-			}
-			if visibleText != "" || result.MediaURL != "" || len(result.MediaURLs) > 0 {
-				runCtx.ReplyDispatcher.SendToolResult(core.ReplyPayload{
-					Text:      visibleText,
-					MediaURL:  result.MediaURL,
-					MediaURLs: result.MediaURLs,
-				})
-			}
-			events.Add("tool", map[string]any{
-				"type":       "tool_result",
-				"toolCallId": toolUse.ID,
-				"toolName":   toolUse.Name,
-				"text":       visibleText,
-				"round":      round + 1,
-			})
-			resultBlocks = append(resultBlocks, anthropic.NewToolResultBlock(toolUse.ID, historyText, false))
-		}
-		messages = append(messages, anthropic.NewUserMessage(resultBlocks...))
-		events.Add("lifecycle", map[string]any{
-			"type":             "tool_round_complete",
-			"round":            round + 1,
-			"pendingToolCalls": pendingCalls,
-			"stopReason":       roundResult.StopReason,
-		})
-		event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "tool_round_complete", "info", "anthropic-compatible tool round completed", map[string]any{
-			"provider":         runCtx.ModelSelection.Provider,
-			"model":            runCtx.ModelSelection.Model,
-			"round":            round + 1,
-			"pendingToolCalls": pendingCalls,
-			"stopReason":       roundResult.StopReason,
-		})
-
-		// ---- Yield detection: sessions_yield sets RunState.Yielded ----
-		if runCtx.RunState != nil && runCtx.RunState.Yielded {
-			yieldMsg := runCtx.RunState.YieldMessage
-			if yieldMsg == "" {
-				yieldMsg = "Turn yielded."
-			}
-			payload := core.ReplyPayload{Text: yieldMsg}
-			runCtx.ReplyDispatcher.SendFinalReply(payload)
-			events.Add("assistant", map[string]any{
-				"type":         "yield",
-				"text":         yieldMsg,
-				"stopReason":   "end_turn",
-				"toolRounds":   round + 1,
-				"backendKind":  "embedded",
-				"providerKind": "anthropic-messages",
-			})
-			return core.AgentRunResult{
-				Payloads:   []core.ReplyPayload{payload},
-				Events:     events.Events(),
-				Usage:      usage,
-				StopReason: "end_turn",
-				Meta: map[string]any{
-					"backendKind": "embedded",
-					"toolRounds":  round + 1,
-					"yielded":     true,
-				},
-			}, nil
-		}
-	}
-	return core.AgentRunResult{}, fmt.Errorf("tool loop exceeded max rounds (%d)", defaultStreamingToolLoopMaxRounds)
+		},
+	})
 }
 
 func (b *AnthropicCompatBackend) runStreamingRound(
