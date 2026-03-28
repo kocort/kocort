@@ -321,13 +321,82 @@ ensure_tray_icon_windows() {
         magick "$ICONS_DIR/tray.png" -define icon:auto-resize=64,48,32,16 "$ico_path"
         return 0
     fi
-    # Use PNG as fallback — the systray library supports PNG too
-    if [ -f "$ICONS_DIR/tray.png" ]; then
-        warn "No ImageMagick found. Copying tray.png as tray.ico (systray supports PNG bytes)."
-        cp "$ICONS_DIR/tray.png" "$ico_path"
+    if [ -f "$PROJECT_ROOT/desktop/icons/icon.ico" ]; then
+        warn "No ImageMagick found. Reusing desktop/icons/icon.ico as tray.ico."
+        cp "$PROJECT_ROOT/desktop/icons/icon.ico" "$ico_path"
         return 0
     fi
-    fail "No tray icon found. Place tray.png in desktop/icons/ or tray.ico in cmd/kocort-desktop/"
+    fail "No usable Windows tray icon found. Place tray.ico in cmd/kocort-desktop/ or install ImageMagick to generate it from desktop/icons/tray.png."
+}
+
+ensure_windows_exe_icon() {
+    local icon_path="$PROJECT_ROOT/desktop/icons/icon.ico"
+    if [ -f "$icon_path" ]; then
+        return 0
+    fi
+    if command -v convert &>/dev/null && [ -f "$ICONS_DIR/icon.png" ]; then
+        info "Generating icon.ico from icon.png..."
+        convert "$ICONS_DIR/icon.png" -define icon:auto-resize=256,128,64,48,32,16 "$icon_path"
+        return 0
+    fi
+    if command -v magick &>/dev/null && [ -f "$ICONS_DIR/icon.png" ]; then
+        info "Generating icon.ico from icon.png..."
+        magick "$ICONS_DIR/icon.png" -define icon:auto-resize=256,128,64,48,32,16 "$icon_path"
+        return 0
+    fi
+    if [ -f "$PROJECT_ROOT/cmd/kocort-desktop/tray.ico" ]; then
+        warn "No ImageMagick found. Reusing tray.ico as icon.ico for the Windows executable."
+        cp "$PROJECT_ROOT/cmd/kocort-desktop/tray.ico" "$icon_path"
+        return 0
+    fi
+    fail "No usable Windows application icon found. Place desktop/icons/icon.ico or install ImageMagick to generate it from desktop/icons/icon.png."
+}
+
+resolve_windows_windres() {
+    local arch="$1"
+    local candidates=()
+
+    case "$arch" in
+        amd64)
+            candidates=("x86_64-w64-mingw32-windres" "llvm-windres" "windres")
+            ;;
+        arm64)
+            candidates=("aarch64-w64-mingw32-windres" "llvm-windres" "windres")
+            ;;
+        *)
+            fail "Unsupported Windows architecture: $arch"
+            ;;
+    esac
+
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        if command -v "$candidate" &>/dev/null; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+compile_windows_resources() {
+    local arch="$1"
+    local syso_path="$PROJECT_ROOT/cmd/kocort-desktop/kocort_windows_${arch}.syso"
+    local windres
+
+    if ! windres="$(resolve_windows_windres "$arch")"; then
+        warn "No windres-compatible tool found. Building Windows desktop without embedded exe icon/manifest."
+        rm -f "$syso_path"
+        return 0
+    fi
+
+    ensure_windows_exe_icon
+
+    info "Compiling Windows resources with $windres..."
+    (
+        cd "$PROJECT_ROOT/desktop/windows"
+        "$windres" -i kocort.rc -O coff -o "$syso_path"
+    )
 }
 
 resolve_windows_compilers() {
@@ -386,6 +455,7 @@ build_windows() {
     ldflags="$(build_ldflags) -H windowsgui"
 
     ensure_tray_icon_windows
+    compile_windows_resources "$arch"
 
     # Set up MinGW/LLVM MinGW cross-compiler for CGo
     local cc cxx

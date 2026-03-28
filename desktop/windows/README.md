@@ -41,13 +41,13 @@ go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/windows_amd64/kocort-d
 
 ## Tray Icon
 
-`cmd/kocort-desktop/tray_windows.go` 直接通过 `//go:embed tray.png` 嵌入托盘图标。
+`cmd/kocort-desktop/tray_windows.go` 直接通过 `//go:embed tray.ico` 嵌入托盘图标。
 
 如果你还想给最终 `.exe` 添加资源图标，构建脚本仍会优先准备 `cmd/kocort-desktop/tray.ico`：
 
 1. 如果文件已存在，直接使用
 2. 如果安装了 ImageMagick，则由 `desktop/icons/tray.png` 自动生成 `.ico`
-3. 如果没有 ImageMagick，则直接复制 `tray.png` 作为回退方案
+3. 如果没有 ImageMagick，则回退到已有的 `.ico` 资源，而不会再把 PNG 伪装成 `.ico`
 
 手动生成示例：
 
@@ -62,13 +62,13 @@ magick desktop/icons/tray.png -define icon:auto-resize=64,48,32,16 cmd/kocort-de
 - `desktop/windows/kocort.rc`
 - `desktop/windows/kocort.manifest`
 
-这两者用于给最终 `.exe` 添加资源图标、DPI 感知和兼容性清单，但不是托盘功能所必需。
+构建脚本会在可用时自动编译这两者，把资源图标、DPI 感知和兼容性清单嵌入最终 `.exe`。
 
 ### Option A: Use `windres`
 
 ```powershell
 cd desktop/windows
-windres -i kocort.rc -O coff -o ../../cmd/kocort-desktop/kocort.syso
+windres -i kocort.rc -O coff -o ../../cmd/kocort-desktop/kocort_windows_amd64.syso
 cd ../..
 go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/windows_amd64/kocort-desktop.exe ./cmd/kocort-desktop
 ```
@@ -79,6 +79,6 @@ go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/windows_amd64/kocort-d
 
 ## Notes
 
-- `./scripts/build-desktop.sh --windows` 会自动处理托盘图标准备
+- `./scripts/build-desktop.sh --windows` 会自动准备托盘图标、生成 `desktop/icons/icon.ico`（如需要）并编译 Windows 资源
 - 托盘图标与 EXE 资源图标是两套机制：前者由 `go:embed` 提供，后者由 `.syso` 提供
 - Windows 桌面版本当前不依赖 Swift 外壳，直接运行 Go 桌面入口即可

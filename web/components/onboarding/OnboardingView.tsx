@@ -31,6 +31,7 @@ import {
   type OAuthStatusResponse,
 } from '@/lib/api';
 import { WeixinQRLogin } from '@/components/channels/WeixinQRLogin';
+import { APP_NAME } from '@/lib/constants';
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return '0 B';
@@ -413,7 +414,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
           >
             <Sparkles className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
           </motion.div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">{t('onboarding.title')}</h1>
+          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">{t('onboarding.title', { appName: APP_NAME })}</h1>
           <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{t('onboarding.subtitle')}</p>
         </div>
 
@@ -458,7 +459,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
                     <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('onboarding.step1.title')}</h2>
                   </div>
                 </div>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-5 leading-relaxed">{t('onboarding.step1.desc')}</p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-5 leading-relaxed">{t('onboarding.step1.desc', { appName: APP_NAME })}</p>
 
                 {/* Provider Select */}
                 <div className="space-y-4">
@@ -609,7 +610,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
                     <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{t('onboarding.step2.title' as any)}</h2>
                   </div>
                 </div>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-5 leading-relaxed">{t('onboarding.step2.desc' as any)}</p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-5 leading-relaxed">{t('onboarding.step2.desc' as any, { appName: APP_NAME })}</p>
 
                 <WeixinQRLogin
                   autoStart

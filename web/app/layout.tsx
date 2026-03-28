@@ -5,9 +5,10 @@ import '@ant-design/x-markdown/themes/dark.css';
 import './globals.css'; // Global styles
 import { I18nProvider } from '@/lib/i18n/I18nContext';
 import { DynamicMeta } from '@/components/DynamicMeta';
+import { APP_NAME } from '@/lib/constants';
 
 export const metadata: Metadata = {
-  title: 'Kocort — Desktop AI Agent Assistant',
+  title: `${APP_NAME} — Desktop AI Agent Assistant`,
   description: 'Desktop AI Agent Assistant — Dual-Brain Architecture · Zero CLI · Cross-Platform Support',
 };
 
