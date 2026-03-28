@@ -27,9 +27,6 @@ import (
 	"github.com/kocort/kocort/internal/rtypes"
 )
 
-// maxLocalToolRounds is the circuit-breaker limit for the tool loop.
-const maxLocalToolRounds = 30
-
 // Finish-reason string constants (avoid importing openai just for these).
 const (
 	localFinishStop      = "stop"
@@ -174,7 +171,7 @@ func (b *LocalModelBackend) runStreamingToolLoop(
 			messages: append([]llamawrapper.ChatMessage{}, messages...),
 			tools:    tools,
 		},
-		MaxRounds:                      maxLocalToolRounds,
+		MaxRounds:                      0,
 		BackendKind:                    "local",
 		ProviderKind:                   "local",
 		IncludeAccumulatedMediaOnYield: true,
@@ -232,8 +229,8 @@ func (b *LocalModelBackend) runStreamingToolLoop(
 		MissingToolCallsError: func(_ string) error {
 			return fmt.Errorf("provider returned finish_reason=tool_calls with no tool calls")
 		},
-		LoopExceededError: func(maxRounds int) error {
-			return fmt.Errorf("local model tool loop exceeded max rounds (%d)", maxRounds)
+		NoProgressLoopError: func(detector string, repeatedRounds int) error {
+			return fmt.Errorf("local model tool loop detected by %s after %d repeated no-progress rounds", detector, repeatedRounds)
 		},
 		RecordRoundError: func(ctx context.Context, runCtx rtypes.AgentRunContext, err error) {
 			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil,

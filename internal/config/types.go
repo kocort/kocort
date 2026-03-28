@@ -205,11 +205,26 @@ type ProviderModelConfig struct {
 // ---------------------------------------------------------------------------
 
 type AgentHeartbeatConfig struct {
-	Every       string `json:"every,omitempty"`
-	Prompt      string `json:"prompt,omitempty"`
-	Target      string `json:"target,omitempty"`
-	Model       string `json:"model,omitempty"`
-	AckMaxChars int    `json:"ackMaxChars,omitempty"`
+	Every            string                           `json:"every,omitempty"`
+	Session          string                           `json:"session,omitempty"`
+	Prompt           string                           `json:"prompt,omitempty"`
+	Target           string                           `json:"target,omitempty"`
+	DirectPolicy     string                           `json:"directPolicy,omitempty"`
+	To               string                           `json:"to,omitempty"`
+	AccountID        string                           `json:"accountId,omitempty"`
+	Model            string                           `json:"model,omitempty"`
+	AckMaxChars      int                              `json:"ackMaxChars,omitempty"`
+	SuppressToolErr  *bool                            `json:"suppressToolErrorWarnings,omitempty"`
+	LightContext     *bool                            `json:"lightContext,omitempty"`
+	IsolatedSession  *bool                            `json:"isolatedSession,omitempty"`
+	IncludeReasoning *bool                            `json:"includeReasoning,omitempty"`
+	ActiveHours      *AgentHeartbeatActiveHoursConfig `json:"activeHours,omitempty"`
+}
+
+type AgentHeartbeatActiveHoursConfig struct {
+	Start    string `json:"start,omitempty"`
+	End      string `json:"end,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 type AgentCompactionMemoryFlushConfig struct {
@@ -631,24 +646,32 @@ type GatewayConfig struct {
 // ---------------------------------------------------------------------------
 
 type ChannelDefaultsConfig struct {
-	DefaultAgent   string   `json:"defaultAgent,omitempty"`
-	DefaultAccount string   `json:"defaultAccount,omitempty"`
-	AllowFrom      []string `json:"allowFrom,omitempty"`
-	TextChunkLimit int      `json:"textChunkLimit,omitempty"`
-	ChunkMode      string   `json:"chunkMode,omitempty"`
+	DefaultAgent   string                            `json:"defaultAgent,omitempty"`
+	DefaultAccount string                            `json:"defaultAccount,omitempty"`
+	AllowFrom      []string                          `json:"allowFrom,omitempty"`
+	TextChunkLimit int                               `json:"textChunkLimit,omitempty"`
+	ChunkMode      string                            `json:"chunkMode,omitempty"`
+	Heartbeat      *ChannelHeartbeatVisibilityConfig `json:"heartbeat,omitempty"`
+}
+
+type ChannelHeartbeatVisibilityConfig struct {
+	ShowOK       *bool `json:"showOk,omitempty"`
+	ShowAlerts   *bool `json:"showAlerts,omitempty"`
+	UseIndicator *bool `json:"useIndicator,omitempty"`
 }
 
 type ChannelConfig struct {
-	Enabled        *bool          `json:"enabled,omitempty"`
-	DefaultTo      string         `json:"defaultTo,omitempty"`
-	DefaultAccount string         `json:"defaultAccount,omitempty"`
-	Agent          string         `json:"agent,omitempty"`
-	InboundToken   string         `json:"inboundToken,omitempty"`
-	AllowFrom      []string       `json:"allowFrom,omitempty"`
-	TextChunkLimit int            `json:"textChunkLimit,omitempty"`
-	ChunkMode      string         `json:"chunkMode,omitempty"`
-	Accounts       map[string]any `json:"accounts,omitempty"`
-	Config         map[string]any `json:"config,omitempty"`
+	Enabled        *bool                             `json:"enabled,omitempty"`
+	DefaultTo      string                            `json:"defaultTo,omitempty"`
+	DefaultAccount string                            `json:"defaultAccount,omitempty"`
+	Agent          string                            `json:"agent,omitempty"`
+	InboundToken   string                            `json:"inboundToken,omitempty"`
+	AllowFrom      []string                          `json:"allowFrom,omitempty"`
+	TextChunkLimit int                               `json:"textChunkLimit,omitempty"`
+	ChunkMode      string                            `json:"chunkMode,omitempty"`
+	Heartbeat      *ChannelHeartbeatVisibilityConfig `json:"heartbeat,omitempty"`
+	Accounts       map[string]any                    `json:"accounts,omitempty"`
+	Config         map[string]any                    `json:"config,omitempty"`
 }
 
 type ChannelsConfig struct {

@@ -54,6 +54,8 @@ type SessionResolveOptions struct {
 	ParentForkMaxTokens int
 	Now                 time.Time
 	ResetPolicy         SessionFreshnessPolicy
+	ForceNew            bool
+	ForceNewReason      string
 }
 
 // SessionFreshnessPolicy describes when a session should be considered stale.
@@ -218,6 +220,23 @@ func (s *SessionStore) ResolveForRequest(ctx context.Context, opts SessionResolv
 			Entry:      forkedEntry,
 			IsNew:      true,
 			Fresh:      true,
+		}, nil
+	}
+
+	if opts.ForceNew {
+		nextSessionID, err := s.resetLocked(sessionKey, utils.NonEmpty(strings.TrimSpace(opts.ForceNewReason), "force-new"))
+		if err != nil {
+			return core.SessionResolution{}, err
+		}
+		freshEntry := s.entries[sessionKey]
+		return core.SessionResolution{
+			SessionID:        nextSessionID,
+			SessionKey:       sessionKey,
+			Entry:            PtrSessionEntry(freshEntry),
+			IsNew:            true,
+			PersistedThink:   "",
+			PersistedVerbose: "",
+			Fresh:            false,
 		}, nil
 	}
 
@@ -1010,6 +1029,15 @@ func MergeSessionEntry(existing core.SessionEntry, next core.SessionEntry) core.
 	}
 	if strings.TrimSpace(next.LastActivityReason) == "" {
 		next.LastActivityReason = existing.LastActivityReason
+	}
+	if strings.TrimSpace(next.LastHeartbeatText) == "" {
+		next.LastHeartbeatText = existing.LastHeartbeatText
+	}
+	if next.LastHeartbeatSentAt.IsZero() {
+		next.LastHeartbeatSentAt = existing.LastHeartbeatSentAt
+	}
+	if next.LastChatType == "" {
+		next.LastChatType = existing.LastChatType
 	}
 	if !next.ForkedFromParent {
 		next.ForkedFromParent = existing.ForkedFromParent

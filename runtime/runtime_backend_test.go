@@ -1855,6 +1855,76 @@ func TestOpenAICompatBackendSupportsFiveToolRoundsWithoutPrematureStop(t *testin
 	}
 }
 
+func TestOpenAICompatBackendSupportsMoreThanThirtyToolRoundsWhenProgressContinues(t *testing.T) {
+	callCount := 0
+	const toolRounds = 35
+	serverURL, cleanup := newLoopbackHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		_ = r.Body.Close()
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		if callCount <= toolRounds {
+			_, _ = io.WriteString(w, fmt.Sprintf("data: {\"id\":\"resp_progress_%d\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_progress_%d\",\"type\":\"function\",\"function\":{\"name\":\"test_tool\",\"arguments\":\"{\\\"value\\\":\\\"STEP-%d\\\"}\"}}]}}]}\n\n", callCount, callCount, callCount))
+			flusher.Flush()
+			_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n")
+			flusher.Flush()
+			return
+		}
+		_, _ = io.WriteString(w, "data: {\"id\":\"resp_progress_final\",\"choices\":[{\"delta\":{\"content\":\"FINAL-AFTER-THIRTY-FIVE-TOOLS\"}}]}\n\n")
+		flusher.Flush()
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
+		flusher.Flush()
+	}))
+	defer cleanup()
+
+	be := backend.NewOpenAICompatBackend(config.AppConfig{
+		Models: config.ModelsConfig{
+			Providers: map[string]config.ProviderConfig{
+				"nvidia": {
+					BaseURL: serverURL + "/v1",
+					APIKey:  "test-key",
+					API:     "openai-completions",
+					Models:  []config.ProviderModelConfig{{ID: "z-ai/glm4.7", MaxTokens: 8192}},
+				},
+			},
+		},
+	}, nil, nil)
+	runtime := &Runtime{Tools: tool.NewToolRegistry()}
+	runtime.Tools.Register(&stubTool{
+		name: "test_tool",
+		execute: func(ctx context.Context, toolCtx rtypes.ToolContext, args map[string]any) (core.ToolResult, error) {
+			value, _ := args["value"].(string)
+			return core.ToolResult{Text: "RESULT-" + strings.TrimSpace(value)}, nil
+		},
+	})
+	dispatcher := delivery.NewReplyDispatcher(&delivery.MemoryDeliverer{}, core.DeliveryTarget{SessionKey: "agent:main:main"})
+	result, err := be.Run(context.Background(), rtypes.AgentRunContext{
+		Runtime:         runtime,
+		Request:         core.AgentRunRequest{RunID: "run-tool-35", Message: "Keep using the tool until done"},
+		Session:         core.SessionResolution{SessionID: "sess-tool-35", SessionKey: "agent:main:main"},
+		Identity:        core.AgentIdentity{ID: "main", ToolAllowlist: []string{"test_tool"}},
+		ModelSelection:  core.ModelSelection{Provider: "nvidia", Model: "z-ai/glm4.7"},
+		AvailableTools:  []tool.Tool{runtime.Tools.Get("test_tool")},
+		SystemPrompt:    "You are Kocort.",
+		WorkspaceDir:    t.TempDir(),
+		ReplyDispatcher: dispatcher,
+	})
+	dispatcher.MarkComplete()
+	_ = dispatcher.WaitForIdle(context.Background())
+	if err != nil {
+		t.Fatalf("backend run: %v", err)
+	}
+	if callCount != toolRounds+1 {
+		t.Fatalf("expected %d provider rounds, got %d", toolRounds+1, callCount)
+	}
+	if len(result.Payloads) != 1 || result.Payloads[0].Text != "FINAL-AFTER-THIRTY-FIVE-TOOLS" {
+		t.Fatalf("expected final payload after %d tool rounds, got %+v", toolRounds, result.Payloads)
+	}
+	if result.Meta["toolRounds"] != toolRounds {
+		t.Fatalf("expected toolRounds=%d, got %+v", toolRounds, result.Meta)
+	}
+}
+
 func TestOpenAICompatBackendTimesOutWhenStreamStalls(t *testing.T) {
 	serverURL, cleanup := newLoopbackHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

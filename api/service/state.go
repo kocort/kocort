@@ -40,9 +40,10 @@ func BuildBrainState(ctx context.Context, rt *runtime.Runtime) types.BrainState 
 // BuildCapabilitiesState builds the capabilities state response.
 func BuildCapabilitiesState(ctx context.Context, rt *runtime.Runtime) types.CapabilitiesState {
 	state := types.CapabilitiesState{
-		Config:  rt.Config.Skills,
-		Tools:   summarizeTools(rt),
-		Plugins: summarizePlugins(rt.Config),
+		Config:            rt.Config.Skills,
+		Tools:             summarizeTools(rt),
+		Plugins:           summarizePlugins(rt.Config),
+		HeartbeatsEnabled: rt.HeartbeatsEnabled(),
 	}
 	if identity, err := resolveDefaultIdentity(ctx, rt); err == nil && strings.TrimSpace(identity.WorkspaceDir) != "" {
 		report, reportErr := skill.BuildWorkspaceSkillStatus(identity.WorkspaceDir, &skill.WorkspaceSkillBuildOptions{

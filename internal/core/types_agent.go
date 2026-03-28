@@ -79,10 +79,21 @@ type AgentIdentity struct {
 	SubagentAttachmentMaxTotalBytes    int
 	SubagentRetainAttachmentsOnKeep    bool
 	HeartbeatEvery                     string
+	HeartbeatSession                   string
 	HeartbeatPrompt                    string
 	HeartbeatTarget                    string
+	HeartbeatDirectPolicy              string
+	HeartbeatTo                        string
+	HeartbeatAccountID                 string
 	HeartbeatModel                     string
 	HeartbeatAckMaxChars               int
+	HeartbeatSuppressToolErr           bool
+	HeartbeatLightContext              bool
+	HeartbeatIsolatedSession           bool
+	HeartbeatIncludeReasoning          bool
+	HeartbeatActiveHoursStart          string
+	HeartbeatActiveHoursEnd            string
+	HeartbeatActiveHoursTimezone       string
 	CompactionReserveTokensFloor       int
 	MemoryFlushEnabled                 bool
 	MemoryFlushSoftThresholdTokens     int
@@ -143,6 +154,7 @@ type AgentRunRequest struct {
 	SessionProviderOverride string
 	SessionModelOverride    string
 	UserTimezone            string
+	HeartbeatLightContext   bool
 	HeartbeatEvery          string
 	HeartbeatPrompt         string
 	HeartbeatTarget         string

@@ -157,7 +157,7 @@ func (b *AnthropicCompatBackend) runStreamingToolLoop(
 			messages: append([]anthropic.MessageParam{}, request.Messages...),
 			client:   client,
 		},
-		MaxRounds:    defaultStreamingToolLoopMaxRounds,
+		MaxRounds:    0,
 		BackendKind:  "embedded",
 		ProviderKind: "anthropic-messages",
 		ExecuteRound: func(ctx context.Context, cancel context.CancelFunc, state *anthropicModelToolLoopState, runCtx rtypes.AgentRunContext, events *agentEventBuilder) (StandardModelRoundResult, error) {
@@ -208,8 +208,8 @@ func (b *AnthropicCompatBackend) runStreamingToolLoop(
 		MissingToolCallsError: func(_ string) error {
 			return fmt.Errorf("provider returned stop_reason=tool_use with no tool uses")
 		},
-		LoopExceededError: func(maxRounds int) error {
-			return fmt.Errorf("tool loop exceeded max rounds (%d)", maxRounds)
+		NoProgressLoopError: func(detector string, repeatedRounds int) error {
+			return fmt.Errorf("tool loop detected by %s after %d repeated no-progress rounds", detector, repeatedRounds)
 		},
 		RecordRoundError: func(ctx context.Context, runCtx rtypes.AgentRunContext, err error) {
 			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "request_failed", "error", "anthropic-compatible request failed", map[string]any{

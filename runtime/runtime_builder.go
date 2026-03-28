@@ -444,6 +444,7 @@ func (b *RuntimeBuilder) Build() (*Runtime, error) {
 		return task.NotifyTaskFailure(ctx, rt.Deliverer, rt.Tasks, rt.Audit, rec)
 	})
 	rt.Tasks.Start(context.Background(), rt, b.cfg.Tasks)
+	rt.SetHeartbeatsEnabled(true)
 	rt.Heartbeats.Start()
 
 	// Start delivery replay worker for retrying failed deliveries.

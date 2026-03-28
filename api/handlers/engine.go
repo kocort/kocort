@@ -182,6 +182,9 @@ func (h *Engine) CapabilitiesSave(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if req.HeartbeatsEnabled != nil {
+		h.Runtime.SetHeartbeatsEnabled(*req.HeartbeatsEnabled)
+	}
 	c.JSON(http.StatusOK, service.BuildCapabilitiesState(c.Request.Context(), h.Runtime))
 }
 

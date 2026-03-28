@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,8 @@ type StandardModelRoundResult struct {
 type StandardModelToolLoopConfig[S any] struct {
 	InitialState                   S
 	MaxRounds                      int
+	NoProgressWarningThreshold     int
+	NoProgressCriticalThreshold    int
 	BackendKind                    string
 	ProviderKind                   string
 	IncludeAccumulatedMediaOnYield bool
@@ -40,8 +43,90 @@ type StandardModelToolLoopConfig[S any] struct {
 	IsToolCallStopReason           func(reason string) bool
 	MissingToolCallsError          func(stopReason string) error
 	LoopExceededError              func(maxRounds int) error
+	NoProgressLoopError            func(detector string, repeatedRounds int) error
 	RecordRoundError               func(ctx context.Context, runCtx rtypes.AgentRunContext, err error)
 	RecordToolRoundComplete        func(ctx context.Context, runCtx rtypes.AgentRunContext, round int, pendingCalls []string, stopReason string)
+}
+
+const (
+	defaultToolLoopNoProgressWarningThreshold  = 10
+	defaultToolLoopNoProgressCriticalThreshold = 30
+)
+
+type standardToolRoundObservation struct {
+	Fingerprint string
+	Round       int
+}
+
+func normalizeToolLoopWarningThreshold(value int) int {
+	if value <= 0 {
+		return defaultToolLoopNoProgressWarningThreshold
+	}
+	return value
+}
+
+func normalizeToolLoopCriticalThreshold(value, warningThreshold int) int {
+	if value <= 0 {
+		value = defaultToolLoopNoProgressCriticalThreshold
+	}
+	if value <= warningThreshold {
+		return warningThreshold + 1
+	}
+	return value
+}
+
+func buildToolRoundFingerprint(stopReason string, calls []string, outcomes []string) string {
+	payload, err := json.Marshal(map[string]any{
+		"stopReason": strings.TrimSpace(stopReason),
+		"calls":      calls,
+		"outcomes":   outcomes,
+	})
+	if err != nil {
+		return strings.Join(append(append([]string{strings.TrimSpace(stopReason)}, calls...), outcomes...), "|")
+	}
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func countTrailingIdenticalRounds(history []standardToolRoundObservation) int {
+	if len(history) == 0 {
+		return 0
+	}
+	last := history[len(history)-1].Fingerprint
+	count := 0
+	for index := len(history) - 1; index >= 0; index-- {
+		if history[index].Fingerprint != last {
+			break
+		}
+		count++
+	}
+	return count
+}
+
+func countTrailingPingPongRounds(history []standardToolRoundObservation) int {
+	if len(history) < 4 {
+		return 0
+	}
+	last := history[len(history)-1].Fingerprint
+	previous := history[len(history)-2].Fingerprint
+	if last == previous {
+		return 0
+	}
+	count := 2
+	for index := len(history) - 3; index >= 0; index-- {
+		expected := last
+		if count%2 == 0 {
+			expected = previous
+		}
+		if history[index].Fingerprint != expected {
+			break
+		}
+		count++
+	}
+	if count < 4 {
+		return 0
+	}
+	return count
 }
 
 func runStandardModelToolLoop[S any](
@@ -55,10 +140,20 @@ func runStandardModelToolLoop[S any](
 	events := newAgentEventBuilder(runCtx)
 	var accumulatedMediaURLs []string
 	var lastVisibleToolPayload core.ReplyPayload
+	roundLimit := config.MaxRounds
+	warningThreshold := normalizeToolLoopWarningThreshold(config.NoProgressWarningThreshold)
+	criticalThreshold := normalizeToolLoopCriticalThreshold(config.NoProgressCriticalThreshold, warningThreshold)
+	roundHistory := make([]standardToolRoundObservation, 0, criticalThreshold)
 
-	for round := 0; round < config.MaxRounds; round++ {
+	for round := 0; ; round++ {
 		if ctx.Err() != nil {
 			return core.AgentRunResult{}, ctx.Err()
+		}
+		if roundLimit > 0 && round >= roundLimit {
+			if config.LoopExceededError != nil {
+				return core.AgentRunResult{}, config.LoopExceededError(roundLimit)
+			}
+			return core.AgentRunResult{}, fmt.Errorf("tool loop exceeded max rounds (%d)", roundLimit)
 		}
 
 		roundResult, err := config.ExecuteRound(ctx, cancel, &state, runCtx, events)
@@ -132,8 +227,11 @@ func runStandardModelToolLoop[S any](
 		}
 
 		pendingCalls := make([]string, 0, len(toolCalls))
+		roundCallSignatures := make([]string, 0, len(toolCalls))
+		roundOutcomeSignatures := make([]string, 0, len(toolCalls))
 		for _, call := range toolCalls {
 			pendingCalls = append(pendingCalls, call.Name)
+			roundCallSignatures = append(roundCallSignatures, strings.TrimSpace(call.Name)+":"+strings.TrimSpace(call.Arguments))
 			events.Add("tool", map[string]any{
 				"type":       "tool_call",
 				"toolCallId": call.ID,
@@ -169,6 +267,7 @@ func runStandardModelToolLoop[S any](
 						return core.AgentRunResult{}, err
 					}
 				}
+				roundOutcomeSignatures = append(roundOutcomeSignatures, "error:"+strings.TrimSpace(toolErr.Message)+":"+strings.TrimSpace(toolErr.HistoryText))
 				continue
 			}
 
@@ -201,6 +300,7 @@ func runStandardModelToolLoop[S any](
 					return core.AgentRunResult{}, err
 				}
 			}
+			roundOutcomeSignatures = append(roundOutcomeSignatures, "ok:"+historyText+":"+visibleText+":"+result.MediaURL+":"+strings.Join(result.MediaURLs, ","))
 		}
 
 		if config.AfterToolResults != nil {
@@ -217,6 +317,46 @@ func runStandardModelToolLoop[S any](
 		})
 		if config.RecordToolRoundComplete != nil {
 			config.RecordToolRoundComplete(ctx, runCtx, round+1, pendingCalls, roundResult.StopReason)
+		}
+
+		roundHistory = append(roundHistory, standardToolRoundObservation{
+			Fingerprint: buildToolRoundFingerprint(roundResult.StopReason, roundCallSignatures, roundOutcomeSignatures),
+			Round:       round + 1,
+		})
+		if len(roundHistory) > criticalThreshold {
+			roundHistory = roundHistory[len(roundHistory)-criticalThreshold:]
+		}
+		identicalStreak := countTrailingIdenticalRounds(roundHistory)
+		if identicalStreak == warningThreshold {
+			events.Add("lifecycle", map[string]any{
+				"type":       "tool_loop_warning",
+				"detector":   "identical_round",
+				"count":      identicalStreak,
+				"toolNames":  pendingCalls,
+				"stopReason": roundResult.StopReason,
+			})
+		}
+		if identicalStreak >= criticalThreshold {
+			if config.NoProgressLoopError != nil {
+				return core.AgentRunResult{}, config.NoProgressLoopError("identical_round", identicalStreak)
+			}
+			return core.AgentRunResult{}, fmt.Errorf("tool loop detected: identical tool round repeated %d times without progress", identicalStreak)
+		}
+		pingPongStreak := countTrailingPingPongRounds(roundHistory)
+		if pingPongStreak == warningThreshold {
+			events.Add("lifecycle", map[string]any{
+				"type":       "tool_loop_warning",
+				"detector":   "ping_pong_round",
+				"count":      pingPongStreak,
+				"toolNames":  pendingCalls,
+				"stopReason": roundResult.StopReason,
+			})
+		}
+		if pingPongStreak >= criticalThreshold {
+			if config.NoProgressLoopError != nil {
+				return core.AgentRunResult{}, config.NoProgressLoopError("ping_pong_round", pingPongStreak)
+			}
+			return core.AgentRunResult{}, fmt.Errorf("tool loop detected: alternating tool rounds repeated %d times without progress", pingPongStreak)
 		}
 
 		if runCtx.RunState != nil && runCtx.RunState.Yielded {
@@ -254,11 +394,6 @@ func runStandardModelToolLoop[S any](
 			}, nil
 		}
 	}
-
-	if config.LoopExceededError != nil {
-		return core.AgentRunResult{}, config.LoopExceededError(config.MaxRounds)
-	}
-	return core.AgentRunResult{}, fmt.Errorf("tool loop exceeded max rounds (%d)", config.MaxRounds)
 }
 
 func resolveToolLoopFinalPayload(finalText string, accumulatedMediaURLs []string, lastVisibleToolPayload core.ReplyPayload) (core.ReplyPayload, bool) {

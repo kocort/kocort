@@ -221,10 +221,23 @@ func BuildConfiguredAgentIdentity(
 	}
 	if heartbeatCfg != nil {
 		identity.HeartbeatEvery = strings.TrimSpace(heartbeatCfg.Every)
+		identity.HeartbeatSession = strings.TrimSpace(heartbeatCfg.Session)
 		identity.HeartbeatPrompt = strings.TrimSpace(heartbeatCfg.Prompt)
 		identity.HeartbeatTarget = strings.TrimSpace(heartbeatCfg.Target)
+		identity.HeartbeatDirectPolicy = strings.TrimSpace(heartbeatCfg.DirectPolicy)
+		identity.HeartbeatTo = strings.TrimSpace(heartbeatCfg.To)
+		identity.HeartbeatAccountID = strings.TrimSpace(heartbeatCfg.AccountID)
 		identity.HeartbeatModel = strings.TrimSpace(heartbeatCfg.Model)
 		identity.HeartbeatAckMaxChars = heartbeatCfg.AckMaxChars
+		identity.HeartbeatSuppressToolErr = heartbeatCfg.SuppressToolErr != nil && *heartbeatCfg.SuppressToolErr
+		identity.HeartbeatLightContext = heartbeatCfg.LightContext != nil && *heartbeatCfg.LightContext
+		identity.HeartbeatIsolatedSession = heartbeatCfg.IsolatedSession != nil && *heartbeatCfg.IsolatedSession
+		identity.HeartbeatIncludeReasoning = heartbeatCfg.IncludeReasoning != nil && *heartbeatCfg.IncludeReasoning
+		if heartbeatCfg.ActiveHours != nil {
+			identity.HeartbeatActiveHoursStart = strings.TrimSpace(heartbeatCfg.ActiveHours.Start)
+			identity.HeartbeatActiveHoursEnd = strings.TrimSpace(heartbeatCfg.ActiveHours.End)
+			identity.HeartbeatActiveHoursTimezone = strings.TrimSpace(heartbeatCfg.ActiveHours.Timezone)
+		}
 	}
 	if compactionCfg != nil {
 		identity.CompactionReserveTokensFloor = compactionCfg.ReserveTokensFloor

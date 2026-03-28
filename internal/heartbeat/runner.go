@@ -10,24 +10,28 @@ import (
 	"github.com/kocort/kocort/internal/session"
 )
 
-// HeartbeatRuntime abstracts the runtime methods needed by HeartbeatRunner,
-// allowing the runner to live outside the runtime package.
 type HeartbeatRuntime interface {
 	RunHeartbeatTurn(ctx context.Context, req HeartbeatWakeRequest) (HeartbeatRunResult, error)
 	IdentitySnapshot() []core.AgentIdentity
-	// RunDiskBudgetSweep enforces the session disk budget.  Implementations
-	// that do not support disk budget enforcement may no-op.
 	RunDiskBudgetSweep()
 }
 
+type heartbeatAgentState struct {
+	Identity  core.AgentIdentity
+	Interval  time.Duration
+	LastRunAt time.Time
+	NextDueAt time.Time
+}
+
 type HeartbeatRunner struct {
-	runtime       HeartbeatRuntime
-	wake          *HeartbeatWakeBus
-	mu            sync.Mutex
-	ticker        *time.Ticker
-	stop          chan struct{}
-	lastRun       map[string]time.Time
-	lastBudget    time.Time // last disk-budget sweep time
+	runtime    HeartbeatRuntime
+	wake       *HeartbeatWakeBus
+	mu         sync.Mutex
+	stop       chan struct{}
+	stopped    bool
+	timer      *time.Timer
+	agents     map[string]heartbeatAgentState
+	lastBudget time.Time
 }
 
 func NewHeartbeatRunner(rt HeartbeatRuntime) *HeartbeatRunner {
@@ -35,7 +39,7 @@ func NewHeartbeatRunner(rt HeartbeatRuntime) *HeartbeatRunner {
 		runtime: rt,
 		wake:    NewHeartbeatWakeBus(),
 		stop:    make(chan struct{}),
-		lastRun: map[string]time.Time{},
+		agents:  map[string]heartbeatAgentState{},
 	}
 	r.wake.SetHandler(func(ctx context.Context, req HeartbeatWakeRequest) HeartbeatRunResult {
 		return r.RunOnce(ctx, req)
@@ -48,22 +52,13 @@ func (r *HeartbeatRunner) Start() {
 		return
 	}
 	r.mu.Lock()
-	if r.ticker != nil {
-		r.mu.Unlock()
-		return
+	defer r.mu.Unlock()
+	if r.stopped {
+		r.stop = make(chan struct{})
+		r.stopped = false
 	}
-	r.ticker = time.NewTicker(time.Minute)
-	r.mu.Unlock()
-	go func() {
-		for {
-			select {
-			case <-r.stop:
-				return
-			case <-r.ticker.C:
-				r.RunIntervals()
-			}
-		}
-	}()
+	r.refreshLocked(time.Now().UTC())
+	r.scheduleNextLocked()
 }
 
 func (r *HeartbeatRunner) Stop() {
@@ -72,16 +67,15 @@ func (r *HeartbeatRunner) Stop() {
 	}
 	r.wake.Stop()
 	r.mu.Lock()
-	if r.ticker != nil {
-		r.ticker.Stop()
-		r.ticker = nil
+	defer r.mu.Unlock()
+	if r.timer != nil {
+		r.timer.Stop()
+		r.timer = nil
 	}
-	select {
-	case <-r.stop:
-	default:
+	if !r.stopped {
 		close(r.stop)
+		r.stopped = true
 	}
-	r.mu.Unlock()
 }
 
 func (r *HeartbeatRunner) RequestNow(req HeartbeatWakeRequest) {
@@ -92,40 +86,13 @@ func (r *HeartbeatRunner) RequestNow(req HeartbeatWakeRequest) {
 }
 
 func (r *HeartbeatRunner) RunIntervals() {
-	if r == nil || r.runtime == nil {
+	if r == nil {
 		return
 	}
-	now := time.Now().UTC()
-	for _, identity := range r.runtime.IdentitySnapshot() {
-		every := strings.TrimSpace(identity.HeartbeatEvery)
-		if every == "" {
-			continue
-		}
-		d, err := time.ParseDuration(every)
-		if err != nil || d <= 0 {
-			continue
-		}
-		r.mu.Lock()
-		last := r.lastRun[identity.ID]
-		if !last.IsZero() && now.Sub(last) < d {
-			r.mu.Unlock()
-			continue
-		}
-		r.mu.Unlock()
-		r.RequestNow(HeartbeatWakeRequest{Reason: "interval", AgentID: identity.ID})
-	}
-
-	// Disk-budget sweep — throttled to once every 10 minutes.
-	const budgetInterval = 10 * time.Minute
 	r.mu.Lock()
-	runBudget := r.lastBudget.IsZero() || now.Sub(r.lastBudget) >= budgetInterval
-	if runBudget {
-		r.lastBudget = now
-	}
+	r.refreshLocked(time.Now().UTC())
+	r.scheduleNextLocked()
 	r.mu.Unlock()
-	if runBudget {
-		r.runtime.RunDiskBudgetSweep()
-	}
 }
 
 func (r *HeartbeatRunner) RunOnce(ctx context.Context, req HeartbeatWakeRequest) HeartbeatRunResult {
@@ -140,9 +107,118 @@ func (r *HeartbeatRunner) RunOnce(ctx context.Context, req HeartbeatWakeRequest)
 	}
 	if result.Status == "ran" && strings.TrimSpace(req.AgentID) != "" {
 		r.mu.Lock()
-		r.lastRun[session.NormalizeAgentID(req.AgentID)] = time.Now().UTC()
+		agentID := session.NormalizeAgentID(req.AgentID)
+		state, ok := r.agents[agentID]
+		if ok {
+			state.LastRunAt = started
+			state.NextDueAt = started.Add(state.Interval)
+			r.agents[agentID] = state
+			r.scheduleNextLocked()
+		}
 		r.mu.Unlock()
 	}
 	result.Duration = duration
 	return result
+}
+
+func (r *HeartbeatRunner) refreshLocked(now time.Time) {
+	if r.runtime == nil {
+		return
+	}
+	previous := r.agents
+	next := make(map[string]heartbeatAgentState)
+	for _, identity := range r.runtime.IdentitySnapshot() {
+		agentID := session.NormalizeAgentID(identity.ID)
+		if agentID == "" {
+			continue
+		}
+		every := strings.TrimSpace(identity.HeartbeatEvery)
+		if every == "" {
+			continue
+		}
+		interval, err := time.ParseDuration(every)
+		if err != nil || interval <= 0 {
+			continue
+		}
+		state := heartbeatAgentState{
+			Identity: identity,
+			Interval: interval,
+		}
+		if prev, ok := previous[agentID]; ok {
+			state.LastRunAt = prev.LastRunAt
+			if prev.Interval == interval && prev.NextDueAt.After(now) {
+				state.NextDueAt = prev.NextDueAt
+			} else if !prev.LastRunAt.IsZero() {
+				state.NextDueAt = prev.LastRunAt.Add(interval)
+			}
+		}
+		if state.NextDueAt.IsZero() || !state.NextDueAt.After(now) {
+			state.NextDueAt = now.Add(interval)
+		}
+		next[agentID] = state
+	}
+	r.agents = next
+
+	const budgetInterval = 10 * time.Minute
+	if r.lastBudget.IsZero() || now.Sub(r.lastBudget) >= budgetInterval {
+		r.lastBudget = now
+		go r.runtime.RunDiskBudgetSweep()
+	}
+}
+
+func (r *HeartbeatRunner) scheduleNextLocked() {
+	if r.stopped {
+		return
+	}
+	if r.timer != nil {
+		r.timer.Stop()
+		r.timer = nil
+	}
+	if len(r.agents) == 0 {
+		return
+	}
+	var nextDue time.Time
+	for _, state := range r.agents {
+		if nextDue.IsZero() || state.NextDueAt.Before(nextDue) {
+			nextDue = state.NextDueAt
+		}
+	}
+	if nextDue.IsZero() {
+		return
+	}
+	delay := time.Until(nextDue)
+	if delay < 0 {
+		delay = 0
+	}
+	r.timer = time.AfterFunc(delay, func() {
+		r.tick()
+	})
+}
+
+func (r *HeartbeatRunner) tick() {
+	r.mu.Lock()
+	if r.stopped {
+		r.mu.Unlock()
+		return
+	}
+	now := time.Now().UTC()
+	r.refreshLocked(now)
+	due := make([]heartbeatAgentState, 0, len(r.agents))
+	for id, state := range r.agents {
+		if !state.NextDueAt.After(now) {
+			state.LastRunAt = now
+			state.NextDueAt = now.Add(state.Interval)
+			r.agents[id] = state
+			due = append(due, state)
+		}
+	}
+	r.scheduleNextLocked()
+	r.mu.Unlock()
+
+	for _, state := range due {
+		r.RequestNow(HeartbeatWakeRequest{
+			Reason:  "interval",
+			AgentID: state.Identity.ID,
+		})
+	}
 }
