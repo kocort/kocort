@@ -62,6 +62,9 @@ function entryToDraft(id: string, entry?: ChannelEntry, schema?: ChannelDriverSc
     // 优先从account中取值，然后config，最后entry根字段
     if (field.group === 'account' && account[key] !== undefined) {
       value = String(account[key]);
+    } else if (account[key] !== undefined && entry.config?.[key] === undefined) {
+      // Older onboarding flows stored some fields in the default account.
+      value = String(account[key]);
     } else if (entry.config?.[key] !== undefined) {
       value = String(entry.config[key]);
     } else if (key === 'defaultTo' && entry.defaultTo) {
@@ -189,6 +192,30 @@ function getFieldOptions(
       option.label
     ),
   }));
+}
+
+function formatChannelDetailValue(field: ChannelConfigField, value: unknown): string {
+  if (value === undefined || value === null || value === '') {
+    return '';
+  }
+
+  if (field.type === 'checkbox') {
+    return '';
+  }
+
+  const text = String(value).trim();
+  if (!text) {
+    return '';
+  }
+
+  if (field.key.toLowerCase().includes('token') || field.type === 'password') {
+    if (text.length <= 8) {
+      return '***';
+    }
+    return `${text.slice(0, 4)}...${text.slice(-4)}`;
+  }
+
+  return text.substring(0, 20);
 }
 
 // 动态字段渲染组件
@@ -404,10 +431,19 @@ export function ChannelsView() {
         let detail = entry.defaultTo || t('channels.notConfigured');
         if (schema) {
           const displayFields = schema.fields.filter((f) => f.group === 'account' || f.key === 'defaultTo');
-          if (displayFields.length > 0) {
-            const values = displayFields.map((f) => {
-              const val = account[f.key] || entry.config?.[f.key] || entry.defaultTo;
-              return val ? String(val).substring(0, 20) : '';
+          const fallbackFields = schema.fields.filter((field) => {
+            if (displayFields.some((displayField) => displayField.key === field.key)) {
+              return false;
+            }
+            const candidate = account[field.key] ?? entry.config?.[field.key];
+            return formatChannelDetailValue(field, candidate) !== '';
+          });
+          const fieldsToShow = displayFields.length > 0 ? displayFields : fallbackFields;
+
+          if (fieldsToShow.length > 0) {
+            const values = fieldsToShow.map((f) => {
+              const val = account[f.key] ?? entry.config?.[f.key] ?? entry.defaultTo;
+              return formatChannelDetailValue(f, val);
             }).filter(Boolean);
             detail = values.join(' · ') || t('channels.notConfigured');
           }

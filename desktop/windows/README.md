@@ -8,6 +8,7 @@
 - 菜单项：`打开管理端` / `重启服务` / `退出`
 - 默认打开地址：`http://127.0.0.1:18789`
 - 使用 `-H windowsgui` 隐藏控制台窗口
+- 支持 `--debug` 调试构建，保留控制台窗口以便查看 `stderr` 日志
 
 ## Prerequisites
 
@@ -21,6 +22,12 @@
 
 ```bash
 ./scripts/build-desktop.sh --windows
+```
+
+如需调试构建并保留控制台窗口：
+
+```bash
+./scripts/build-desktop.sh --windows --debug
 ```
 
 如需构建 ARM64：
@@ -37,6 +44,14 @@
 $env:GOOS = "windows"
 $env:GOARCH = "amd64"
 go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/windows_amd64/kocort-desktop.exe ./cmd/kocort-desktop
+```
+
+调试构建可去掉 `-H windowsgui`：
+
+```powershell
+$env:GOOS = "windows"
+$env:GOARCH = "amd64"
+go build -trimpath -ldflags "-s -w" -o dist/windows_amd64/kocort-desktop.exe ./cmd/kocort-desktop
 ```
 
 ## Tray Icon
@@ -80,5 +95,6 @@ go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/windows_amd64/kocort-d
 ## Notes
 
 - `./scripts/build-desktop.sh --windows` 会自动准备托盘图标、生成 `desktop/icons/icon.ico`（如需要）并编译 Windows 资源
+- `./scripts/build-desktop.sh --windows --debug` 会额外保留控制台窗口，方便查看日志输出
 - 托盘图标与 EXE 资源图标是两套机制：前者由 `go:embed` 提供，后者由 `.syso` 提供
 - Windows 桌面版本当前不依赖 Swift 外壳，直接运行 Go 桌面入口即可

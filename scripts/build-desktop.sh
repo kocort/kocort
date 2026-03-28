@@ -47,6 +47,7 @@ TOOL_BINS_NAMES=(rg fd)
 # Values: "" (skip), "driver" (driver only ~50MB), "chromium" (driver+chromium ~200MB)
 WITH_BROWSER="${KOCORT_WITH_BROWSER:-}"
 WEB_EMBED_READY=0
+DEBUG_BUILD="${KOCORT_DESKTOP_DEBUG:-0}"
 
 # ---------- signing ----------
 # Set --no-sign or KOCORT_NO_SIGN=1 to produce an unsigned .app bundle.
@@ -444,7 +445,11 @@ resolve_windows_compilers() {
 # ---------- Windows build ----------
 build_windows() {
     local arch="${1:-amd64}"
-    info "Building Windows desktop (tray) — windows/$arch"
+    local build_mode="release"
+    if [ "$DEBUG_BUILD" = "1" ]; then
+        build_mode="debug"
+    fi
+    info "Building Windows desktop (tray) — windows/$arch ($build_mode)"
     build_web_embed
 
     local out_dir="$DIST_DIR/windows_${arch}"
@@ -452,7 +457,10 @@ build_windows() {
     mkdir -p "$out_dir"
 
     local ldflags
-    ldflags="$(build_ldflags) -H windowsgui"
+    ldflags="$(build_ldflags)"
+    if [ "$DEBUG_BUILD" != "1" ]; then
+        ldflags="$ldflags -H windowsgui"
+    fi
 
     ensure_tray_icon_windows
     compile_windows_resources "$arch"
@@ -987,6 +995,7 @@ Options:
     --linux-arm       Build Linux tray binary (arm64)
   --windows         Build Windows tray .exe (amd64)
   --windows-arm     Build Windows tray .exe (arm64)
+    --debug           Debug build. On Windows, do not pass -H windowsgui
     --macos           Build macOS .app bundle (native arch)
     --macos-universal Build macOS .app bundle (universal)
   --macos-sign      Build + code sign macOS .app
@@ -1001,6 +1010,7 @@ Options:
 Environment:
   KOCORT_VERSION              Version string (default: git describe)
   KOCORT_WITH_BROWSER         Bundle browser driver: "driver" or "chromium"
+    KOCORT_DESKTOP_DEBUG        Set to "1" to enable debug build behavior
   KOCORT_BUNDLE_ID            macOS bundle identifier (default: com.kocort.app)
   KOCORT_CODESIGN_IDENTITY    macOS signing identity (default: ad-hoc "-")
   KOCORT_NO_SIGN              Set to "1" to skip signing (same as --no-sign)
@@ -1015,6 +1025,9 @@ Examples:
 
   # Build Windows .exe with tray icon
   ./scripts/build-desktop.sh --windows
+
+    # Build Windows debug .exe with console window
+    ./scripts/build-desktop.sh --windows --debug
 
   # Build macOS .app bundle
   ./scripts/build-desktop.sh --macos
@@ -1047,6 +1060,7 @@ main() {
             --linux-arm|--linux-arm64) action="linux-arm"; shift ;;
             --windows)         action="windows";       shift ;;
             --windows-arm)     action="windows-arm";   shift ;;
+            --debug)           DEBUG_BUILD=1;           shift ;;
             --macos)           action="macos";         shift ;;
             --macos-amd64)     action="macos-amd64";   shift ;;
             --macos-arm64)     action="macos-arm64";   shift ;;

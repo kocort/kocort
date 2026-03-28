@@ -525,9 +525,10 @@ func TestGatewayEmbeddedStaticAssetsServeAndFallback(t *testing.T) {
 	server := NewServer(testGatewayRuntime(t, backendFunc(func(ctx context.Context, runCtx rtypes.AgentRunContext) (core.AgentRunResult, error) {
 		return core.AgentRunResult{}, nil
 	})), config.GatewayConfig{})
+	distFS := resolveEmbeddedStaticFS()
 
 	var assetPath string
-	err := fs.WalkDir(resolveEmbeddedStaticFS(), ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(distFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -552,6 +553,20 @@ func TestGatewayEmbeddedStaticAssetsServeAndFallback(t *testing.T) {
 	server.Handler().ServeHTTP(assetRes, assetReq)
 	if assetRes.Code != http.StatusOK {
 		t.Fatalf("asset status = %d body=%s", assetRes.Code, assetRes.Body.String())
+	}
+
+	routeHTML, err := fs.ReadFile(distFS, "chat.html")
+	if err != nil {
+		t.Fatalf("read embedded chat page: %v", err)
+	}
+	routeReq := httptest.NewRequest(http.MethodGet, "/chat", nil)
+	routeRes := httptest.NewRecorder()
+	server.Handler().ServeHTTP(routeRes, routeReq)
+	if routeRes.Code != http.StatusOK {
+		t.Fatalf("route alias status = %d body=%s", routeRes.Code, routeRes.Body.String())
+	}
+	if routeRes.Body.String() != string(routeHTML) {
+		t.Fatalf("expected /chat to serve embedded chat.html")
 	}
 
 	spaReq := httptest.NewRequest(http.MethodGet, "/chat/session/demo", nil)

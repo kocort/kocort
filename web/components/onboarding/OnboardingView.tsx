@@ -279,11 +279,8 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
         agent: 'main',
         config: {
           driver: 'weixin',
+          token: channelToken,
           ...(channelBaseUrl ? { baseUrl: channelBaseUrl } : {}),
-        },
-        defaultAccount: 'main',
-        accounts: {
-          main: { token: channelToken },
         },
       };
       await apiPost('/api/integrations/channels/save', {
