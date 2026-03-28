@@ -101,8 +101,12 @@ func (s *Server) serveEmbeddedFallback(distFS fs.FS, fileServer http.Handler) gi
 
 		requestPath := strings.TrimPrefix(path.Clean(c.Request.URL.Path), "/")
 		if requestPath != "" && requestPath != "." {
-			if _, err := fs.Stat(distFS, requestPath); err == nil {
-				http.StripPrefix("/", fileServer).ServeHTTP(c.Writer, c.Request)
+			if resolved, ok := resolveEmbeddedRequestPath(distFS, requestPath); ok {
+				if resolved == requestPath {
+					http.StripPrefix("/", fileServer).ServeHTTP(c.Writer, c.Request)
+					return
+				}
+				serveEmbeddedFile(c, distFS, resolved)
 				return
 			}
 			if filepath.Ext(requestPath) != "" {
@@ -113,6 +117,21 @@ func (s *Server) serveEmbeddedFallback(distFS fs.FS, fileServer http.Handler) gi
 
 		serveEmbeddedFile(c, distFS, "index.html")
 	}
+}
+
+func resolveEmbeddedRequestPath(distFS fs.FS, requestPath string) (string, bool) {
+	candidates := []string{requestPath}
+	if filepath.Ext(requestPath) == "" {
+		candidates = append(candidates, requestPath+".html")
+	}
+	for _, candidate := range candidates {
+		stat, err := fs.Stat(distFS, candidate)
+		if err != nil || stat.IsDir() {
+			continue
+		}
+		return candidate, true
+	}
+	return "", false
 }
 
 func serveEmbeddedFile(c *gin.Context, distFS fs.FS, name string) {
