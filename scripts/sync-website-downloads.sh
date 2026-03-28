@@ -9,6 +9,8 @@ WEBSITE_REPO="${WEBSITE_REPO:-kocort/kocort.github.io}"
 WEBSITE_BRANCH="${WEBSITE_BRANCH:-main}"
 WEBSITE_PROXY_PREFIX_ZH="${WEBSITE_PROXY_PREFIX_ZH:-https://g.cource.com/}"
 WEBSITE_REPO_DIR="${WEBSITE_REPO_DIR:-}"
+WEBSITE_GIT_USER_NAME="${WEBSITE_GIT_USER_NAME:-github-actions[bot]}"
+WEBSITE_GIT_USER_EMAIL="${WEBSITE_GIT_USER_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}"
 
 info() {
   printf '==> %s\n' "$*"
@@ -46,6 +48,13 @@ clone_or_resolve_site_repo() {
   printf '%s\n' "$tmp_dir/site"
 }
 
+configure_git_identity() {
+  local repo_dir="$1"
+
+  git -C "$repo_dir" config user.name "$WEBSITE_GIT_USER_NAME"
+  git -C "$repo_dir" config user.email "$WEBSITE_GIT_USER_EMAIL"
+}
+
 main() {
   require_cmd gh
   require_cmd node
@@ -62,6 +71,8 @@ main() {
   local site_dir
   site_dir="$(clone_or_resolve_site_repo)"
   [[ -d "$site_dir/.git" ]] || fail "Website repo not found at $site_dir"
+
+  configure_git_identity "$site_dir"
 
   local output_file="$site_dir/downloads.js"
 
