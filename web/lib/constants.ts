@@ -1,3 +1,6 @@
+/** Canonical product name used across the web UI */
+export const APP_NAME = 'Kocort';
+
 /** Default session key for webchat communication */
 export const DEFAULT_SESSION_KEY = 'agent:main:main';
 

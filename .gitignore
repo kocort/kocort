@@ -22,3 +22,4 @@ desktop/macos/KocortApp/.build/
 desktop/macos/KocortApp/.swiftpm/
 .DS_Store
 .kocort/
+cmd/kocort-desktop/kocort_windows_amd64.syso
