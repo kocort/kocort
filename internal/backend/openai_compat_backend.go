@@ -102,12 +102,6 @@ type OpenAICompatBackend struct {
 	AuthProfiles         *AuthProfileStore
 }
 
-// Original Kocort does not rely on a tiny fixed tool-round cap in the main
-// embedded/client-tool path; the practical guard is loop detection plus the
-// run-level timeout/watchdog. Keep a high circuit-breaker-style fallback here
-// instead of an aggressive low cap.
-const defaultStreamingToolLoopMaxRounds = 30
-
 // NewOpenAICompatBackend creates a new OpenAI-compatible backend.
 func NewOpenAICompatBackend(cfg config.AppConfig, env *infra.EnvironmentRuntime, dc *infra.DynamicHTTPClient) *OpenAICompatBackend {
 	return &OpenAICompatBackend{
@@ -223,7 +217,7 @@ func (b *OpenAICompatBackend) runStreamingToolLoop(
 			adapters:     ResolveStreamAdapters(policy),
 			client:       client,
 		},
-		MaxRounds:    defaultStreamingToolLoopMaxRounds,
+		MaxRounds:    0,
 		BackendKind:  "embedded",
 		ProviderKind: "openai-completions",
 		ExecuteRound: func(ctx context.Context, cancel context.CancelFunc, state *openAIModelToolLoopState, runCtx rtypes.AgentRunContext, events *agentEventBuilder) (StandardModelRoundResult, error) {
@@ -281,8 +275,8 @@ func (b *OpenAICompatBackend) runStreamingToolLoop(
 		MissingToolCallsError: func(_ string) error {
 			return fmt.Errorf("provider returned finish_reason=tool_calls with no tool calls")
 		},
-		LoopExceededError: func(maxRounds int) error {
-			return fmt.Errorf("tool loop exceeded max rounds (%d)", maxRounds)
+		NoProgressLoopError: func(detector string, repeatedRounds int) error {
+			return fmt.Errorf("tool loop detected by %s after %d repeated no-progress rounds", detector, repeatedRounds)
 		},
 		RecordRoundError: func(ctx context.Context, runCtx rtypes.AgentRunContext, err error) {
 			event.RecordModelEvent(ctx, runCtx.Runtime.GetAudit(), nil, runCtx.Identity.ID, runCtx.Session.SessionKey, runCtx.Request.RunID, "request_failed", "error", "openai-compatible request failed", map[string]any{

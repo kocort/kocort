@@ -42,6 +42,9 @@ type SessionEntry struct {
 	MemoryFlushCompactionCount int               `json:"memoryFlushCompactionCount,omitempty"`
 	ResetReason                string            `json:"resetReason,omitempty"`
 	LastActivityReason         string            `json:"lastActivityReason,omitempty"`
+	LastHeartbeatText          string            `json:"lastHeartbeatText,omitempty"`
+	LastHeartbeatSentAt        time.Time         `json:"lastHeartbeatSentAt,omitempty"`
+	LastChatType               ChatType          `json:"lastChatType,omitempty"`
 	ForkedFromParent           bool              `json:"forkedFromParent,omitempty"`
 }
 

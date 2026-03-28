@@ -92,6 +92,10 @@ func (p *AgentPipeline) loadContext(ctx context.Context, state *PipelineState) e
 		return err
 	}
 	history = backend.SanitizeTranscriptForOpenAI(history)
+	lightHeartbeat := req.IsHeartbeat && req.HeartbeatLightContext
+	if lightHeartbeat {
+		history = nil
+	}
 	state.Transcript = history
 
 	// ---- Collect internal events ----
@@ -110,6 +114,10 @@ func (p *AgentPipeline) loadContext(ctx context.Context, state *PipelineState) e
 
 	// ---- Load context files ----
 	contextFiles, bootstrapWarnings := memorypkg.LoadPromptContextFiles(workspaceDir, req.ChatType, req.IsHeartbeat)
+	if lightHeartbeat {
+		contextFiles = nil
+		bootstrapWarnings = nil
+	}
 	state.ContextFiles = contextFiles
 	state.BootstrapWarnings = bootstrapWarnings
 
@@ -123,6 +131,9 @@ func (p *AgentPipeline) loadContext(ctx context.Context, state *PipelineState) e
 	memoryHits, err := r.Memory.Recall(ctx, *identity, sess, req.Message)
 	if err != nil {
 		return err
+	}
+	if lightHeartbeat {
+		memoryHits = nil
 	}
 	state.MemoryHits = memoryHits
 

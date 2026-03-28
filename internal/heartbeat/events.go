@@ -1,44 +1,71 @@
 package heartbeat
 
-import "strings"
+import (
+	"sync"
+	"time"
+)
 
-func BuildCronEventPrompt(pendingEvents []string, deliverToUser bool) string {
-	eventText := strings.TrimSpace(strings.Join(pendingEvents, "\n"))
-	if eventText == "" {
-		if !deliverToUser {
-			return "A scheduled cron event was triggered, but no event content was found. Handle this internally and reply HEARTBEAT_OK when nothing needs user-facing follow-up."
-		}
-		return "A scheduled cron event was triggered, but no event content was found. Reply HEARTBEAT_OK."
-	}
-	if !deliverToUser {
-		return "A scheduled reminder has been triggered. The reminder content is:\n\n" +
-			eventText +
-			"\n\nHandle this reminder internally. Do not relay it to the user unless explicitly requested."
-	}
-	return "A scheduled reminder has been triggered. The reminder content is:\n\n" +
-		eventText +
-		"\n\nPlease relay this reminder to the user in a helpful and friendly way."
+type IndicatorType string
+
+const (
+	IndicatorOK    IndicatorType = "ok"
+	IndicatorAlert IndicatorType = "alert"
+	IndicatorError IndicatorType = "error"
+)
+
+type Event struct {
+	Timestamp     time.Time
+	Status        string
+	Reason        string
+	To            string
+	Preview       string
+	Duration      time.Duration
+	HasMedia      bool
+	Channel       string
+	AccountID     string
+	Silent        bool
+	IndicatorType IndicatorType
 }
 
-func BuildExecEventPrompt(deliverToUser bool) string {
-	if !deliverToUser {
-		return "An async command you ran earlier has completed. The result is shown in the system messages above. Handle the result internally. Do not relay it to the user unless explicitly requested."
+var (
+	heartbeatEventsMu   sync.Mutex
+	lastHeartbeatEvent  *Event
+	heartbeatListeners  = map[int]func(Event){}
+	nextHeartbeatListen int
+)
+
+func EmitEvent(evt Event) {
+	heartbeatEventsMu.Lock()
+	defer heartbeatEventsMu.Unlock()
+	copyEvt := evt
+	if copyEvt.Timestamp.IsZero() {
+		copyEvt.Timestamp = time.Now().UTC()
 	}
-	return "An async command you ran earlier has completed. The result is shown in the system messages above. Please relay the command output to the user in a helpful way. If the command succeeded, share the relevant output. If it failed, explain what went wrong."
+	lastHeartbeatEvent = &copyEvt
+	for _, listener := range heartbeatListeners {
+		listener(copyEvt)
+	}
 }
 
-func IsExecCompletionEvent(text string) bool {
-	return strings.Contains(strings.ToLower(strings.TrimSpace(text)), "exec finished")
+func LastEvent() *Event {
+	heartbeatEventsMu.Lock()
+	defer heartbeatEventsMu.Unlock()
+	if lastHeartbeatEvent == nil {
+		return nil
+	}
+	copyEvt := *lastHeartbeatEvent
+	return &copyEvt
 }
 
-func IsCronSystemEvent(text string) bool {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return false
+func OnEvent(listener func(Event)) func() {
+	heartbeatEventsMu.Lock()
+	defer heartbeatEventsMu.Unlock()
+	id := nextHeartbeatListen
+	nextHeartbeatListen++
+	heartbeatListeners[id] = listener
+	return func() {
+		heartbeatEventsMu.Lock()
+		defer heartbeatEventsMu.Unlock()
+		delete(heartbeatListeners, id)
 	}
-	lower := strings.ToLower(trimmed)
-	return !strings.Contains(lower, "heartbeat poll") &&
-		!strings.Contains(lower, "heartbeat wake") &&
-		!strings.HasPrefix(lower, strings.ToLower(HeartbeatToken)) &&
-		!IsExecCompletionEvent(trimmed)
 }

@@ -89,6 +89,7 @@ func PersistRunArtifacts(sessions *session.SessionStore, sess core.SessionResolu
 		LastTo:             req.To,
 		LastAccountID:      req.AccountID,
 		LastThreadID:       req.ThreadID,
+		LastChatType:       req.ChatType,
 		LastActivityReason: "turn",
 		DeliveryContext: &core.DeliveryContext{
 			Channel:   req.Channel,

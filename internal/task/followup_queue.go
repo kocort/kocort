@@ -273,6 +273,16 @@ func (q *FollowupQueue) Depth(queueKey string) int {
 	return len(state.Items)
 }
 
+func (q *FollowupQueue) TotalDepth() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	total := 0
+	for _, state := range q.items {
+		total += len(state.Items)
+	}
+	return total
+}
+
 func (q *FollowupQueue) Clear(queueKey string) int {
 	q.mu.Lock()
 	defer q.mu.Unlock()

@@ -439,17 +439,19 @@ type CapabilityPlugin struct {
 
 // CapabilitiesState represents the capabilities state.
 type CapabilitiesState struct {
-	Skills  core.SkillStatusReport `json:"skills"`
-	Tools   []CapabilityTool       `json:"tools"`
-	Plugins []CapabilityPlugin     `json:"plugins"`
-	Config  config.SkillsConfig    `json:"skillsConfig"`
+	Skills            core.SkillStatusReport `json:"skills"`
+	Tools             []CapabilityTool       `json:"tools"`
+	Plugins           []CapabilityPlugin     `json:"plugins"`
+	Config            config.SkillsConfig    `json:"skillsConfig"`
+	HeartbeatsEnabled bool                   `json:"heartbeatsEnabled"`
 }
 
 // CapabilitiesSaveRequest represents a capabilities save request.
 type CapabilitiesSaveRequest struct {
-	Skills      *config.SkillsConfig  `json:"skills,omitempty"`
-	Plugins     *config.PluginsConfig `json:"plugins,omitempty"`
-	ToolToggles map[string]bool       `json:"toolToggles,omitempty"`
+	Skills            *config.SkillsConfig  `json:"skills,omitempty"`
+	Plugins           *config.PluginsConfig `json:"plugins,omitempty"`
+	ToolToggles       map[string]bool       `json:"toolToggles,omitempty"`
+	HeartbeatsEnabled *bool                 `json:"heartbeatsEnabled,omitempty"`
 }
 
 // SkillInstallRequest represents a skill install request.

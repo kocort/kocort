@@ -370,17 +370,59 @@ func MergeHeartbeatConfig(base *AgentHeartbeatConfig, override *AgentHeartbeatCo
 		if trimmed := strings.TrimSpace(override.Every); trimmed != "" {
 			merged.Every = trimmed
 		}
+		if trimmed := strings.TrimSpace(override.Session); trimmed != "" {
+			merged.Session = trimmed
+		}
 		if trimmed := strings.TrimSpace(override.Prompt); trimmed != "" {
 			merged.Prompt = trimmed
 		}
 		if trimmed := strings.TrimSpace(override.Target); trimmed != "" {
 			merged.Target = trimmed
 		}
+		if trimmed := strings.TrimSpace(override.DirectPolicy); trimmed != "" {
+			merged.DirectPolicy = trimmed
+		}
+		if trimmed := strings.TrimSpace(override.To); trimmed != "" {
+			merged.To = trimmed
+		}
+		if trimmed := strings.TrimSpace(override.AccountID); trimmed != "" {
+			merged.AccountID = trimmed
+		}
 		if trimmed := strings.TrimSpace(override.Model); trimmed != "" {
 			merged.Model = trimmed
 		}
 		if override.AckMaxChars > 0 {
 			merged.AckMaxChars = override.AckMaxChars
+		}
+		if override.SuppressToolErr != nil {
+			value := *override.SuppressToolErr
+			merged.SuppressToolErr = &value
+		}
+		if override.LightContext != nil {
+			value := *override.LightContext
+			merged.LightContext = &value
+		}
+		if override.IsolatedSession != nil {
+			value := *override.IsolatedSession
+			merged.IsolatedSession = &value
+		}
+		if override.IncludeReasoning != nil {
+			value := *override.IncludeReasoning
+			merged.IncludeReasoning = &value
+		}
+		if override.ActiveHours != nil {
+			if merged.ActiveHours == nil {
+				merged.ActiveHours = &AgentHeartbeatActiveHoursConfig{}
+			}
+			if trimmed := strings.TrimSpace(override.ActiveHours.Start); trimmed != "" {
+				merged.ActiveHours.Start = trimmed
+			}
+			if trimmed := strings.TrimSpace(override.ActiveHours.End); trimmed != "" {
+				merged.ActiveHours.End = trimmed
+			}
+			if trimmed := strings.TrimSpace(override.ActiveHours.Timezone); trimmed != "" {
+				merged.ActiveHours.Timezone = trimmed
+			}
 		}
 	}
 	return &merged

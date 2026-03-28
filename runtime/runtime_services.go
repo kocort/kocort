@@ -12,6 +12,7 @@ import (
 	"github.com/kocort/kocort/internal/backend"
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/core"
+	"github.com/kocort/kocort/internal/heartbeat"
 	"github.com/kocort/kocort/internal/infra"
 	"github.com/kocort/kocort/internal/rtypes"
 	sessionpkg "github.com/kocort/kocort/internal/session"
@@ -156,4 +157,21 @@ func (r *Runtime) ActiveRunsTotalCount() int {
 		return 0
 	}
 	return r.ActiveRuns.TotalCount()
+}
+
+func (r *Runtime) HeartbeatsEnabled() bool {
+	return heartbeat.AreHeartbeatsEnabled()
+}
+
+func (r *Runtime) SetHeartbeatsEnabled(enabled bool) {
+	heartbeat.SetHeartbeatsEnabled(enabled)
+	if r == nil || r.Heartbeats == nil {
+		return
+	}
+	if enabled {
+		r.Heartbeats.Start()
+		r.Heartbeats.RunIntervals()
+		return
+	}
+	r.Heartbeats.Stop()
 }

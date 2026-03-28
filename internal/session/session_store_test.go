@@ -146,6 +146,37 @@ func TestResolveForRequestResetsStaleSession(t *testing.T) {
 	}
 }
 
+func TestResolveForRequestForceNewResetsExistingSession(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC()
+	if err := store.Upsert("agent:main:main:heartbeat", core.SessionEntry{
+		SessionID: "sess_old",
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	res, err := store.ResolveForRequest(context.Background(), SessionResolveOptions{
+		AgentID:        "main",
+		SessionKey:     "agent:main:main:heartbeat",
+		Now:            now.Add(time.Minute),
+		ForceNew:       true,
+		ForceNewReason: "heartbeat",
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !res.IsNew {
+		t.Fatal("expected IsNew=true after force-new reset")
+	}
+	if res.SessionID == "sess_old" {
+		t.Fatal("expected a new session ID after force-new reset")
+	}
+	if res.Entry == nil || res.Entry.ResetReason != "heartbeat" {
+		t.Fatalf("expected reset reason heartbeat, got %+v", res.Entry)
+	}
+}
+
 func TestResolveForRequestForksNewThreadSessionFromParent(t *testing.T) {
 	store := newTestStore(t)
 	now := time.Now().UTC()
