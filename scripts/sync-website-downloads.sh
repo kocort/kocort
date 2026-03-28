@@ -25,6 +25,12 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
+configure_git_push_auth() {
+  local repo_dir="$1"
+
+  git -C "$repo_dir" remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${WEBSITE_REPO}.git"
+}
+
 resolve_tag() {
   local provided="${1:-}"
   if [[ -n "$provided" ]]; then
@@ -57,6 +63,7 @@ configure_git_identity() {
 
 main() {
   require_cmd gh
+  require_cmd git
   require_cmd node
 
   local tag
@@ -73,6 +80,7 @@ main() {
   [[ -d "$site_dir/.git" ]] || fail "Website repo not found at $site_dir"
 
   configure_git_identity "$site_dir"
+  configure_git_push_auth "$site_dir"
 
   local output_file="$site_dir/downloads.js"
 
