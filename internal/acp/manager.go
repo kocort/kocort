@@ -52,6 +52,25 @@ type AcpSessionStatus struct {
 	LastError      string                        `json:"lastError,omitempty"`
 }
 
+// AcpSessionResumeInput carries the parameters for re-initializing a persisted ACP session.
+type AcpSessionResumeInput struct {
+	SessionKey string
+	Agent      string
+	Cwd        string
+	Mode       core.AcpRuntimeSessionMode
+	BackendID  string
+	Reason     string
+}
+
+// AcpSessionResumeResult is the outcome of a resume operation.
+type AcpSessionResumeResult struct {
+	SessionKey string                     `json:"sessionKey"`
+	Backend    string                     `json:"backend"`
+	State      string                     `json:"state"`
+	Mode       core.AcpRuntimeSessionMode `json:"mode"`
+	Resumed    bool                       `json:"resumed"`
+}
+
 // ---------------------------------------------------------------------------
 // AcpSessionManager
 // ---------------------------------------------------------------------------
@@ -133,10 +152,11 @@ func (m *AcpSessionManager) InitializeSession(
 		mode = core.AcpSessionModePersistent
 	}
 	handle, err := runtime.EnsureSession(ctx, core.AcpEnsureSessionInput{
-		SessionKey: sessionKey,
-		Agent:      session.NormalizeAgentID(agent),
-		Mode:       mode,
-		Cwd:        strings.TrimSpace(cwd),
+		SessionKey:      sessionKey,
+		Agent:           session.NormalizeAgentID(agent),
+		Mode:            mode,
+		ResumeSessionID: "",
+		Cwd:             strings.TrimSpace(cwd),
 	})
 	if err != nil {
 		return core.AcpRuntimeHandle{}, nil, err
@@ -167,6 +187,54 @@ func (m *AcpSessionManager) InitializeSession(
 		lastUsed: time.Now().UTC(),
 	})
 	return handle, meta, nil
+}
+
+// ResumeSession re-initializes a previously persisted ACP session.
+func (m *AcpSessionManager) ResumeSession(
+	ctx context.Context,
+	store *session.SessionStore,
+	runtime core.AcpRuntime,
+	input AcpSessionResumeInput,
+) (AcpSessionResumeResult, error) {
+	sessionKey := strings.TrimSpace(input.SessionKey)
+	if sessionKey == "" {
+		return AcpSessionResumeResult{}, core.ErrACPSessionKeyRequired
+	}
+	if runtime == nil {
+		return AcpSessionResumeResult{}, core.ErrACPNotConfigured
+	}
+
+	m.clearCached(sessionKey)
+
+	agent := session.NormalizeAgentID(input.Agent)
+	mode := input.Mode
+	if mode == "" {
+		mode = core.AcpSessionModePersistent
+	}
+
+	_, existingMeta, _ := m.ResolveSession(store, sessionKey)
+	if existingMeta != nil {
+		if agent == "" {
+			agent = existingMeta.Agent
+		}
+		if strings.TrimSpace(input.Cwd) == "" {
+			input.Cwd = existingMeta.Cwd
+		}
+	}
+
+	handle, meta, err := m.InitializeSession(ctx, store, runtime, sessionKey, agent, mode, input.Cwd, input.BackendID)
+	if err != nil {
+		return AcpSessionResumeResult{}, err
+	}
+	_ = handle
+
+	return AcpSessionResumeResult{
+		SessionKey: sessionKey,
+		Backend:    meta.Backend,
+		State:      utils.NonEmpty(meta.State, "idle"),
+		Mode:       mode,
+		Resumed:    true,
+	}, nil
 }
 
 // GetSessionStatus returns a full status snapshot for an initialised session.
@@ -428,14 +496,27 @@ func (m *AcpSessionManager) ensureRuntimeHandle(
 		}
 		m.clearCached(sessionKey)
 	}
+	resumeSessionID := utils.NonEmpty(strings.TrimSpace(meta.AgentSessionID), strings.TrimSpace(meta.BackendSessionID))
 	handle, err := runtime.EnsureSession(ctx, core.AcpEnsureSessionInput{
-		SessionKey: sessionKey,
-		Agent:      agent,
-		Mode:       mode,
-		Cwd:        cwd,
+		SessionKey:      sessionKey,
+		Agent:           agent,
+		Mode:            mode,
+		ResumeSessionID: resumeSessionID,
+		Cwd:             cwd,
 	})
 	if err != nil {
-		return core.AcpRuntimeHandle{}, nil, err
+		if resumeSessionID == "" {
+			return core.AcpRuntimeHandle{}, nil, err
+		}
+		handle, err = runtime.EnsureSession(ctx, core.AcpEnsureSessionInput{
+			SessionKey: sessionKey,
+			Agent:      agent,
+			Mode:       mode,
+			Cwd:        cwd,
+		})
+		if err != nil {
+			return core.AcpRuntimeHandle{}, nil, err
+		}
 	}
 	nextMeta := *meta
 	nextMeta.Backend = utils.NonEmpty(strings.TrimSpace(handle.Backend), nextMeta.Backend)

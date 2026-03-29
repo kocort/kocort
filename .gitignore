@@ -1,4 +1,5 @@
 gocache
+.codex*
 .gocache
 .gocache*
 kocort.exe
@@ -24,3 +25,4 @@ desktop/macos/KocortApp/.swiftpm/
 .kocort/
 cmd/kocort-desktop/kocort_windows_amd64.syso
 docs/promo
+full_test*

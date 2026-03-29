@@ -202,8 +202,22 @@ func (m *Manager) resolvePage(ctx context.Context, profileName string, req Targe
 		}
 	}
 	if page == nil && len(pages) > 0 {
-		page = pages[len(pages)-1]
-		targetID = pageTargetID(page)
+		// Prefer falling back to an AI-owned tab over a random user tab.
+		m.mu.Lock()
+		for i := len(pages) - 1; i >= 0; i-- {
+			tid := pageTargetID(pages[i])
+			if m.isOwnedTabLocked(req.SessionKey, tid) {
+				page = pages[i]
+				targetID = tid
+				break
+			}
+		}
+		m.mu.Unlock()
+		// If no owned tab found, use the last page as before.
+		if page == nil {
+			page = pages[len(pages)-1]
+			targetID = pageTargetID(page)
+		}
 	}
 	if page == nil {
 		return nil, state, "", errors.New("no browser tab selected")
@@ -229,8 +243,10 @@ func (m *Manager) tabsLocked(state *profileState) []map[string]any {
 func (m *Manager) statusResultLocked(profileName string, state *profileState) map[string]any {
 	running := state != nil && state.browser != nil && state.context != nil && state.browser.IsConnected()
 	tabCount := 0
+	headless := m.headless
 	if running {
 		tabCount = len(state.context.Pages())
+		headless = state.headless
 	}
 	result := map[string]any{
 		"ok":                     true,
@@ -249,7 +265,7 @@ func (m *Manager) statusResultLocked(profileName string, state *profileState) ma
 		"userDataDir":            m.profileUserDataDir(profileName),
 		"persistSession":         m.persistSession,
 		"color":                  "blue",
-		"headless":               m.headless,
+		"headless":               headless,
 		"noSandbox":              false,
 		"executablePath":         "",
 		"attachOnly":             false,
@@ -342,7 +358,7 @@ func (m *Manager) setActiveLocked(sessionKey, profileName, targetID string) {
 	key := normalizeSessionKey(sessionKey)
 	state := m.sessions[key]
 	if state == nil {
-		state = &sessionState{ActiveByProfile: map[string]string{}, TabsByProfile: map[string][]string{}}
+		state = &sessionState{ActiveByProfile: map[string]string{}, TabsByProfile: map[string][]string{}, OwnedTabs: map[string]struct{}{}}
 		m.sessions[key] = state
 	}
 	state.ActiveByProfile[profileName] = strings.TrimSpace(targetID)
@@ -446,6 +462,55 @@ func (m *Manager) untrackTabLocked(state *sessionState, profileName, targetID st
 		return
 	}
 	state.TabsByProfile[profileName] = next
+}
+
+// markOwnedTabLocked records a tab as AI-created (owned by this session).
+func (m *Manager) markOwnedTabLocked(sessionKey, targetID string) {
+	targetID = strings.TrimSpace(targetID)
+	if targetID == "" {
+		return
+	}
+	key := normalizeSessionKey(sessionKey)
+	state := m.sessions[key]
+	if state == nil {
+		state = &sessionState{
+			ActiveByProfile: map[string]string{},
+			TabsByProfile:   map[string][]string{},
+			OwnedTabs:       map[string]struct{}{},
+		}
+		m.sessions[key] = state
+	}
+	if state.OwnedTabs == nil {
+		state.OwnedTabs = map[string]struct{}{}
+	}
+	state.OwnedTabs[targetID] = struct{}{}
+}
+
+// isOwnedTabLocked checks if a tab was created by the AI in this session.
+func (m *Manager) isOwnedTabLocked(sessionKey, targetID string) bool {
+	targetID = strings.TrimSpace(targetID)
+	if targetID == "" {
+		return false
+	}
+	state := m.sessions[normalizeSessionKey(sessionKey)]
+	if state == nil || state.OwnedTabs == nil {
+		return false
+	}
+	_, ok := state.OwnedTabs[targetID]
+	return ok
+}
+
+// unmarkOwnedTabLocked removes a tab from the AI-owned set.
+func (m *Manager) unmarkOwnedTabLocked(sessionKey, targetID string) {
+	targetID = strings.TrimSpace(targetID)
+	if targetID == "" {
+		return
+	}
+	state := m.sessions[normalizeSessionKey(sessionKey)]
+	if state == nil || state.OwnedTabs == nil {
+		return
+	}
+	delete(state.OwnedTabs, targetID)
 }
 
 func (m *Manager) lastTrackedTargetLocked(sessionKey, profileName string, ctx playwright.BrowserContext) string {

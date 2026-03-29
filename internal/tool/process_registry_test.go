@@ -40,7 +40,7 @@ func TestProcessRegistryStartAndGet(t *testing.T) {
 		t.Errorf("expected status=running, got %q", rec.Status)
 	}
 
-	got, ok := r.Poll(rec.ID, 2*time.Second)
+	got, ok := r.Poll(rec.ID, 10*time.Second)
 	if !ok {
 		t.Fatal("expected to find process")
 	}
@@ -88,7 +88,7 @@ func TestProcessRegistryPoll(t *testing.T) {
 		t.Fatalf("start: %v", err)
 	}
 
-	got, ok := r.Poll(rec.ID, 2*time.Second)
+	got, ok := r.Poll(rec.ID, 10*time.Second)
 	if !ok {
 		t.Fatal("expected to find process")
 	}

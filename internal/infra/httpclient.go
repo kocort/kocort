@@ -147,6 +147,16 @@ func (d *DynamicHTTPClient) Client() *http.Client {
 // overall deadline, which is useful for large streaming downloads that should
 // be controlled only by request context cancellation.
 func (d *DynamicHTTPClient) ClientWithTimeout(timeout time.Duration) *http.Client {
+	if d == nil {
+		return buildHTTPClient("", timeout)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.provider == nil && d.cachedClient != nil {
+		clone := *d.cachedClient
+		clone.Timeout = timeout
+		return &clone
+	}
 	return buildHTTPClient(d.currentProxyURL(), timeout)
 }
 

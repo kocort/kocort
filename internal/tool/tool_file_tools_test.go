@@ -228,7 +228,7 @@ func TestWorkingDirectoryIsBaseNotBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ls absolute external dir: %v", err)
 	}
-	if !strings.Contains(result.Text, externalFile) {
+	if !strings.Contains(result.Text, filepath.ToSlash(externalFile)) {
 		t.Fatalf("expected absolute external path in ls result, got %s", result.Text)
 	}
 

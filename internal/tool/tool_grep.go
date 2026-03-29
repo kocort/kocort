@@ -116,7 +116,10 @@ func (t *GrepTool) Execute(ctx context.Context, toolCtx ToolContext, args map[st
 	if rgPath := ResolveToolBin("rg"); rgPath != "" {
 		matches, limitHit, err = grepWithRipgrep(ctx, rgPath, opts)
 		if err != nil {
-			return core.ToolResult{}, err
+			matches, limitHit, err = grepFallback(opts)
+			if err != nil {
+				return core.ToolResult{}, err
+			}
 		}
 	} else {
 		matches, limitHit, err = grepFallback(opts)

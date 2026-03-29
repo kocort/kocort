@@ -1,8 +1,10 @@
 package infra
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -76,6 +78,34 @@ func TestDynamicHTTPClient_ClientWithTimeout(t *testing.T) {
 	if cached := dc.Client(); cached.Timeout != 0 {
 		t.Fatalf("expected cached shared client timeout to remain 0, got %s", cached.Timeout)
 	}
+}
+
+func TestDynamicHTTPClientFromClient_ClientWithTimeoutPreservesInjectedTransport(t *testing.T) {
+	dc := NewDynamicHTTPClientFromClient(&http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusUnauthorized,
+				Status:     "401 Unauthorized",
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
+				Request:    req,
+			}, nil
+		}),
+	})
+	resp, err := dc.ClientWithTimeout(2 * time.Second).Get("https://example.com/v1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected injected transport status, got %d", resp.StatusCode)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }
 
 func TestStaticProxyProvider(t *testing.T) {

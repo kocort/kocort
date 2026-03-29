@@ -12,6 +12,7 @@ import (
 
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/rtypes"
+	"github.com/kocort/kocort/internal/session"
 	"github.com/kocort/kocort/internal/tool"
 )
 
@@ -203,4 +204,13 @@ func waitForCondition(t *testing.T, timeout time.Duration, check func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for condition")
+}
+
+func storeForTests(t *testing.T) *session.SessionStore {
+	t.Helper()
+	store, err := session.NewSessionStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new session store: %v", err)
+	}
+	return store
 }

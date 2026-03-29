@@ -2,8 +2,11 @@ package runtime
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	"github.com/kocort/kocort/internal/acp"
+	backendpkg "github.com/kocort/kocort/internal/backend"
 	"github.com/kocort/kocort/internal/core"
 	sessionpkg "github.com/kocort/kocort/internal/session"
 	spawnpolicypkg "github.com/kocort/kocort/internal/spawnpolicy"
@@ -254,4 +257,201 @@ func (r *Runtime) recoverOrphanedSubagentRuns() {
 		}
 		return result, err
 	})
+}
+
+// ---------------------------------------------------------------------------
+// ACP session lifecycle — these implement ACP-flavored subagent spawning.
+// ---------------------------------------------------------------------------
+
+// SpawnACPSession delegates ACP child-session orchestration to the ACP
+// control-plane layer so runtime only acts as a thin facade.
+func (r *Runtime) SpawnACPSession(ctx context.Context, req acp.SessionSpawnRequest) (acp.SessionSpawnResult, error) {
+	coordinator := acp.SpawnCoordinator{
+		Sessions:   r.Sessions,
+		Identities: r.Identities,
+		Deliverer:  r.Deliverer,
+	}
+	return coordinator.SpawnSession(ctx, req, acp.SpawnHooks{
+		ValidateTarget: task.ValidateSpawnTargetAgent,
+		RegisterLaunch: func(req acp.SessionSpawnRequest, launch acp.SessionLaunchPlan) {
+			if r.Subagents == nil {
+				return
+			}
+			record := task.BuildACPChildRunRecord(req, launch)
+			r.Subagents.Register(record)
+			if entry := r.Sessions.Entry(launch.Result.ChildSessionKey); entry != nil {
+				r.Subagents.UpdateACPChildRuntime(launch.Result.RunID, entry)
+			}
+			if r.Tasks != nil {
+				_ = r.Tasks.RegisterSubagent(record, launch.Result.AgentID)
+			}
+		},
+		Run: r.Run,
+		FinalizeChildRun: func(ctx context.Context, req core.AgentRunRequest, result core.AgentRunResult, runErr error) {
+			r.handleACPChildLifecycleCompletion(ctx, req, result, runErr)
+		},
+	})
+}
+
+// ResumeAllPersistentACPSessions keeps runtime startup thin by delegating the
+// store scan to internal/acp and only handling backend/runtime resolution here.
+func (r *Runtime) ResumeAllPersistentACPSessions(ctx context.Context) []acp.AcpSessionResumeResult {
+	if r == nil || r.Sessions == nil {
+		return nil
+	}
+	return acp.ResumePersistentSessions(ctx, r.Sessions, func(ctx context.Context, input acp.AcpSessionResumeInput) (acp.AcpSessionResumeResult, error) {
+		backend, err := r.resolveBootstrapACPBackend(input.BackendID, input.SessionKey)
+		if err != nil {
+			return acp.AcpSessionResumeResult{}, err
+		}
+		manager, runtimeImpl, err := ensureBootstrapACPServices(backend)
+		if err != nil {
+			return acp.AcpSessionResumeResult{}, err
+		}
+		return manager.ResumeSession(ctx, r.Sessions, runtimeImpl, input)
+	})
+}
+
+func (r *Runtime) newACPResetLifecycleStore() acp.ResetLifecycleStore {
+	return acp.ResetLifecycleStore{
+		LoadTranscriptFn: func(sessionKey string) ([]core.TranscriptMessage, error) {
+			return r.Sessions.LoadTranscript(sessionKey)
+		},
+		ResetFn: func(sessionKey string, reason string) (string, error) {
+			return r.Sessions.Reset(sessionKey, reason)
+		},
+		ResetACPBoundSessionFn: func(sess core.SessionResolution, reason string) (string, error) {
+			if r == nil || r.Sessions == nil || sess.Entry == nil || sess.Entry.ACP == nil {
+				return r.Sessions.Reset(sess.SessionKey, reason)
+			}
+			provider := strings.TrimSpace(sess.Entry.ACP.Backend)
+			if provider == "" {
+				return r.Sessions.Reset(sess.SessionKey, reason)
+			}
+			resolved, _, err := r.Backends.Resolve(provider)
+			if err != nil {
+				return r.Sessions.Reset(sess.SessionKey, reason)
+			}
+			acpBackend, ok := resolved.(*backendpkg.ACPBackend)
+			if !ok || acpBackend.Mgr == nil || acpBackend.Runtime == nil {
+				return r.Sessions.Reset(sess.SessionKey, reason)
+			}
+			_ = acpBackend.Mgr.CloseSession(context.Background(), r.Sessions, acpBackend.Runtime, sess.SessionKey, "session-reset", false)
+			return r.Sessions.Reset(sess.SessionKey, reason)
+		},
+	}
+}
+
+func (r *Runtime) handleACPChildLifecycleCompletion(ctx context.Context, req core.AgentRunRequest, result core.AgentRunResult, runErr error) {
+	if r == nil || r.Subagents == nil {
+		return
+	}
+	entry, completed := r.Subagents.Complete(req.RunID, result, runErr)
+	if !completed || entry == nil {
+		return
+	}
+	if sessionEntry := r.Sessions.Entry(req.SessionKey); sessionEntry != nil {
+		r.Subagents.UpdateACPChildRuntime(req.RunID, sessionEntry)
+	}
+	if r.Tasks != nil {
+		_ = r.Tasks.CompleteSubagent(req.RunID, result, runErr)
+	}
+	if entry.ExpectsCompletionMessage {
+		if task.ShouldDeferSubagentCompletionAnnouncement(r.Subagents, entry) {
+			r.Subagents.MarkWakeOnDescendantSettle(entry.RunID, true)
+			r.Subagents.MarkCompletionDeferredUntil(entry.RunID, time.Now().UTC().Add(task.ResolveSubagentDescendantDeferDelay()))
+			r.scheduleSubagentAnnouncementRetry(entry.RequesterSessionKey)
+			return
+		}
+		r.Subagents.ReleaseDeferredAnnouncementsForRequester(entry.RequesterSessionKey)
+		r.Subagents.MarkWakeOnDescendantSettle(entry.RunID, false)
+		_ = r.flushSubagentAnnouncements(ctx, entry.RequesterSessionKey)
+		return
+	}
+	r.Subagents.MarkCompletionMessageSent(entry.RunID)
+	r.Subagents.SweepOrphans(r.Sessions, r.ActiveRuns)
+}
+
+func (r *Runtime) resolveBootstrapACPBackend(explicitBackendID string, sessionKey string) (*backendpkg.ACPBackend, error) {
+	for _, candidate := range r.bootstrapACPBackendCandidates(explicitBackendID, sessionKey) {
+		if backend := r.resolveBootstrapACPBackendCandidate(candidate); backend != nil {
+			return backend, nil
+		}
+	}
+	return nil, core.ErrACPNotConfigured
+}
+
+func (r *Runtime) bootstrapACPBackendCandidates(explicitBackendID string, sessionKey string) []string {
+	candidates := make([]string, 0, 4)
+	seen := map[string]struct{}{}
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		candidates = append(candidates, value)
+	}
+	add(explicitBackendID)
+	if r != nil && r.Sessions != nil && strings.TrimSpace(sessionKey) != "" {
+		if entry := r.Sessions.Entry(sessionKey); entry != nil && entry.ACP != nil {
+			add(entry.ACP.Backend)
+		}
+	}
+	if r != nil {
+		add(r.Config.ACP.Backend)
+		for providerID, providerCfg := range r.Config.Models.Providers {
+			if strings.EqualFold(strings.TrimSpace(providerCfg.API), "acp") {
+				add(providerID)
+			}
+		}
+		if backend, ok := r.Backend.(*backendpkg.ACPBackend); ok {
+			add(backend.Provider)
+		}
+	}
+	return candidates
+}
+
+func (r *Runtime) resolveBootstrapACPBackendCandidate(candidate string) *backendpkg.ACPBackend {
+	if r == nil {
+		return nil
+	}
+	candidate = strings.TrimSpace(candidate)
+	if r.Backends != nil && candidate != "" {
+		resolved, kind, err := r.Backends.Resolve(candidate)
+		if err == nil && strings.EqualFold(strings.TrimSpace(kind), "acp") {
+			if acpBackend, ok := resolved.(*backendpkg.ACPBackend); ok {
+				return acpBackend
+			}
+		}
+	}
+	if acpBackend, ok := r.Backend.(*backendpkg.ACPBackend); ok {
+		if candidate == "" || strings.EqualFold(strings.TrimSpace(acpBackend.Provider), candidate) {
+			return acpBackend
+		}
+	}
+	return nil
+}
+
+func ensureBootstrapACPServices(acpBackend *backendpkg.ACPBackend) (*acp.AcpSessionManager, core.AcpRuntime, error) {
+	if acpBackend == nil {
+		return nil, nil, core.ErrACPNotConfigured
+	}
+	manager := acpBackend.Mgr
+	if manager == nil {
+		manager = acp.NewAcpSessionManager()
+		acpBackend.Mgr = manager
+	}
+	runtimeImpl := acpBackend.Runtime
+	if runtimeImpl == nil {
+		if acpBackend.Env == nil {
+			return nil, nil, core.ErrACPNotConfigured
+		}
+		runtimeImpl = backendpkg.NewACPClientRuntime(acpBackend.Config, acpBackend.Env, acpBackend.Provider, acpBackend.Command)
+		acpBackend.Runtime = runtimeImpl
+	}
+	return manager, runtimeImpl, nil
 }

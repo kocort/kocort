@@ -13,6 +13,7 @@ import (
 	"github.com/kocort/kocort/internal/delivery"
 	"github.com/kocort/kocort/internal/event"
 	"github.com/kocort/kocort/internal/heartbeat"
+	hookspkg "github.com/kocort/kocort/internal/hooks"
 	"github.com/kocort/kocort/internal/infra"
 	"github.com/kocort/kocort/internal/localmodel"
 	memorypkg "github.com/kocort/kocort/internal/memory"
@@ -61,6 +62,7 @@ type Runtime struct {
 	Plugins       *RuntimePluginRegistry
 	Approvals     tool.ToolApprovalRunner
 	Hooks         delivery.OutboundHookRunner
+	InternalHooks *hookspkg.Registry
 	Policy        RuntimePolicy // groups SessionToolsVisibility + AgentToAgent
 	Cerebellum    *cerebellumpkg.Manager
 	BrainLocal    *localmodel.Manager

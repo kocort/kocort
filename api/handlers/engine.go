@@ -18,9 +18,7 @@ import (
 
 	"github.com/kocort/kocort/api/service"
 	"github.com/kocort/kocort/api/types"
-	"github.com/kocort/kocort/internal/acp"
 	"github.com/kocort/kocort/internal/config"
-	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/session"
 	"github.com/kocort/kocort/internal/skill"
 	"github.com/kocort/kocort/runtime"
@@ -217,90 +215,6 @@ func (h *Engine) SkillInstall(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
-}
-
-// ACPSessions handles GET /api/engine/acp/sessions.
-func (h *Engine) ACPSessions(c *gin.Context) {
-	c.JSON(http.StatusOK, types.ACPSessionsState{Sessions: h.Runtime.ListACPSessions()})
-}
-
-// ACPSessionStatus handles GET /api/engine/acp/session/status?sessionKey=...
-func (h *Engine) ACPSessionStatus(c *gin.Context) {
-	sessionKey := strings.TrimSpace(c.Query("sessionKey"))
-	if sessionKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "sessionKey is required"})
-		return
-	}
-	status, err := h.Runtime.GetACPSessionStatus(c.Request.Context(), sessionKey)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, status)
-}
-
-// ACPSessionObservability handles GET /api/engine/acp/session/observability?sessionKey=...
-func (h *Engine) ACPSessionObservability(c *gin.Context) {
-	sessionKey := strings.TrimSpace(c.Query("sessionKey"))
-	if sessionKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "sessionKey is required"})
-		return
-	}
-	observability, err := h.Runtime.GetACPObservability(c.Request.Context(), sessionKey)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, observability)
-}
-
-// ACPSessionControl handles POST /api/engine/acp/session/control.
-func (h *Engine) ACPSessionControl(c *gin.Context) {
-	var req types.ACPSessionControlRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	result, err := h.Runtime.ControlACPSession(c.Request.Context(), acp.AcpSessionControlInput{
-		SessionKey: strings.TrimSpace(req.SessionKey),
-		BackendID:  strings.TrimSpace(req.BackendID),
-		Action:     strings.TrimSpace(req.Action),
-		Key:        strings.TrimSpace(req.Key),
-		Value:      strings.TrimSpace(req.Value),
-		Reason:     strings.TrimSpace(req.Reason),
-	})
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "result": result})
-		return
-	}
-	c.JSON(http.StatusOK, result)
-}
-
-// ACPSessionResume handles POST /api/engine/acp/session/resume.
-func (h *Engine) ACPSessionResume(c *gin.Context) {
-	var req types.ACPSessionResumeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	result, err := h.Runtime.ResumeACPSession(c.Request.Context(), acp.AcpSessionResumeInput{
-		SessionKey: strings.TrimSpace(req.SessionKey),
-		Agent:      strings.TrimSpace(req.Agent),
-		Cwd:        strings.TrimSpace(req.Cwd),
-		Mode:       core.AcpRuntimeSessionMode(strings.TrimSpace(req.Mode)),
-		BackendID:  strings.TrimSpace(req.BackendID),
-		Reason:     strings.TrimSpace(req.Reason),
-	})
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, result)
-}
-
-// ACPSessionsResumePersistent handles POST /api/engine/acp/sessions/resume-persistent.
-func (h *Engine) ACPSessionsResumePersistent(c *gin.Context) {
-	c.JSON(http.StatusOK, types.ACPResumeResults{Results: h.Runtime.ResumeAllPersistentACPSessions(c.Request.Context())})
 }
 
 // Data handles GET /api/engine/data.

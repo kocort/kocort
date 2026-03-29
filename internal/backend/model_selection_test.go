@@ -162,6 +162,12 @@ func TestSupportsXHighThinking(t *testing.T) {
 	if !SupportsXHighThinking("openai", "gpt-5.4") {
 		t.Error("expected xhigh support for openai/gpt-5.4")
 	}
+	if !SupportsXHighThinking("openai", "gpt-5.4-mini") {
+		t.Error("expected xhigh support for openai/gpt-5.4-mini")
+	}
+	if !SupportsXHighThinking("openai", "gpt-5.4-nano") {
+		t.Error("expected xhigh support for openai/gpt-5.4-nano")
+	}
 	if SupportsXHighThinking("openai", "gpt-4.1") {
 		t.Error("expected no xhigh support for openai/gpt-4.1")
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/delivery"
 	"github.com/kocort/kocort/internal/event"
+	hookspkg "github.com/kocort/kocort/internal/hooks"
 	"github.com/kocort/kocort/internal/infra"
 	memorypkg "github.com/kocort/kocort/internal/memory"
 	"github.com/kocort/kocort/internal/rtypes"
@@ -74,7 +75,7 @@ func (a *compactionRunnerAdapter) RunCompactionTurn(ctx context.Context, params 
 		RunState:        &core.AgentRunState{},
 	}
 
-	resolvedBackend, _, err := resolveBackend(a.rt.Backends, a.rt.Backend, runCtx)
+	resolvedBackend, _, err := backend.ResolveBackendForRun(a.rt.Backends, a.rt.Backend, runCtx.Identity, runCtx.ModelSelection)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +139,7 @@ func (a *compactionRunnerAdapter) RunMemoryFlushTurn(ctx context.Context, params
 		RunState:        &core.AgentRunState{},
 	}
 
-	resolvedBackend, _, err := resolveBackend(r.Backends, r.Backend, runCtx)
+	resolvedBackend, _, err := backend.ResolveBackendForRun(r.Backends, r.Backend, runCtx.Identity, runCtx.ModelSelection)
 	if err != nil {
 		return err
 	}
@@ -170,7 +171,7 @@ func (r *Runtime) handleSessionResetCommand(
 		AccountID: req.AccountID,
 		ThreadID:  req.ThreadID,
 	})
-	execution, err := sessionpkg.ExecuteSessionReset(resetLifecycleAdapter{runtime: r}, effectiveSession, command)
+	execution, err := sessionpkg.ExecuteSessionReset(r.newACPResetLifecycleStore(), effectiveSession, command)
 	if err != nil {
 		return true, core.AgentRunResult{}, err
 	}
@@ -185,6 +186,16 @@ func (r *Runtime) handleSessionResetCommand(
 		"reason":        command.Reason,
 		"nextSessionId": execution.NextSessionID,
 	})
+	// Fire command:reset or command:new hook.
+	if r.InternalHooks != nil {
+		action := command.Reason // "reset" or "new"
+		r.InternalHooks.Trigger(ctx, hookspkg.NewEvent(hookspkg.EventCommand, action, effectiveSession.SessionKey, map[string]any{
+			"trigger":           command.Trigger,
+			"reason":            command.Reason,
+			"previousSessionId": effectiveSession.SessionID,
+			"nextSessionId":     execution.NextSessionID,
+		}))
+	}
 	req.SessionKey = effectiveSession.SessionKey
 	req.SessionID = execution.NextSessionID
 	if !execution.HasFollowup() {
@@ -234,6 +245,13 @@ func (r *Runtime) handleSessionCompactionCommand(
 		"compactionCount":  compaction.CompactionCount,
 		"keptMessageCount": compaction.KeptCount,
 	})
+	// Fire command:compact hook.
+	if r.InternalHooks != nil {
+		r.InternalHooks.Trigger(ctx, hookspkg.NewEvent(hookspkg.EventCommand, "compact", session.SessionKey, map[string]any{
+			"instructions":    command.Instructions,
+			"compactionCount": compaction.CompactionCount,
+		}))
+	}
 	return true, plan.SuccessResult(req.RunID, compaction), nil
 }
 

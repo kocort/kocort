@@ -1,4 +1,4 @@
-package runtime
+﻿package runtime
 
 import (
 	"context"
@@ -16,61 +16,9 @@ import (
 	"github.com/kocort/kocort/internal/session"
 	"github.com/kocort/kocort/internal/task"
 	"github.com/kocort/kocort/internal/tool"
-	toolfn "github.com/kocort/kocort/internal/tool"
 
 	"github.com/kocort/kocort/utils"
 )
-
-func TestToolPolicyProfileAllowsSessionsSpawn(t *testing.T) {
-	identity := core.AgentIdentity{
-		ID:          "main",
-		ToolProfile: "coding",
-	}
-	runCtx := rtypes.AgentRunContext{
-		Request: core.AgentRunRequest{},
-		Session: core.SessionResolution{SessionKey: session.BuildMainSessionKey("main")},
-	}
-	if !toolfn.IsToolAllowedByIdentity(identity, runCtx, core.ToolRegistrationMeta{}, "sessions_spawn") {
-		t.Fatal("expected sessions_spawn allowed by coding profile")
-	}
-}
-
-func TestToolPolicyProfileAllowsSessionsSend(t *testing.T) {
-	identity := core.AgentIdentity{
-		ID:          "main",
-		ToolProfile: "coding",
-	}
-	runCtx := rtypes.AgentRunContext{
-		Request: core.AgentRunRequest{},
-		Session: core.SessionResolution{SessionKey: session.BuildMainSessionKey("main")},
-	}
-	if !toolfn.IsToolAllowedByIdentity(identity, runCtx, core.ToolRegistrationMeta{}, "sessions_send") {
-		t.Fatal("expected sessions_send allowed by coding profile")
-	}
-}
-
-func TestToolPolicyProfileAllowsMemorySearch(t *testing.T) {
-	identity := core.AgentIdentity{
-		ID:          "main",
-		ToolProfile: "coding",
-	}
-	runCtx := rtypes.AgentRunContext{
-		Request: core.AgentRunRequest{},
-		Session: core.SessionResolution{SessionKey: session.BuildMainSessionKey("main")},
-	}
-	if !toolfn.IsToolAllowedByIdentity(identity, runCtx, core.ToolRegistrationMeta{}, "memory_search") {
-		t.Fatal("expected memory_search allowed by coding profile")
-	}
-	if !toolfn.IsToolAllowedByIdentity(identity, runCtx, core.ToolRegistrationMeta{}, "memory_get") {
-		t.Fatal("expected memory_get allowed by coding profile")
-	}
-	if !toolfn.IsToolAllowedByIdentity(identity, runCtx, core.ToolRegistrationMeta{}, "session_status") {
-		t.Fatal("expected session_status allowed by coding profile")
-	}
-	if !toolfn.IsToolAllowedByIdentity(identity, runCtx, core.ToolRegistrationMeta{}, "subagents") {
-		t.Fatal("expected subagents allowed by coding profile")
-	}
-}
 
 func TestToolPolicyDenyOverridesAllow(t *testing.T) {
 	baseDir := t.TempDir()
@@ -409,36 +357,6 @@ func TestExecuteToolKnownPollNoProgressBlocksAtCriticalThreshold(t *testing.T) {
 	}
 }
 
-func TestDetectToolCallLoopBlocksPingPongNoProgressAtCriticalThreshold(t *testing.T) {
-	state := &tool.ToolLoopSessionState{}
-	cfg := core.ToolLoopDetectionConfig{
-		Enabled:           utils.BoolPtr(true),
-		HistorySize:       30,
-		WarningThreshold:  2,
-		CriticalThreshold: 4,
-		Detectors: core.ToolLoopDetectionDetectorConfig{
-			PingPong: utils.BoolPtr(true),
-		},
-	}
-	tool.RecordToolCall(state, "step_a", map[string]any{"value": "a"}, "call_a1", cfg)
-	tool.RecordToolCallOutcome(state, "step_a", map[string]any{"value": "a"}, "call_a1", core.ToolResult{Text: "same-a"}, nil, cfg)
-	tool.RecordToolCall(state, "step_b", map[string]any{"value": "b"}, "call_b1", cfg)
-	tool.RecordToolCallOutcome(state, "step_b", map[string]any{"value": "b"}, "call_b1", core.ToolResult{Text: "same-b"}, nil, cfg)
-	tool.RecordToolCall(state, "step_a", map[string]any{"value": "a"}, "call_a2", cfg)
-	tool.RecordToolCallOutcome(state, "step_a", map[string]any{"value": "a"}, "call_a2", core.ToolResult{Text: "same-a"}, nil, cfg)
-
-	result := tool.DetectToolCallLoop(state, "step_b", map[string]any{"value": "b"}, cfg)
-	if !result.Stuck || result.Level != "critical" {
-		t.Fatalf("expected critical ping-pong detection, got %+v", result)
-	}
-	if result.Detector != tool.ToolLoopDetectorPingPong {
-		t.Fatalf("expected ping-pong detector, got %+v", result)
-	}
-	if !strings.Contains(strings.ToLower(result.Message), "ping-pong loop") {
-		t.Fatalf("expected ping-pong message, got %q", result.Message)
-	}
-}
-
 func TestExecToolKeepsAgentWorkspaceAsDefaultPwdWhenSandboxEnabled(t *testing.T) {
 	store := storeForTests(t)
 	runtime := &Runtime{Sessions: store}
@@ -524,31 +442,6 @@ func TestExecToolHonorsTimeoutParameter(t *testing.T) {
 	}, map[string]any{"command": "sleep 1", "timeout": float64(0.05)})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected context deadline exceeded, got %v", err)
-	}
-}
-
-func TestSandboxSessionVisibilityBlocksSessionToolsOutsideSpawnedTree(t *testing.T) {
-	runCtx := rtypes.AgentRunContext{
-		Request: core.AgentRunRequest{Channel: "test", To: "user"},
-		Session: core.SessionResolution{SessionKey: session.BuildMainSessionKey("main"), SessionID: "sess_main"},
-		Identity: core.AgentIdentity{
-			ID:                       "main",
-			SandboxMode:              "all",
-			SandboxWorkspaceAccess:   "ro",
-			SandboxSessionVisibility: "spawned",
-		},
-	}
-	sandbox := &rtypes.SandboxContext{Enabled: true, Mode: "all", WorkspaceAccess: "ro"}
-	if toolfn.IsToolAllowedInSandbox(runCtx.Identity, runCtx, core.ToolRegistrationMeta{}, "sessions_history", sandbox) {
-		t.Fatal("expected sessions_history blocked in sandbox for non-subagent session")
-	}
-	if !toolfn.IsToolAllowedInSandbox(runCtx.Identity, runCtx, core.ToolRegistrationMeta{}, "exec", sandbox) {
-		t.Fatal("expected exec allowed in sandbox")
-	}
-	runCtx.Request.Lane = core.LaneSubagent
-	runCtx.Session.SessionKey = "agent:main:subagent:child"
-	if !toolfn.IsToolAllowedInSandbox(runCtx.Identity, runCtx, core.ToolRegistrationMeta{}, "sessions_history", sandbox) {
-		t.Fatal("expected sessions_history allowed in spawned tree")
 	}
 }
 

@@ -76,11 +76,16 @@ func (m *Manager) Act(ctx context.Context, req ActRequest) (map[string]any, erro
 			return m.actError(profileName, targetID, kind, err), nil
 		}
 		if req.DoubleClick {
-			if err := locator.Dblclick(playwright.LocatorDblclickOptions{
+			// Use page.Dblclick instead of locator.Dblclick to work around
+			// a Playwright Go v0.5700.x bug where LocatorDblclickOptions
+			// contains a Steps field not present in FrameDblclickOptions,
+			// causing assignStructFields to fail with "extra field Steps in src".
+			if err := page.Dblclick(selector, playwright.PageDblclickOptions{
 				Timeout:   timeoutFloat(req.TimeoutMs),
 				Button:    parseMouseButton(req.Button),
 				Delay:     timeoutFloat(req.DelayMs),
 				Modifiers: parseKeyboardModifiers(req.Modifiers),
+				Strict:    playwright.Bool(true),
 			}); err != nil {
 				return m.actError(profileName, targetID, kind, err), nil
 			}
@@ -118,13 +123,13 @@ func (m *Manager) Act(ctx context.Context, req ActRequest) (map[string]any, erro
 			}
 		}
 		return m.actResult(profileName, targetID, kind, map[string]any{"selector": selector, "text": req.Text}), nil
-	case "fill":
+	case "fill", "input":
 		locator, selector, err := m.resolveLocator(profileName, targetID, page, req.Ref, req.Element, req.Selector)
 		if err != nil {
 			return m.actError(profileName, targetID, kind, err), nil
 		}
 		if strings.TrimSpace(req.Text) == "" {
-			return m.actError(profileName, targetID, kind, errors.New("text is required for act kind=fill")), nil
+			return m.actError(profileName, targetID, kind, errors.New("text is required for act kind=fill/input")), nil
 		}
 		if err := locator.Fill(req.Text, playwright.LocatorFillOptions{Timeout: timeoutFloat(req.TimeoutMs)}); err != nil {
 			return m.actError(profileName, targetID, kind, err), nil

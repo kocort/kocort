@@ -17,7 +17,6 @@ import (
 	"github.com/kocort/kocort/api/types"
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/core"
-	gw "github.com/kocort/kocort/internal/gateway"
 	"github.com/kocort/kocort/internal/infra"
 	"github.com/kocort/kocort/internal/session"
 	"github.com/kocort/kocort/runtime"
@@ -38,17 +37,12 @@ func (h *Workspace) ChatBootstrap(c *gin.Context) {
 			config.ResolveSessionMainKeyForAPI(h.Runtime.Config),
 		)
 	}
-	limit, err := gw.ParseChatHistoryLimit(c.Request)
+	limit, before, err := service.ParseHistoryWindow(c.Request)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	before, err := gw.ParseChatHistoryBefore(c.Request)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	history := loadChatHistory(h.Runtime, sessionKey, limit, before)
+	history := service.NewChatGateway(h.Runtime).LoadHistory(sessionKey, limit, before)
 	c.JSON(http.StatusOK, types.ChatBootstrapResponse{
 		SessionKey: sessionKey,
 		History:    history,
@@ -67,7 +61,7 @@ func (h *Workspace) ChatSend(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := h.Runtime.ChatSend(c.Request.Context(), core.ChatSendRequest{
+	resp, err := service.NewChatGateway(h.Runtime).Send(c.Request.Context(), core.ChatSendRequest{
 		SessionKey:  req.SessionKey,
 		RunID:       req.RunID,
 		Message:     req.Message,
@@ -91,7 +85,7 @@ func (h *Workspace) ChatCancel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := h.Runtime.ChatCancel(c.Request.Context(), core.ChatCancelRequest{
+	resp, err := service.NewChatGateway(h.Runtime).Cancel(c.Request.Context(), core.ChatCancelRequest{
 		SessionKey: req.SessionKey,
 		RunID:      req.RunID,
 	})
@@ -109,17 +103,12 @@ func (h *Workspace) ChatHistory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing sessionKey"})
 		return
 	}
-	limit, err := gw.ParseChatHistoryLimit(c.Request)
+	limit, before, err := service.ParseHistoryWindow(c.Request)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	before, err := gw.ParseChatHistoryBefore(c.Request)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	resp := loadChatHistory(h.Runtime, sessionKey, limit, before)
+	resp := service.NewChatGateway(h.Runtime).LoadHistory(sessionKey, limit, before)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -285,54 +274,6 @@ func (h *Workspace) Media(c *gin.Context) {
 }
 
 // Helpers
-
-func loadChatHistory(rt *runtime.Runtime, sessionKey string, limit int, before int) core.ChatHistoryResponse {
-	history, total, hasMore, nextBefore, err := session.LoadChatHistoryPage(rt.Sessions, sessionKey, limit, before)
-	if err != nil {
-		return core.ChatHistoryResponse{}
-	}
-	sessionID := ""
-	var skillsSnapshot *core.SkillSnapshotSummary
-	if entry := rt.Sessions.Entry(sessionKey); entry != nil {
-		sessionID = entry.SessionID
-		skillsSnapshot = summarizeSkillSnapshot(entry.SkillsSnapshot)
-	}
-	return core.ChatHistoryResponse{
-		SessionKey:     sessionKey,
-		SessionID:      sessionID,
-		SkillsSnapshot: skillsSnapshot,
-		Messages:       history,
-		Total:          total,
-		HasMore:        hasMore,
-		NextBefore:     nextBefore,
-	}
-}
-
-func summarizeSkillSnapshot(snapshot *core.SkillSnapshot) *core.SkillSnapshotSummary {
-	if snapshot == nil {
-		return nil
-	}
-	skillNames := append([]string{}, snapshot.ResolvedName...)
-	if len(skillNames) == 0 {
-		skillNames = make([]string, 0, len(snapshot.Skills))
-		for _, entry := range snapshot.Skills {
-			if name := strings.TrimSpace(entry.Name); name != "" {
-				skillNames = append(skillNames, name)
-			}
-		}
-	}
-	commandNames := make([]string, 0, len(snapshot.Commands))
-	for _, command := range snapshot.Commands {
-		if name := strings.TrimSpace(command.Name); name != "" {
-			commandNames = append(commandNames, name)
-		}
-	}
-	return &core.SkillSnapshotSummary{
-		Version:      snapshot.Version,
-		SkillNames:   skillNames,
-		CommandNames: commandNames,
-	}
-}
 
 func normalizeAttachments(attachments []types.ChatAttachmentRequest) ([]core.Attachment, error) {
 	if len(attachments) == 0 {

@@ -169,7 +169,7 @@ func (p *AgentPipeline) modelCallLoop(ctx context.Context, state *PipelineState)
 			if isFallbackRetry {
 				attemptCtx.Request.Message = "Continue where you left off. The previous model attempt failed or timed out."
 			}
-			resolvedBackend, _, resolveErr := resolveBackend(r.Backends, r.Backend, attemptCtx)
+			resolvedBackend, _, resolveErr := backend.ResolveBackendForRun(r.Backends, r.Backend, attemptCtx.Identity, attemptCtx.ModelSelection)
 			if resolveErr != nil {
 				return core.AgentRunResult{}, resolveErr
 			}

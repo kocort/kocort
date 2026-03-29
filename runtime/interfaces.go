@@ -18,7 +18,6 @@ import (
 	"github.com/kocort/kocort/internal/event"
 	"github.com/kocort/kocort/internal/gateway"
 	"github.com/kocort/kocort/internal/infra"
-	"github.com/kocort/kocort/internal/rtypes"
 	"github.com/kocort/kocort/internal/session"
 )
 
@@ -48,14 +47,12 @@ type SessionManager interface {
 }
 
 // ---------------------------------------------------------------------------
-// BackendResolver — abstracts backend.BackendRegistry
+// BackendResolver — re-export from backend package
 // ---------------------------------------------------------------------------
 
 // BackendResolver resolves a model backend by provider identifier.
 // The canonical implementation is *backend.BackendRegistry.
-type BackendResolver interface {
-	Resolve(provider string) (rtypes.Backend, string, error)
-}
+type BackendResolver = backend.BackendResolver
 
 // ---------------------------------------------------------------------------
 // EventBus — abstracts gateway.EventHub for event publishing

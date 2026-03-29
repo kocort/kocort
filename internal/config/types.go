@@ -33,6 +33,7 @@ type AppConfig struct {
 	BrainMode      string            `json:"brainMode,omitempty"` // "cloud" (default) or "local"
 	BrainLocal     BrainLocalConfig  `json:"brainLocal,omitempty"`
 	Cerebellum     CerebellumConfig  `json:"cerebellum,omitempty"`
+	Hooks          HooksConfig       `json:"hooks,omitempty"`
 	Network        NetworkConfig     `json:"network,omitempty"`
 	SetupCompleted bool              `json:"setupCompleted,omitempty"`
 }
@@ -509,6 +510,57 @@ type PluginsConfig struct {
 // ---------------------------------------------------------------------------
 // Skills
 // ---------------------------------------------------------------------------
+
+// HooksConfig configures the internal hook system.
+type HooksConfig struct {
+	// Enabled controls whether hooks are loaded and dispatched at all.
+	// Defaults to true when omitted.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// SkillHooks controls whether skill-defined hook scripts are loaded.
+	SkillHooks *bool `json:"skillHooks,omitempty"`
+
+	// Entries provides per-hook configuration overrides keyed by hook name.
+	// Allows enabling/disabling individual hooks and passing arbitrary options.
+	Entries map[string]HookEntryConfig `json:"entries,omitempty"`
+}
+
+// HookEntryConfig is per-hook configuration.
+type HookEntryConfig struct {
+	// Enabled controls whether this individual hook is loaded.
+	// Defaults to true when omitted.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Env provides environment variable overrides for script hooks.
+	Env map[string]string `json:"env,omitempty"`
+
+	// Options holds arbitrary key-value options passed to the hook.
+	Options map[string]any `json:"options,omitempty"`
+}
+
+// HookEntryEnabled reports whether a specific hook entry is enabled.
+func (c HookEntryConfig) HookEntryEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
+// HooksEnabled reports whether the hook system is active.
+func (c HooksConfig) HooksEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
+// SkillHooksEnabled reports whether skill hook scripts should be loaded.
+func (c HooksConfig) SkillHooksEnabled() bool {
+	return c.HooksEnabled() && (c.SkillHooks == nil || *c.SkillHooks)
+}
+
+// HookEntryFor returns the per-hook config for the given hook name.
+// Returns a zero-value HookEntryConfig if no entry exists (defaults to enabled).
+func (c HooksConfig) HookEntryFor(hookName string) HookEntryConfig {
+	if c.Entries == nil {
+		return HookEntryConfig{}
+	}
+	return c.Entries[hookName]
+}
 
 type SkillsConfig struct {
 	AllowBundled []string                   `json:"allowBundled,omitempty"`

@@ -145,3 +145,18 @@ func IsSessionScopedToolName(name string) bool {
 		return false
 	}
 }
+
+// ExistingToolNames returns a set of normalized tool names from the given tools.
+func ExistingToolNames(tools []Tool) map[string]struct{} {
+	if len(tools) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(tools))
+	for _, t := range tools {
+		if t == nil {
+			continue
+		}
+		out[NormalizeToolPolicyName(t.Name())] = struct{}{}
+	}
+	return out
+}

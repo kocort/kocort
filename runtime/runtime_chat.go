@@ -16,6 +16,14 @@ import (
 	"github.com/kocort/kocort/utils"
 )
 
+// DeliverMessage delivers a message through the runtime's deliverer.
+func (r *Runtime) DeliverMessage(ctx context.Context, kind core.ReplyKind, payload core.ReplyPayload, target core.DeliveryTarget) error {
+	if r == nil || r.Deliverer == nil {
+		return nil
+	}
+	return r.Deliverer.Deliver(ctx, kind, payload, target)
+}
+
 func (r *Runtime) ChatSend(ctx context.Context, req core.ChatSendRequest) (core.ChatSendResponse, error) {
 	deliver := true
 	if req.Deliver != nil {
@@ -26,17 +34,22 @@ func (r *Runtime) ChatSend(ctx context.Context, req core.ChatSendRequest) (core.
 		timeout = time.Duration(req.TimeoutMs) * time.Millisecond
 	}
 	runReq := core.AgentRunRequest{
-		AgentID:     req.AgentID,
-		SessionKey:  req.SessionKey,
-		Message:     req.Message,
-		Channel:     utils.NonEmpty(req.Channel, "webchat"),
-		To:          req.To,
-		AccountID:   req.AccountID,
-		ThreadID:    req.ThreadID,
-		ChatType:    req.ChatType,
-		Attachments: req.Attachments,
-		Deliver:     deliver,
-		Timeout:     timeout,
+		AgentID:              req.AgentID,
+		SessionKey:           req.SessionKey,
+		Message:              req.Message,
+		Channel:              utils.NonEmpty(req.Channel, "webchat"),
+		To:                   req.To,
+		AccountID:            req.AccountID,
+		ThreadID:             req.ThreadID,
+		ChatType:             req.ChatType,
+		Attachments:          req.Attachments,
+		Deliver:              deliver,
+		Timeout:              timeout,
+		Thinking:             req.ThinkingLevel,
+		Verbose:              req.VerboseLevel,
+		SessionModelOverride: req.SessionModelOverride,
+		WorkspaceOverride:    req.WorkspaceOverride,
+		ExtraSystemPrompt:    req.ExtraSystemPrompt,
 	}
 	if runReq.AgentID == "" {
 		runReq.AgentID = sessionpkg.ResolveAgentIDFromSessionKey(runReq.SessionKey)

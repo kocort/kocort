@@ -10,6 +10,7 @@ import (
 	"github.com/kocort/kocort/internal/cerebellum"
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/event"
+	hookspkg "github.com/kocort/kocort/internal/hooks"
 	pluginpkg "github.com/kocort/kocort/internal/plugin"
 	"github.com/kocort/kocort/internal/rtypes"
 	"github.com/kocort/kocort/internal/sandbox"
@@ -367,6 +368,10 @@ func (r *Runtime) ExecuteTool(ctx context.Context, runCtx rtypes.AgentRunContext
 			Timestamp:  time.Now().UTC(),
 		})
 		toolfn.RecordToolCallOutcome(loopState, tool.Name(), sanitizedArgs, toolCallID, core.ToolResult{}, failure, runCtx.Identity.ToolLoopDetection)
+
+		// ── Fire tool:post_execute hook (failure) ────────────────────
+		r.fireToolPostExecuteHook(ctx, runCtx, tool.Name(), nil, err)
+
 		return core.ToolResult{}, failure
 	}
 	text := toolfn.ResolveToolResultHistoryContent(result)
@@ -405,7 +410,36 @@ func (r *Runtime) ExecuteTool(ctx context.Context, runCtx rtypes.AgentRunContext
 		"text":     visibleText,
 	})
 	toolfn.RecordToolCallOutcome(loopState, tool.Name(), sanitizedArgs, toolCallID, result, nil, runCtx.Identity.ToolLoopDetection)
+
+	// ── Fire tool:post_execute hook (success) ────────────────────
+	r.fireToolPostExecuteHook(ctx, runCtx, tool.Name(), &result, nil)
+
 	return result, nil
+}
+
+// fireToolPostExecuteHook dispatches a tool:post_execute internal hook event.
+// This allows skill hooks (e.g. self-improving-agent error-detector) to
+// observe tool execution outcomes.
+func (r *Runtime) fireToolPostExecuteHook(ctx context.Context, runCtx rtypes.AgentRunContext, toolName string, result *core.ToolResult, toolErr error) {
+	if r.InternalHooks == nil || !r.InternalHooks.HasHandlers(hookspkg.EventTool, "post_execute") {
+		return
+	}
+	hookCtx := map[string]any{
+		"toolName":   toolName,
+		"sessionKey": runCtx.Session.SessionKey,
+		"agentId":    runCtx.Identity.ID,
+	}
+	if toolErr != nil {
+		hookCtx["error"] = toolErr.Error()
+		hookCtx["success"] = false
+	} else {
+		hookCtx["success"] = true
+	}
+	if result != nil {
+		hookCtx["resultText"] = toolfn.ResolveToolResultText(*result)
+	}
+	evt := hookspkg.NewEvent(hookspkg.EventTool, "post_execute", runCtx.Session.SessionKey, hookCtx)
+	r.InternalHooks.Trigger(ctx, evt)
 }
 
 func appendToolTranscript(sessions *sessionpkg.SessionStore, runCtx rtypes.AgentRunContext, toolName string, args map[string]any, msg core.TranscriptMessage) {

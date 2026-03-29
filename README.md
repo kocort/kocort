@@ -323,6 +323,7 @@ The root docs set has been rebuilt around the current codebase implementation:
 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | HTTP / RPC / channel webhook route map |
 | [docs/CLIENTS_AND_DEPLOYMENT.md](docs/CLIENTS_AND_DEPLOYMENT.md) | Web UI, desktop shell, embedded assets, build flow |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development, build, testing, extension boundaries |
+| [docs/ACP_BRIDGE.md](docs/ACP_BRIDGE.md) | ACP stdio bridge, protocol runtime client, and session mapping |
 
 ---
 
@@ -429,6 +430,7 @@ kocort/
 | [API_REFERENCE.md](docs/API_REFERENCE.md) | HTTP and RPC endpoint reference |
 | [CLIENTS_AND_DEPLOYMENT.md](docs/CLIENTS_AND_DEPLOYMENT.md) | Web UI, desktop shell, and deployment flow |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local development and extension guide |
+| [ACP_BRIDGE.md](docs/ACP_BRIDGE.md) | ACP bridge and runtime architecture |
 
 ---
 

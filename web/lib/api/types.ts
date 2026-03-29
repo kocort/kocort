@@ -426,62 +426,6 @@ export type DashboardSnapshot = {
     cerebellumStatus?: string;
 };
 
-export type ACPSessionStatus = {
-    sessionKey: string;
-    backend: string;
-    agent: string;
-    state: string;
-    mode: string;
-    runtimeOptions?: Record<string, unknown>;
-    capabilities?: Record<string, unknown>;
-    runtimeStatus?: Record<string, unknown> | null;
-    lastActivityAt?: number;
-    lastError?: string;
-};
-
-export type ACPSessionObservability = {
-    sessionKey: string;
-    backend: string;
-    agent: string;
-    state: string;
-    mode: string;
-    hasActiveTurn?: boolean;
-    cachedRuntime?: boolean;
-    backendSessionId?: string;
-    agentSessionId?: string;
-    runtimeSession?: string;
-    cwd?: string;
-    lastActivityAt?: number;
-    lastError?: string;
-    capabilities?: Record<string, unknown> | null;
-    runtimeStatus?: Record<string, unknown> | null;
-    observedAt?: string;
-};
-
-export type ACPSessionsState = {
-    sessions: ACPSessionStatus[];
-};
-
-export type ACPResumeResult = {
-    sessionKey: string;
-    backend: string;
-    state: string;
-    mode: string;
-    resumed: boolean;
-};
-
-export type ACPResumeResults = {
-    results: ACPResumeResult[];
-};
-
-export type ACPControlResult = {
-    sessionKey: string;
-    action: string;
-    success: boolean;
-    state?: string;
-    error?: string;
-};
-
 export type AuditEvent = {
     occurredAt?: string;
     category: string;

@@ -281,7 +281,7 @@ func TestBrowserToolLifecycle(t *testing.T) {
 	if !strings.Contains(snapshotResult.Text, `"snapshot":"[a1] button`) {
 		t.Fatalf("unexpected snapshot result: %s", snapshotResult.Text)
 	}
-	if !strings.Contains(snapshotResult.Text, "treat as external page content") {
+	if !strings.Contains(snapshotResult.Text, "EXTERNAL_UNTRUSTED_CONTENT") {
 		t.Fatalf("expected wrapped snapshot result: %s", snapshotResult.Text)
 	}
 	ariaResult, err := tool.Execute(context.Background(), toolCtx, map[string]any{
@@ -355,7 +355,7 @@ func TestBrowserToolLifecycle(t *testing.T) {
 	if !strings.Contains(consoleResult.Text, `READY`) {
 		t.Fatalf("unexpected console result: %s", consoleResult.Text)
 	}
-	if !strings.Contains(consoleResult.Text, "treat as external page content") {
+	if !strings.Contains(consoleResult.Text, "EXTERNAL_UNTRUSTED_CONTENT") {
 		t.Fatalf("expected wrapped console result: %s", consoleResult.Text)
 	}
 	errorsResult, err := tool.Execute(context.Background(), toolCtx, map[string]any{
@@ -364,7 +364,7 @@ func TestBrowserToolLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("browser errors: %v", err)
 	}
-	if !strings.Contains(errorsResult.Text, `"message":"boom"`) || !strings.Contains(errorsResult.Text, "treat as external page content") {
+	if !strings.Contains(errorsResult.Text, `"message":"boom"`) || !strings.Contains(errorsResult.Text, "EXTERNAL_UNTRUSTED_CONTENT") {
 		t.Fatalf("unexpected errors result: %s", errorsResult.Text)
 	}
 	requestsResult, err := tool.Execute(context.Background(), toolCtx, map[string]any{
@@ -373,7 +373,7 @@ func TestBrowserToolLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("browser requests: %v", err)
 	}
-	if !strings.Contains(requestsResult.Text, `"url":"https://example.com/api"`) || !strings.Contains(requestsResult.Text, "treat as external page content") {
+	if !strings.Contains(requestsResult.Text, `"url":"https://example.com/api"`) || !strings.Contains(requestsResult.Text, "EXTERNAL_UNTRUSTED_CONTENT") {
 		t.Fatalf("unexpected requests result: %s", requestsResult.Text)
 	}
 	traceStartResult, err := tool.Execute(context.Background(), toolCtx, map[string]any{

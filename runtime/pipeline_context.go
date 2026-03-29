@@ -14,6 +14,7 @@ import (
 	"github.com/kocort/kocort/internal/backend"
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/core"
+	hookspkg "github.com/kocort/kocort/internal/hooks"
 	"github.com/kocort/kocort/internal/infra"
 	memorypkg "github.com/kocort/kocort/internal/memory"
 	sessionpkg "github.com/kocort/kocort/internal/session"
@@ -112,6 +113,41 @@ func (p *AgentPipeline) loadContext(ctx context.Context, state *PipelineState) e
 	}
 	state.Skills = skillsSnapshot
 
+	// ---- Discover and register skill hooks (once per session) ----
+	// Guard against duplicate registration on repeated loadContext calls.
+	if r.InternalHooks != nil && r.Config.Hooks.SkillHooksEnabled() && skillsSnapshot != nil && len(r.InternalHooks.RegisteredKeys()) == 0 {
+		skillDirs := make(map[string]string)
+		for _, entry := range skillsSnapshot.Skills {
+			if entry.Metadata != nil && entry.Metadata.BaseDir != "" {
+				skillDirs[entry.Name] = entry.Metadata.BaseDir
+			}
+		}
+		if len(skillDirs) > 0 {
+			hookCfgEntries := toHookEntryConfigs(r.Config.Hooks.Entries)
+			hookEntries := hookspkg.DiscoverSkillHooks(skillDirs, hookCfgEntries)
+			hookspkg.RegisterSkillHooks(r.InternalHooks, hookEntries, hookCfgEntries)
+		}
+	}
+
+	// ---- Fire agent:bootstrap hook ----
+	if r.InternalHooks != nil && r.InternalHooks.HasHandlers(hookspkg.EventAgent, "bootstrap") {
+		event := hookspkg.NewEvent(hookspkg.EventAgent, "bootstrap", sess.SessionKey, map[string]any{
+			"workspaceDir": workspaceDir,
+			"agentId":      identity.ID,
+			"sessionKey":   sess.SessionKey,
+			"sessionId":    sess.SessionID,
+		})
+		r.InternalHooks.Trigger(ctx, event)
+		// Inject hook messages as internal events.
+		for _, msg := range event.Messages {
+			internalEvents = append(internalEvents, core.TranscriptMessage{
+				Role: "system",
+				Text: msg,
+			})
+		}
+		state.InternalEvents = internalEvents
+	}
+
 	// ---- Load context files ----
 	contextFiles, bootstrapWarnings := memorypkg.LoadPromptContextFiles(workspaceDir, req.ChatType, req.IsHeartbeat)
 	if lightHeartbeat {
@@ -193,4 +229,20 @@ func (p *AgentPipeline) loadContext(ctx context.Context, state *PipelineState) e
 	state.Selection = selection
 
 	return nil
+}
+
+// toHookEntryConfigs converts config.HookEntryConfig map to hooks package
+// types to avoid import cycles.
+func toHookEntryConfigs(entries map[string]config.HookEntryConfig) map[string]hookspkg.HookEntryConfig {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make(map[string]hookspkg.HookEntryConfig, len(entries))
+	for k, v := range entries {
+		out[k] = hookspkg.HookEntryConfig{
+			Enabled: v.Enabled,
+			Env:     v.Env,
+		}
+	}
+	return out
 }

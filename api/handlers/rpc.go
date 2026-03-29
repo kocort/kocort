@@ -11,10 +11,7 @@ import (
 
 	"github.com/kocort/kocort/api/service"
 	"github.com/kocort/kocort/internal/backend"
-	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/core"
-	gw "github.com/kocort/kocort/internal/gateway"
-	"github.com/kocort/kocort/internal/session"
 	"github.com/kocort/kocort/runtime"
 )
 
@@ -41,13 +38,7 @@ func (h *RPC) ChatSend(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if strings.TrimSpace(req.Channel) == "" {
-		req.Channel = "webchat"
-	}
-	if strings.TrimSpace(req.To) == "" {
-		req.To = "webchat-user"
-	}
-	resp, err := h.Runtime.ChatSend(c.Request.Context(), req)
+	resp, err := service.NewChatGateway(h.Runtime).Send(c.Request.Context(), req)
 	if err != nil {
 		writeChatError(c, err)
 		return
@@ -62,13 +53,7 @@ func (h *RPC) ChatCancel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if strings.TrimSpace(req.SessionKey) == "" {
-		req.SessionKey = session.BuildMainSessionKeyWithMain(
-			config.ResolveDefaultConfiguredAgentID(h.Runtime.Config),
-			config.ResolveSessionMainKey(h.Runtime.Config),
-		)
-	}
-	resp, err := h.Runtime.ChatCancel(c.Request.Context(), req)
+	resp, err := service.NewChatGateway(h.Runtime).Cancel(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -83,17 +68,12 @@ func (h *RPC) ChatHistory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing sessionKey"})
 		return
 	}
-	limit, err := gw.ParseChatHistoryLimit(c.Request)
+	limit, before, err := service.ParseHistoryWindow(c.Request)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	before, err := gw.ParseChatHistoryBefore(c.Request)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	resp := loadChatHistory(h.Runtime, sessionKey, limit, before)
+	resp := service.NewChatGateway(h.Runtime).LoadHistory(sessionKey, limit, before)
 	c.JSON(http.StatusOK, resp)
 }
 

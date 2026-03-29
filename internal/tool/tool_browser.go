@@ -21,7 +21,11 @@ func NewBrowserTool(service browserpkg.Service) *BrowserTool {
 func (t *BrowserTool) Name() string { return "browser" }
 
 func (t *BrowserTool) Description() string {
-	return "Control browser profiles, tabs, navigation, screenshots, PDFs, and console output."
+	return "Control the browser (status/start/stop/profiles/tabs/open/snapshot/screenshot/act). " +
+		"Use snapshot+act for UI automation: ALWAYS call snapshot first to see page structure and element refs, then use act with ref from snapshot results. " +
+		"When using refs from snapshot (e.g. e12), keep the same tab: prefer passing targetId from the snapshot response into subsequent actions. " +
+		`For stable, self-resolving refs across calls, use snapshot with refs=\"aria\" (Playwright aria-ref ids). Default refs=\"role\" are role+name-based. ` +
+		"Avoid act:wait by default; use only in exceptional cases when no reliable UI state exists."
 }
 
 func (t *BrowserTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
@@ -31,8 +35,8 @@ func (t *BrowserTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action":         map[string]any{"type": "string", "description": "One of install, status, start, stop, profiles, tabs, open, focus, close, snapshot, screenshot, navigate, console, errors, requests, trace.start, trace.stop, pdf, upload, dialog, act, download, wait.download."},
-				"target":         map[string]any{"type": "string", "description": "Browser target surface. Accepts host, sandbox, or node."},
+				"action":         map[string]any{"type": "string", "enum": []string{"install", "status", "start", "stop", "profiles", "tabs", "open", "focus", "close", "snapshot", "screenshot", "navigate", "console", "errors", "requests", "trace.start", "trace.stop", "pdf", "upload", "dialog", "act", "download", "wait.download"}, "description": "The browser action to perform. Use snapshot to inspect page structure before act. Use ref from snapshot results for precise element targeting."},
+				"target":         map[string]any{"type": "string", "enum": []string{"host", "sandbox", "node"}, "description": "Browser target surface."},
 				"node":           map[string]any{"type": "string", "description": "Optional node id when target=node."},
 				"profile":        map[string]any{"type": "string", "description": "Optional browser profile name."},
 				"headless":       map[string]any{"type": "boolean", "description": "Whether to run the browser in headless mode. When false, a visible browser window is opened. Only takes effect on start/open when a new browser session is launched."},
@@ -42,16 +46,16 @@ func (t *BrowserTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
 				"limit":          map[string]any{"type": "integer", "description": "Optional result limit."},
 				"maxChars":       map[string]any{"type": "integer", "description": "Optional text cap for snapshot output."},
 				"mode":           map[string]any{"type": "string"},
-				"snapshotFormat": map[string]any{"type": "string"},
-				"refs":           map[string]any{"type": "string"},
+				"snapshotFormat": map[string]any{"type": "string", "enum": []string{"aria", "ai"}, "description": "Snapshot output format. aria returns structured accessibility tree, ai returns an LLM-friendly text summary."},
+				"refs":           map[string]any{"type": "string", "enum": []string{"role", "aria"}, "description": "Ref style for snapshot. role (default) uses role+name-based refs; aria uses stable Playwright aria-ref ids that survive across calls."},
 				"interactive":    map[string]any{"type": "boolean"},
 				"compact":        map[string]any{"type": "boolean"},
 				"depth":          map[string]any{"type": "integer"},
-				"selector":       map[string]any{"type": "string"},
+				"selector":       map[string]any{"type": "string", "description": "CSS selector or Playwright selector engine string to target an element. Supports: CSS selectors (e.g. #id, .class, button[title=\"Submit\"]), text selectors (text=Submit, text=\"exact match\"), role selectors (role=button[name=\"Submit\"]), and XPath (xpath=//button). Prefer specific attribute selectors like button[title=\"创建\"] over generic class selectors to avoid strict mode violations when multiple elements match."},
 				"frame":          map[string]any{"type": "string"},
 				"labels":         map[string]any{"type": "boolean"},
 				"fullPage":       map[string]any{"type": "boolean"},
-				"ref":            map[string]any{"type": "string"},
+				"ref":            map[string]any{"type": "string", "description": "Element ref from a previous snapshot result. Preferred over selector for precise element targeting."},
 				"startRef":       map[string]any{"type": "string"},
 				"endRef":         map[string]any{"type": "string"},
 				"element":        map[string]any{"type": "string"},
@@ -72,10 +76,10 @@ func (t *BrowserTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
 				"button":         map[string]any{"type": "string"},
 				"modifiers":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 				"delayMs":        map[string]any{"type": "integer"},
-				"kind":           map[string]any{"type": "string"},
-				"text":           map[string]any{"type": "string"},
-				"key":            map[string]any{"type": "string"},
-				"fn":             map[string]any{"type": "string"},
+				"kind":           map[string]any{"type": "string", "enum": []string{"click", "type", "fill", "input", "press", "hover", "select", "resize", "drag", "wait", "evaluate", "close"}, "description": "Required for action=act. The interaction kind. Use fill/input to set input value, type for keystroke-by-keystroke input."},
+				"text":           map[string]any{"type": "string", "description": "Text content for fill, input, or type actions."},
+				"key":            map[string]any{"type": "string", "description": "Key name for press action (e.g. Enter, Tab, Escape, ArrowDown)."},
+				"fn":             map[string]any{"type": "string", "description": "JavaScript expression for evaluate action."},
 				"timeMs":         map[string]any{"type": "integer"},
 				"textGone":       map[string]any{"type": "string"},
 				"loadState":      map[string]any{"type": "string"},
@@ -276,13 +280,7 @@ func (t *BrowserTool) Execute(ctx context.Context, toolCtx ToolContext, args map
 			})
 		})
 	case "act":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			actReq, actErr := readBrowserActRequest(req, args)
-			if actErr != nil {
-				return nil, actErr
-			}
-			return t.service.Act(ctx, actReq)
-		})
+		return t.executeActWithRetry(ctx, req, args)
 	case "upload":
 		return t.executeMap(ctx, func() (map[string]any, error) {
 			paths, pathErr := resolveUploadPaths(toolCtx, args)
@@ -337,6 +335,59 @@ func (t *BrowserTool) executeMap(ctx context.Context, fn func() (map[string]any,
 			return core.ToolResult{}, ctx.Err()
 		}
 		return core.ToolResult{}, err
+	}
+	return JSONResult(result)
+}
+
+// safeActKindsForRetry are act kinds that are safe to retry without a targetId
+// when the original targetId becomes stale (read-only or idempotent).
+var safeActKindsForRetry = map[string]bool{
+	"hover": true,
+	"wait":  true,
+}
+
+// isStaleTargetResult checks if an act result indicates a stale/closed target.
+func isStaleTargetResult(result map[string]any) bool {
+	if result == nil {
+		return false
+	}
+	ok, _ := result["ok"].(bool)
+	if ok {
+		return false
+	}
+	errMsg, _ := result["error"].(string)
+	errMsg = strings.ToLower(errMsg)
+	return strings.Contains(errMsg, "tab not found") ||
+		strings.Contains(errMsg, "no browser tab") ||
+		strings.Contains(errMsg, "target closed") ||
+		strings.Contains(errMsg, "page closed")
+}
+
+func (t *BrowserTool) executeActWithRetry(ctx context.Context, req browserpkg.Request, args map[string]any) (core.ToolResult, error) {
+	actReq, err := readBrowserActRequest(req, args)
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	result, err := t.service.Act(ctx, actReq)
+	if err != nil {
+		if ctx.Err() != nil {
+			return core.ToolResult{}, ctx.Err()
+		}
+		return core.ToolResult{}, err
+	}
+	// If the act failed due to a stale targetId, retry safe actions without it.
+	if isStaleTargetResult(result) && actReq.TargetID != "" && safeActKindsForRetry[strings.ToLower(actReq.Kind)] {
+		retryReq := actReq
+		retryReq.TargetID = ""
+		retryReq.TargetRequest.TargetID = ""
+		retryResult, retryErr := t.service.Act(ctx, retryReq)
+		if retryErr == nil && !isStaleTargetResult(retryResult) {
+			return JSONResult(retryResult)
+		}
+		// Retry failed — enrich the original error with guidance.
+		result["hint"] = `Target may be stale. Run action="tabs" to get current targetIds, then retry with a valid targetId.`
+	} else if isStaleTargetResult(result) {
+		result["hint"] = `Target may be stale. Run action="tabs" to get current targetIds, then retry with a valid targetId.`
 	}
 	return JSONResult(result)
 }

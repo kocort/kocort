@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/kocort/kocort/internal/config"
 	gw "github.com/kocort/kocort/internal/gateway"
+	hookspkg "github.com/kocort/kocort/internal/hooks"
 	"github.com/kocort/kocort/runtime"
 )
 
@@ -25,6 +27,17 @@ func (s *Server) Addr() string {
 }
 
 func (s *Server) Start(ctx context.Context) error {
+	// Fire gateway:startup hook before listening.
+	if s.Runtime != nil && s.Runtime.InternalHooks != nil {
+		addr := s.Addr()
+		evt := hookspkg.NewEvent(hookspkg.EventGateway, "startup", "", map[string]any{
+			"addr": addr,
+		})
+		s.Runtime.InternalHooks.Trigger(ctx, evt)
+		for _, msg := range evt.Messages {
+			slog.Info("[hooks] gateway:startup", "message", msg)
+		}
+	}
 	return gw.ListenAndServe(ctx, s.Addr(), s.Handler())
 }
 

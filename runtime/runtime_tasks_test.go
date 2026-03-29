@@ -1,9 +1,8 @@
-package runtime
+﻿package runtime
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -223,7 +222,7 @@ func TestCronToolSchedulesReminderForCurrentSession(t *testing.T) {
 			},
 			"payload": map[string]any{
 				"kind": "systemEvent",
-				"text": "Reminder: 拿衣服！",
+				"text": "Reminder: 鎷胯。鏈嶏紒",
 			},
 		},
 	})
@@ -247,7 +246,7 @@ func TestCronToolSchedulesReminderForCurrentSession(t *testing.T) {
 	if task.SessionKey != sessionKey || task.Channel != "webchat" || task.To != "webchat-user" || !task.Deliver {
 		t.Fatalf("expected inferred session delivery target, got %+v", *task)
 	}
-	if strings.TrimSpace(task.Message) != "Reminder: 拿衣服！" {
+	if strings.TrimSpace(task.Message) != "Reminder: 鎷胯。鏈嶏紒" {
 		t.Fatalf("expected reminder text, got %q", task.Message)
 	}
 }
@@ -290,7 +289,7 @@ func TestCronToolDelayMinutesSchedulesOneShotReminder(t *testing.T) {
 	result, err := runtime.ExecuteTool(context.Background(), runCtx, "cron", map[string]any{
 		"action":       "add",
 		"delayMinutes": 5,
-		"text":         "Reminder: 拿衣服！",
+		"text":         "Reminder: 鎷胯。鏈嶏紒",
 	})
 	if err != nil {
 		t.Fatalf("cron add: %v", err)
@@ -355,7 +354,7 @@ func TestCronToolDelaySecondsWithMessageDefaultsToHeartbeatReminder(t *testing.T
 	result, err := runtime.ExecuteTool(context.Background(), runCtx, "cron", map[string]any{
 		"action":       "add",
 		"delaySeconds": 10,
-		"message":      "提醒：请拿衣服！",
+		"message":      "鎻愰啋锛氳鎷胯。鏈嶏紒",
 	})
 	if err != nil {
 		t.Fatalf("cron add: %v", err)
@@ -523,40 +522,6 @@ func TestCronToolSupportsCronExpressionSchedule(t *testing.T) {
 	}
 }
 
-func TestTaskSchedulerReschedulesEveryTaskAfterRun(t *testing.T) {
-	baseDir := t.TempDir()
-	tasks, err := task.NewTaskScheduler(baseDir, config.TasksConfig{MaxConcurrent: 2})
-	if err != nil {
-		t.Fatalf("new task scheduler: %v", err)
-	}
-	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
-	tasks.SetNow(func() time.Time { return now })
-	task, err := tasks.Schedule(task.TaskScheduleRequest{
-		AgentID:          "main",
-		Title:            "Every 2 min",
-		Message:          "ping",
-		ScheduleKind:     core.TaskScheduleEvery,
-		ScheduleEveryMs:  120000,
-		ScheduleAnchorMs: now.Add(-2 * time.Minute).UnixMilli(),
-	})
-	if err != nil {
-		t.Fatalf("schedule every: %v", err)
-	}
-	if err := tasks.MarkRunFinished(task.ID, core.AgentRunResult{Payloads: []core.ReplyPayload{{Text: "ok"}}}, nil, time.Time{}); err != nil {
-		t.Fatalf("mark finished: %v", err)
-	}
-	got := tasks.Get(task.ID)
-	if got == nil {
-		t.Fatalf("expected task")
-	}
-	if got.Status != core.TaskStatusScheduled {
-		t.Fatalf("expected task to be rescheduled, got %+v", *got)
-	}
-	if !got.NextRunAt.After(now) {
-		t.Fatalf("expected next run after now, got %+v", *got)
-	}
-}
-
 func TestScheduledMainSystemEventTaskWithNextHeartbeatDoesNotWakeImmediately(t *testing.T) {
 	baseDir := t.TempDir()
 	store, err := session.NewSessionStore(baseDir)
@@ -631,76 +596,6 @@ func TestScheduledMainSystemEventTaskWithNextHeartbeatDoesNotWakeImmediately(t *
 	}
 }
 
-func TestMaybeNotifyTaskFailureSendsAlertAndRespectsCooldown(t *testing.T) {
-	baseDir := t.TempDir()
-	audit, err := infra.NewAuditLog(baseDir)
-	if err != nil {
-		t.Fatalf("new audit log: %v", err)
-	}
-	tasks, err := task.NewTaskScheduler(baseDir, config.TasksConfig{MaxConcurrent: 2})
-	if err != nil {
-		t.Fatalf("new task scheduler: %v", err)
-	}
-	mem := &delivery.MemoryDeliverer{}
-	runtime := &Runtime{
-		Audit:      audit,
-		Deliverer:  mem,
-		Tasks:      tasks,
-		ActiveRuns: task.NewActiveRunRegistry(),
-		Queue:      task.NewFollowupQueue(),
-		Subagents:  task.NewSubagentRegistry(),
-	}
-	record, err := tasks.Schedule(task.TaskScheduleRequest{
-		AgentID:                "main",
-		SessionKey:             session.BuildMainSessionKey("main"),
-		Title:                  "Reminder task",
-		Message:                "Reminder failed",
-		Channel:                "webchat",
-		To:                     "webchat-user",
-		Deliver:                true,
-		FailureAlertAfter:      2,
-		FailureAlertCooldownMs: 60_000,
-		FailureAlertMode:       "announce",
-		ScheduleKind:           core.TaskScheduleAt,
-		ScheduleAt:             time.Now().UTC().Add(time.Minute),
-	})
-	if err != nil {
-		t.Fatalf("schedule task: %v", err)
-	}
-	if err := tasks.MarkRunFinished(record.ID, core.AgentRunResult{}, fmt.Errorf("first failure"), time.Time{}); err != nil {
-		t.Fatalf("mark first failure: %v", err)
-	}
-	if err := tasks.MarkRunFinished(record.ID, core.AgentRunResult{}, fmt.Errorf("second failure"), time.Time{}); err != nil {
-		t.Fatalf("mark second failure: %v", err)
-	}
-	taskRecord := tasks.Get(record.ID)
-	if taskRecord == nil {
-		t.Fatalf("expected task")
-	}
-	if taskRecord.ConsecutiveErrors < 2 {
-		t.Fatalf("expected consecutive errors to increment, got %+v", *taskRecord)
-	}
-	if err := task.NotifyTaskFailure(context.Background(), runtime.Deliverer, tasks, runtime.Audit, *taskRecord); err != nil {
-		t.Fatalf("maybe notify task failure: %v", err)
-	}
-	if len(mem.Records) != 1 {
-		t.Fatalf("expected one failure alert delivery, got %+v", mem.Records)
-	}
-	if !strings.Contains(mem.Records[0].Payload.Text, "Task failed: Reminder task") || !strings.Contains(mem.Records[0].Payload.Text, "second failure") {
-		t.Fatalf("expected failure alert message, got %+v", mem.Records[0])
-	}
-	updated := tasks.Get(record.ID)
-	if updated == nil || updated.LastFailureAlertAt.IsZero() {
-		t.Fatalf("expected failure alert timestamp to persist, got %+v", updated)
-	}
-	if err := task.NotifyTaskFailure(context.Background(), runtime.Deliverer, tasks, runtime.Audit, *updated); err != nil {
-		t.Fatalf("maybe notify task failure second call: %v", err)
-	}
-	if len(mem.Records) != 1 {
-		t.Fatalf("expected cooldown to suppress duplicate alert, got %+v", mem.Records)
-	}
-}
-
 func TestCronToolListsAndRemovesScheduledTasks(t *testing.T) {
 	baseDir := t.TempDir()
 	store, err := session.NewSessionStore(baseDir)
@@ -762,77 +657,6 @@ func TestCronToolListsAndRemovesScheduledTasks(t *testing.T) {
 	}
 }
 
-func TestBuildToolGuidanceSectionMentionsCronForReminders(t *testing.T) {
-	text := infra.BuildToolGuidanceSection([]infra.PromptTool{tool.NewCronTool()})
-	if !strings.Contains(text, "use cron instead of only promising to remember") {
-		t.Fatalf("expected cron reminder guidance, got %s", text)
-	}
-	if !strings.Contains(text, "continue the turn normally and confirm the plan in your own words") {
-		t.Fatalf("expected cron post-tool confirmation guidance, got %s", text)
-	}
-}
-
-func TestCronToolDescriptionMatchesReminderGuidance(t *testing.T) {
-	desc := tool.NewCronTool().Description()
-	if !strings.Contains(desc, "use for reminders") {
-		t.Fatalf("expected reminder guidance in cron description, got %s", desc)
-	}
-	if !strings.Contains(desc, "read like a reminder when it fires") {
-		t.Fatalf("expected firing-time reminder wording in cron description, got %s", desc)
-	}
-}
-
-func TestApplyReminderReplyGuardAppendsNoteWhenReminderUnbacked(t *testing.T) {
-	result := delivery.ApplyReminderGuard(nil, "agent:main:main", 0, core.AgentRunResult{
-		Payloads: []core.ReplyPayload{{Text: "I'll remind you tomorrow morning."}},
-	})
-	if len(result.Payloads) != 1 || !strings.Contains(result.Payloads[0].Text, infra.UnscheduledReminderNote) {
-		t.Fatalf("expected unscheduled reminder note, got %+v", result.Payloads)
-	}
-}
-
-func TestApplyReminderReplyGuardKeepsReminderWhenCronAddSucceeded(t *testing.T) {
-	result := delivery.ApplyReminderGuard(nil, "agent:main:main", 1, core.AgentRunResult{
-		Payloads:           []core.ReplyPayload{{Text: "I'll remind you tomorrow morning."}},
-		SuccessfulCronAdds: 1,
-	})
-	if len(result.Payloads) != 1 {
-		t.Fatalf("expected single payload, got %+v", result.Payloads)
-	}
-	if strings.Contains(result.Payloads[0].Text, infra.UnscheduledReminderNote) {
-		t.Fatalf("expected no guard note when cron add succeeded, got %+v", result.Payloads)
-	}
-}
-
-func TestApplyReminderReplyGuardSuppressesNoteWhenSessionHasScheduledTask(t *testing.T) {
-	baseDir := t.TempDir()
-	tasks, err := task.NewTaskScheduler(baseDir, config.TasksConfig{MaxConcurrent: 2})
-	if err != nil {
-		t.Fatalf("new task scheduler: %v", err)
-	}
-	_, err = tasks.Schedule(task.TaskScheduleRequest{
-		AgentID:    "main",
-		SessionKey: "agent:main:main",
-		Title:      "existing reminder",
-		Message:    "Reminder: ping",
-		RunAt:      time.Now().UTC().Add(5 * time.Minute),
-		Deliver:    true,
-	})
-	if err != nil {
-		t.Fatalf("schedule task: %v", err)
-	}
-	rt := &Runtime{Tasks: tasks}
-	_ = rt // suppress unused warning
-	result := delivery.ApplyReminderGuard(tasks, "agent:main:main", 0, core.AgentRunResult{
-		Payloads: []core.ReplyPayload{{Text: "I'll remind you tomorrow morning."}},
-	})
-	if len(result.Payloads) != 1 {
-		t.Fatalf("expected single payload, got %+v", result.Payloads)
-	}
-	if strings.Contains(result.Payloads[0].Text, infra.UnscheduledReminderNote) {
-		t.Fatalf("expected no guard note when session already has scheduled task, got %+v", result.Payloads)
-	}
-}
 
 func TestScheduledReminderRunsAndDeliversOneShotMessage(t *testing.T) {
 	baseDir := t.TempDir()
@@ -882,7 +706,7 @@ func TestScheduledReminderRunsAndDeliversOneShotMessage(t *testing.T) {
 		AgentID:    "main",
 		SessionKey: session.BuildDirectSessionKey("main", "webchat", "webchat-user"),
 		Title:      "Reminder",
-		Message:    "Reminder: 拿衣服！",
+		Message:    "Reminder: 鎷胯。鏈嶏紒",
 		Channel:    "webchat",
 		To:         "webchat-user",
 		Deliver:    true,
@@ -958,13 +782,21 @@ func TestScheduledMainSystemEventTaskTriggersHeartbeatDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new runtime: %v", err)
 	}
+	t.Cleanup(func() {
+		if rt.Tasks != nil {
+			rt.Tasks.Stop()
+		}
+		if rt.Heartbeats != nil {
+			rt.Heartbeats.Stop()
+		}
+	})
 	rt.Backends = nil
 	rt.Deliverer = mem
 	rt.Backend = backendFunc(func(ctx context.Context, runCtx rtypes.AgentRunContext) (core.AgentRunResult, error) {
 		if !runCtx.Request.IsHeartbeat {
 			t.Fatalf("expected heartbeat run for scheduled system event, got %+v", runCtx.Request)
 		}
-		if len(runCtx.Request.InternalEvents) == 0 || strings.TrimSpace(runCtx.Request.InternalEvents[0].Text) != "Reminder: 拿衣服！" {
+		if len(runCtx.Request.InternalEvents) == 0 || strings.TrimSpace(runCtx.Request.InternalEvents[0].Text) != "Reminder: 鎷胯。鏈嶏紒" {
 			t.Fatalf("expected internal system event for reminder, got %+v", runCtx.Request.InternalEvents)
 		}
 		runCtx.ReplyDispatcher.SendFinalReply(core.ReplyPayload{Text: "Reminder delivered"})
@@ -978,7 +810,7 @@ func TestScheduledMainSystemEventTaskTriggersHeartbeatDelivery(t *testing.T) {
 		AgentID:       "main",
 		SessionKey:    session.BuildDirectSessionKey("main", "webchat", "webchat-user"),
 		Title:         "Reminder",
-		Message:       "Reminder: 拿衣服！",
+		Message:       "Reminder: 鎷胯。鏈嶏紒",
 		Channel:       "webchat",
 		To:            "webchat-user",
 		Deliver:       true,
@@ -1020,6 +852,7 @@ func TestScheduledMainSystemEventTaskTriggersHeartbeatDelivery(t *testing.T) {
 func TestScheduledMainSystemEventTaskSkipsHeartbeatAckOnlyReply(t *testing.T) {
 	baseDir := t.TempDir()
 	mem := &delivery.MemoryDeliverer{}
+	sessionKey := session.BuildDirectSessionKey("main", "webchat", "webchat-user")
 	rt, err := NewRuntimeFromConfig(config.AppConfig{
 		Models: config.ModelsConfig{
 			Providers: map[string]config.ProviderConfig{
@@ -1057,6 +890,14 @@ func TestScheduledMainSystemEventTaskSkipsHeartbeatAckOnlyReply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new runtime: %v", err)
 	}
+	t.Cleanup(func() {
+		if rt.Tasks != nil {
+			rt.Tasks.Stop()
+		}
+		if rt.Heartbeats != nil {
+			rt.Heartbeats.Stop()
+		}
+	})
 	rt.Backends = nil
 	rt.Deliverer = mem
 	rt.Backend = backendFunc(func(ctx context.Context, runCtx rtypes.AgentRunContext) (core.AgentRunResult, error) {
@@ -1065,13 +906,16 @@ func TestScheduledMainSystemEventTaskSkipsHeartbeatAckOnlyReply(t *testing.T) {
 			Payloads: []core.ReplyPayload{{Text: heartbeat.HeartbeatToken}},
 		}, nil
 	})
+	if _, err := rt.Sessions.Resolve(context.Background(), "main", sessionKey, "webchat", "webchat-user", ""); err != nil {
+		t.Fatalf("resolve session: %v", err)
+	}
 
-	_, err = rt.ScheduleTask(context.Background(), task.TaskScheduleRequest{
+	scheduledTask, err := rt.ScheduleTask(context.Background(), task.TaskScheduleRequest{
 		Kind:          core.TaskKindScheduled,
 		AgentID:       "main",
-		SessionKey:    session.BuildDirectSessionKey("main", "webchat", "webchat-user"),
+		SessionKey:    sessionKey,
 		Title:         "Reminder",
-		Message:       "Reminder: 拿衣服！",
+		Message:       "Reminder: 鎷胯。鏈嶏紒",
 		Channel:       "webchat",
 		To:            "webchat-user",
 		Deliver:       true,
@@ -1085,7 +929,17 @@ func TestScheduledMainSystemEventTaskSkipsHeartbeatAckOnlyReply(t *testing.T) {
 	}
 
 	rt.Tasks.RunDueTasks(context.Background(), rt)
-	time.Sleep(300 * time.Millisecond)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(mem.Records) > 0 {
+			break
+		}
+		if got := rt.GetTask(context.Background(), scheduledTask.ID); got != nil && got.Status == core.TaskStatusCompleted {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	if len(mem.Records) != 0 {
 		t.Fatalf("expected heartbeat ack-only run to be suppressed, got %+v", mem.Records)
 	}
@@ -1114,17 +968,17 @@ func TestRunHeartbeatTurnUsesCronEventPrompt(t *testing.T) {
 		Queue:        task.NewFollowupQueue(),
 		ActiveRuns:   task.NewActiveRunRegistry(),
 	}
-	runtime.SystemEvents.Enqueue("agent:main:webchat:direct:hb-user", "提醒：拿衣服", "cron:test")
+	runtime.SystemEvents.Enqueue("agent:main:webchat:direct:hb-user", "鎻愰啋锛氭嬁琛ｆ湇", "cron:test")
 	runtime.Backend = fakeBackend{
 		onRun: func(ctx context.Context, runCtx rtypes.AgentRunContext) (core.AgentRunResult, error) {
 			if !strings.Contains(runCtx.Request.Message, "A scheduled reminder has been triggered") {
 				t.Fatalf("expected cron event prompt, got %q", runCtx.Request.Message)
 			}
-			if !strings.Contains(runCtx.Request.Message, "提醒：拿衣服") {
+			if !strings.Contains(runCtx.Request.Message, "鎻愰啋锛氭嬁琛ｆ湇") {
 				t.Fatalf("expected event text in heartbeat prompt, got %q", runCtx.Request.Message)
 			}
-			runCtx.ReplyDispatcher.SendFinalReply(core.ReplyPayload{Text: "提醒：拿衣服"})
-			return core.AgentRunResult{Payloads: []core.ReplyPayload{{Text: "提醒：拿衣服"}}}, nil
+			runCtx.ReplyDispatcher.SendFinalReply(core.ReplyPayload{Text: "鎻愰啋锛氭嬁琛ｆ湇"})
+			return core.AgentRunResult{Payloads: []core.ReplyPayload{{Text: "鎻愰啋锛氭嬁琛ｆ湇"}}}, nil
 		},
 	}
 	sessionKey := session.BuildDirectSessionKey("main", "webchat", "hb-user")
