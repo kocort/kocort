@@ -256,8 +256,7 @@ func TestQMDMemoryBackendRepairsMissingCollectionAndRetriesOnce(t *testing.T) {
 		"fake-qmd",
 		strings.Join([]string{
 			"#!/bin/sh",
-			"printf '%s\\n' \"$@\" >>" + argsPath,
-			"printf '\\n' >>" + argsPath,
+			"echo \"$*\" >>" + argsPath,
 			"if [ \"$1\" = \"collection\" ] && [ \"$2\" = \"list\" ]; then",
 			"  echo '[]'",
 			"  exit 0",
