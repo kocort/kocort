@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kocort/kocort/api"
+	"github.com/kocort/kocort/internal/acpbridge"
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/delivery"
@@ -22,6 +23,13 @@ func main() {
 		modelsPath = flag.String("models-config", "", "Path to models overlay JSON config (defaults to <config-dir>/models.json)")
 		chansPath  = flag.String("channels-config", "", "Path to channels overlay JSON config (defaults to <config-dir>/channels.json)")
 		gatewayRun = flag.Bool("gateway", false, "Run HTTP gateway/webchat server")
+		acpRun     = flag.Bool("acp", false, "Run ACP bridge over stdio")
+		acpSession = flag.String("acp-session", "", "Default ACP session key")
+		acpLabel   = flag.String("acp-session-label", "", "Default ACP session label")
+		acpRequire = flag.Bool("acp-require-existing", false, "Require ACP session key or label to already exist")
+		acpReset   = flag.Bool("acp-reset-session", false, "Reset ACP session before first use")
+		acpNoCwd   = flag.Bool("acp-no-prefix-cwd", false, "Do not prefix ACP prompts with the working directory")
+		acpProv    = flag.String("acp-provenance", "off", "ACP provenance mode: off, meta, or meta+receipt")
 		message    = flag.String("message", "", "User message to run")
 		agentID    = flag.String("agent", "main", "Agent id")
 		provider   = flag.String("provider", "", "Model provider override")
@@ -55,7 +63,7 @@ func main() {
 		os.Setenv("KOCORT_HOME", absConfigDir)
 	}
 
-	if !*gatewayRun && *message == "" {
+	if !*gatewayRun && !*acpRun && *message == "" {
 		fail("missing required -message")
 	}
 	loadOpts := config.ConfigLoadOptions{
@@ -99,6 +107,19 @@ func main() {
 		server := api.NewServer(rt, cfg.Gateway)
 		if err := server.Start(context.Background()); err != nil {
 			fail("run gateway: %v", err)
+		}
+		return
+	}
+	if *acpRun {
+		if err := acpbridge.ServeACPBridge(context.Background(), rt, acpbridge.ACPBridgeOptions{
+			DefaultSessionKey:   *acpSession,
+			DefaultSessionLabel: *acpLabel,
+			RequireExisting:     *acpRequire,
+			ResetSession:        *acpReset,
+			PrefixCwd:           !*acpNoCwd,
+			ProvenanceMode:      *acpProv,
+		}, os.Stdout, os.Stdin); err != nil {
+			fail("run acp bridge: %v", err)
 		}
 		return
 	}

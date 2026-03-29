@@ -14,6 +14,28 @@ import (
 	"github.com/kocort/kocort/internal/tool"
 )
 
+func waitForProcessCompletion(t *testing.T, runtime *Runtime, runCtx rtypes.AgentRunContext, sessionID string) string {
+	t.Helper()
+	deadline := time.Now().Add(12 * time.Second)
+	last := ""
+	for time.Now().Before(deadline) {
+		pollResult, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+			"action":    "poll",
+			"sessionId": sessionID,
+			"timeout":   float64((1500 * time.Millisecond) / time.Millisecond),
+		})
+		if err != nil {
+			t.Fatalf("process poll: %v", err)
+		}
+		last = string(pollResult.JSON)
+		if strings.Contains(last, "\"status\":\"completed\"") {
+			return last
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return last
+}
+
 func TestExecToolBackgroundCanBeListedAndKilled(t *testing.T) {
 	runtime := &Runtime{
 		Tools:     tool.NewToolRegistry(tool.NewExecTool(), tool.NewProcessTool()),
@@ -118,27 +140,14 @@ func TestExecToolYieldMsBackgroundsAndProcessPollCompletes(t *testing.T) {
 	if strings.TrimSpace(sessionID) == "" {
 		t.Fatalf("expected yielded background sessionId, got %+v", payload)
 	}
-
-	pollResult, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
-		"action":    "poll",
-		"sessionId": sessionID,
-		"timeout":   float64((2500 * time.Millisecond) / time.Millisecond),
-	})
-	if err != nil {
-		t.Fatalf("process poll: %v", err)
-	}
-	text := string(pollResult.JSON)
-	if strings.Contains(text, "\"status\":\"running\"") {
-		pollResult, err = runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
-			"action":    "poll",
+	t.Cleanup(func() {
+		_, _ = runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+			"action":    "kill",
 			"sessionId": sessionID,
-			"timeout":   float64((2500 * time.Millisecond) / time.Millisecond),
 		})
-		if err != nil {
-			t.Fatalf("process poll retry: %v", err)
-		}
-		text = string(pollResult.JSON)
-	}
+	})
+
+	text := waitForProcessCompletion(t, runtime, runCtx, sessionID)
 	if !strings.Contains(text, "\"status\":\"completed\"") {
 		t.Fatalf("expected completed status, got %s", text)
 	}
@@ -189,15 +198,14 @@ func TestExecToolUsesDefaultBackgroundWindowWhenYieldNotSpecified(t *testing.T) 
 	if strings.TrimSpace(sessionID) == "" {
 		t.Fatalf("expected sessionId in background result, got %+v", payload)
 	}
-	pollResult, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
-		"action":    "poll",
-		"sessionId": sessionID,
-		"timeout":   float64((2500 * time.Millisecond) / time.Millisecond),
+	t.Cleanup(func() {
+		_, _ = runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+			"action":    "kill",
+			"sessionId": sessionID,
+		})
 	})
-	if err != nil {
-		t.Fatalf("process poll: %v", err)
-	}
-	text := string(pollResult.JSON)
+
+	text := waitForProcessCompletion(t, runtime, runCtx, sessionID)
 	if !strings.Contains(text, "\"status\":\"completed\"") {
 		t.Fatalf("expected completed status, got %s", text)
 	}

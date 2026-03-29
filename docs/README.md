@@ -45,3 +45,9 @@ Kocort 不是单一聊天程序，而是一个“可本地运行的 Agent 平台
 - `runtime/runtime_run.go`
 - `runtime/pipeline_*.go`
 - `internal/config/types.go`
+- `internal/acpbridge/server.go`
+
+## ACP
+
+- ACP bridge implementation: [ACP_BRIDGE.md](./ACP_BRIDGE.md)
+- ACP stdio entrypoint: `kocort -acp`

@@ -5,7 +5,6 @@ package types
 import (
 	"time"
 
-	"github.com/kocort/kocort/internal/acp"
 	"github.com/kocort/kocort/internal/channel/adapter"
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/core"
@@ -459,36 +458,6 @@ type SkillInstallRequest struct {
 	SkillName string `json:"skillName"`
 	InstallID string `json:"installId,omitempty"`
 	TimeoutMs int64  `json:"timeoutMs,omitempty"`
-}
-
-// ACPSessionsState represents ACP session snapshots.
-type ACPSessionsState struct {
-	Sessions []acp.AcpSessionStatus `json:"sessions"`
-}
-
-// ACPResumeResults represents ACP resume results.
-type ACPResumeResults struct {
-	Results []acp.AcpSessionResumeResult `json:"results"`
-}
-
-// ACPSessionResumeRequest represents an ACP resume request.
-type ACPSessionResumeRequest struct {
-	SessionKey string `json:"sessionKey"`
-	BackendID  string `json:"backendId,omitempty"`
-	Agent      string `json:"agent,omitempty"`
-	Cwd        string `json:"cwd,omitempty"`
-	Mode       string `json:"mode,omitempty"`
-	Reason     string `json:"reason,omitempty"`
-}
-
-// ACPSessionControlRequest represents an ACP control request.
-type ACPSessionControlRequest struct {
-	SessionKey string `json:"sessionKey"`
-	BackendID  string `json:"backendId,omitempty"`
-	Action     string `json:"action"`
-	Key        string `json:"key,omitempty"`
-	Value      string `json:"value,omitempty"`
-	Reason     string `json:"reason,omitempty"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

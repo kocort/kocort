@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -165,4 +167,14 @@ func BuildMainConfigPayload(cfg AppConfig) map[string]any {
 		payload["network"] = cfg.Network
 	}
 	return payload
+}
+
+// ConfigHash returns a SHA-256 hex digest of the JSON-serialized configuration.
+func ConfigHash(cfg AppConfig) (string, error) {
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }

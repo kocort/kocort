@@ -87,7 +87,11 @@ type SessionListItem struct {
 	LastThreadID     string
 	UpdatedAt        time.Time
 	ThinkingLevel    string
+	FastMode         bool
 	VerboseLevel     string
+	ReasoningLevel   string
+	ResponseUsage    string
+	ElevatedLevel    string
 	ProviderOverride string
 	ModelOverride    string
 	SpawnedBy        string
@@ -444,7 +448,11 @@ func (s *SessionStore) ListSessions() []SessionListItem {
 			LastThreadID:     entry.LastThreadID,
 			UpdatedAt:        entry.UpdatedAt,
 			ThinkingLevel:    entry.ThinkingLevel,
+			FastMode:         entry.FastMode,
 			VerboseLevel:     entry.VerboseLevel,
+			ReasoningLevel:   entry.ReasoningLevel,
+			ResponseUsage:    entry.ResponseUsage,
+			ElevatedLevel:    entry.ElevatedLevel,
 			ProviderOverride: entry.ProviderOverride,
 			ModelOverride:    entry.ModelOverride,
 			SpawnedBy:        entry.SpawnedBy,
@@ -958,8 +966,20 @@ func MergeSessionEntry(existing core.SessionEntry, next core.SessionEntry) core.
 	if strings.TrimSpace(next.ThinkingLevel) == "" {
 		next.ThinkingLevel = existing.ThinkingLevel
 	}
+	if !next.FastMode {
+		next.FastMode = existing.FastMode
+	}
 	if strings.TrimSpace(next.VerboseLevel) == "" {
 		next.VerboseLevel = existing.VerboseLevel
+	}
+	if strings.TrimSpace(next.ReasoningLevel) == "" {
+		next.ReasoningLevel = existing.ReasoningLevel
+	}
+	if strings.TrimSpace(next.ResponseUsage) == "" {
+		next.ResponseUsage = existing.ResponseUsage
+	}
+	if strings.TrimSpace(next.ElevatedLevel) == "" {
+		next.ElevatedLevel = existing.ElevatedLevel
 	}
 	if strings.TrimSpace(next.ProviderOverride) == "" {
 		next.ProviderOverride = existing.ProviderOverride

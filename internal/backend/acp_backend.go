@@ -41,7 +41,7 @@ func (b *ACPBackend) Run(ctx context.Context, runCtx rtypes.AgentRunContext) (co
 	}
 	runtime := b.Runtime
 	if runtime == nil {
-		runtime = NewCLIAcpRuntime(b.Config, b.Env, b.Provider, b.Command)
+		runtime = NewACPClientRuntime(b.Config, b.Env, b.Provider, b.Command)
 		b.Runtime = runtime
 	}
 	mode := core.AcpSessionModePersistent

@@ -114,9 +114,9 @@ func countTrailingPingPongRounds(history []standardToolRoundObservation) int {
 	}
 	count := 2
 	for index := len(history) - 3; index >= 0; index-- {
-		expected := last
+		expected := previous
 		if count%2 == 0 {
-			expected = previous
+			expected = last
 		}
 		if history[index].Fingerprint != expected {
 			break

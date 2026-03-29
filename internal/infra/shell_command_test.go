@@ -1,15 +1,13 @@
-package runtime
+package infra
 
 import (
 	"errors"
 	"reflect"
 	"testing"
-
-	"github.com/kocort/kocort/internal/infra"
 )
 
 func TestResolveCommandShellUnixFallback(t *testing.T) {
-	spec, err := infra.ResolveCommandShell("linux", func(string) string { return "" }, func(name string) (string, error) {
+	spec, err := ResolveCommandShell("linux", func(string) string { return "" }, func(name string) (string, error) {
 		switch name {
 		case "bash":
 			return "", errors.New("missing")
@@ -31,7 +29,7 @@ func TestResolveCommandShellUnixFallback(t *testing.T) {
 }
 
 func TestResolveCommandShellWindowsPrefersPwsh(t *testing.T) {
-	spec, err := infra.ResolveCommandShell("windows", func(string) string { return "" }, func(name string) (string, error) {
+	spec, err := ResolveCommandShell("windows", func(string) string { return "" }, func(name string) (string, error) {
 		if name == "pwsh" {
 			return `C:\Program Files\PowerShell\7\pwsh.exe`, nil
 		}
@@ -49,7 +47,7 @@ func TestResolveCommandShellWindowsPrefersPwsh(t *testing.T) {
 }
 
 func TestResolveCommandShellWindowsFallsBackToComspec(t *testing.T) {
-	spec, err := infra.ResolveCommandShell("windows", func(key string) string {
+	spec, err := ResolveCommandShell("windows", func(key string) string {
 		if key == "COMSPEC" {
 			return `C:\Windows\System32\cmd.exe`
 		}
@@ -79,7 +77,7 @@ func TestResolveCommandShellHonorsOverride(t *testing.T) {
 			return ""
 		}
 	}
-	spec, err := infra.ResolveCommandShell("linux", env, func(string) (string, error) {
+	spec, err := ResolveCommandShell("linux", env, func(string) (string, error) {
 		return "", errors.New("should not be called")
 	})
 	if err != nil {

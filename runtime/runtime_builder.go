@@ -25,6 +25,7 @@ import (
 	"github.com/kocort/kocort/internal/event"
 	"github.com/kocort/kocort/internal/gateway"
 	"github.com/kocort/kocort/internal/heartbeat"
+	hookspkg "github.com/kocort/kocort/internal/hooks"
 	"github.com/kocort/kocort/internal/infra"
 	"github.com/kocort/kocort/internal/localmodel"
 	memorypkg "github.com/kocort/kocort/internal/memory"
@@ -373,6 +374,7 @@ func (b *RuntimeBuilder) Build() (*Runtime, error) {
 		Plugins:      plugins,
 		Approvals:    b.approvals,
 		Hooks:        nil,
+		InternalHooks: hookspkg.NewRegistry(),
 		Policy: RuntimePolicy{
 			SessionToolsVisibility: b.params.ToolPolicy,
 			AgentToAgent:           b.params.A2A,

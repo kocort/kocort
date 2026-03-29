@@ -3,10 +3,49 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/kocort/kocort/internal/core"
 )
+
+func setMockUserHome(t *testing.T, home string) {
+	t.Helper()
+	originals := map[string]string{
+		"HOME":        os.Getenv("HOME"),
+		"USERPROFILE": os.Getenv("USERPROFILE"),
+		"HOMEDRIVE":   os.Getenv("HOMEDRIVE"),
+		"HOMEPATH":    os.Getenv("HOMEPATH"),
+	}
+	_ = os.Setenv("HOME", home)
+	_ = os.Setenv("USERPROFILE", home)
+	if runtime.GOOS == "windows" {
+		volume := filepath.VolumeName(home)
+		rest := home[len(volume):]
+		if rest == "" {
+			rest = string(os.PathSeparator)
+		}
+		_ = os.Setenv("HOMEDRIVE", volume)
+		_ = os.Setenv("HOMEPATH", rest)
+	}
+	t.Cleanup(func() {
+		for key, value := range originals {
+			if value == "" {
+				_ = os.Unsetenv(key)
+				continue
+			}
+			_ = os.Setenv(key, value)
+		}
+	})
+}
+
+func testAbsPath(parts ...string) string {
+	root := filepath.VolumeName(os.TempDir()) + string(os.PathSeparator)
+	if filepath.VolumeName(os.TempDir()) == "" {
+		root = string(os.PathSeparator)
+	}
+	return filepath.Join(append([]string{root}, parts...)...)
+}
 
 func TestLoadDefaultAppConfigMatchesEmbeddedDefaults(t *testing.T) {
 	cfg, err := LoadDefaultAppConfig(embeddedDefaultConfigJSON)
@@ -127,9 +166,7 @@ func TestResolveDefaultConfigDirFallsToPwdWhenNothingExists(t *testing.T) {
 	defer os.Chdir(origDir) //nolint:errcheck
 	_ = os.Chdir(tmpDir)
 
-	origHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", origHome)
-	os.Setenv("HOME", tmpDir) // no .kocort under this fake HOME either
+	setMockUserHome(t, tmpDir) // no .kocort under this fake HOME either
 
 	got := ResolveDefaultConfigDir()
 	expected := filepath.Join(tmpDir, ".kocort")
@@ -159,9 +196,7 @@ func TestResolveDefaultConfigDirPrefersHomeKocortOverFallback(t *testing.T) {
 	// Create ~/.kocort under a fake HOME
 	fakeHome, _ := filepath.EvalSymlinks(t.TempDir())
 	_ = os.Mkdir(filepath.Join(fakeHome, ".kocort"), 0o755)
-	origHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", origHome)
-	os.Setenv("HOME", fakeHome)
+	setMockUserHome(t, fakeHome)
 
 	got := ResolveDefaultConfigDir()
 	expected := filepath.Join(fakeHome, ".kocort")
@@ -191,9 +226,7 @@ func TestResolveDefaultConfigDirPrefersPwdOverHome(t *testing.T) {
 
 	fakeHome, _ := filepath.EvalSymlinks(t.TempDir())
 	_ = os.Mkdir(filepath.Join(fakeHome, ".kocort"), 0o755)
-	origHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", origHome)
-	os.Setenv("HOME", fakeHome)
+	setMockUserHome(t, fakeHome)
 
 	got := ResolveDefaultConfigDir()
 	expected := filepath.Join(tmpDir, ".kocort")
@@ -277,14 +310,14 @@ func TestResolveConfigPathsSandboxDirsStayAbsolute(t *testing.T) {
 			Defaults: &AgentDefaultsConfig{
 				Workspace:   "workspace-main",
 				AgentDir:    "agents/main/agent",
-				SandboxDirs: []string{"/absolute/sandbox/dir", "/another/sandbox"},
+				SandboxDirs: []string{testAbsPath("absolute", "sandbox", "dir"), testAbsPath("another", "sandbox")},
 			},
 			List: []AgentConfig{
 				{
 					ID:          "worker",
 					Workspace:   "workspace-worker",
 					AgentDir:    "agents/worker/agent",
-					SandboxDirs: []string{"/worker/sandbox"},
+					SandboxDirs: []string{testAbsPath("worker", "sandbox")},
 				},
 			},
 		},
@@ -294,7 +327,7 @@ func TestResolveConfigPathsSandboxDirsStayAbsolute(t *testing.T) {
 			BrowserDriverDir: "playwright-driver",
 		},
 	}
-	configDir := "/home/user/.kocort"
+	configDir := testAbsPath("home", "user", ".kocort")
 	ResolveConfigPaths(&cfg, configDir)
 
 	// Relative paths should be resolved to absolute
@@ -321,13 +354,13 @@ func TestResolveConfigPathsSandboxDirsStayAbsolute(t *testing.T) {
 	}
 
 	// SandboxDirs must stay absolute — NOT resolved
-	if cfg.Agents.Defaults.SandboxDirs[0] != "/absolute/sandbox/dir" {
+	if cfg.Agents.Defaults.SandboxDirs[0] != testAbsPath("absolute", "sandbox", "dir") {
 		t.Fatalf("Defaults.SandboxDirs[0] was modified: %q", cfg.Agents.Defaults.SandboxDirs[0])
 	}
-	if cfg.Agents.Defaults.SandboxDirs[1] != "/another/sandbox" {
+	if cfg.Agents.Defaults.SandboxDirs[1] != testAbsPath("another", "sandbox") {
 		t.Fatalf("Defaults.SandboxDirs[1] was modified: %q", cfg.Agents.Defaults.SandboxDirs[1])
 	}
-	if cfg.Agents.List[0].SandboxDirs[0] != "/worker/sandbox" {
+	if cfg.Agents.List[0].SandboxDirs[0] != testAbsPath("worker", "sandbox") {
 		t.Fatalf("List[0].SandboxDirs[0] was modified: %q", cfg.Agents.List[0].SandboxDirs[0])
 	}
 }
@@ -335,7 +368,7 @@ func TestResolveConfigPathsSandboxDirsStayAbsolute(t *testing.T) {
 // TestUnresolveConfigPathsRoundTrip verifies that Resolve → Unresolve produces
 // the original relative paths, while SandboxDirs (always absolute) stay unchanged.
 func TestUnresolveConfigPathsRoundTrip(t *testing.T) {
-	configDir := "/home/user/.kocort"
+	configDir := testAbsPath("home", "user", ".kocort")
 
 	// Original config with relative paths (as stored on disk).
 	original := AppConfig{
@@ -344,14 +377,14 @@ func TestUnresolveConfigPathsRoundTrip(t *testing.T) {
 			Defaults: &AgentDefaultsConfig{
 				Workspace:   "workspace-main",
 				AgentDir:    "agents/main/agent",
-				SandboxDirs: []string{"/absolute/sandbox/dir", "/another/sandbox"},
+				SandboxDirs: []string{testAbsPath("absolute", "sandbox", "dir"), testAbsPath("another", "sandbox")},
 			},
 			List: []AgentConfig{
 				{
 					ID:          "worker",
 					Workspace:   "workspace-worker",
 					AgentDir:    "agents/worker/agent",
-					SandboxDirs: []string{"/worker/sandbox"},
+					SandboxDirs: []string{testAbsPath("worker", "sandbox")},
 				},
 			},
 		},
@@ -392,20 +425,20 @@ func TestUnresolveConfigPathsRoundTrip(t *testing.T) {
 	}
 	assertEqual("StateDir", unresolved.StateDir, "state")
 	assertEqual("Defaults.Workspace", unresolved.Agents.Defaults.Workspace, "workspace-main")
-	assertEqual("Defaults.AgentDir", unresolved.Agents.Defaults.AgentDir, "agents/main/agent")
+	assertEqual("Defaults.AgentDir", unresolved.Agents.Defaults.AgentDir, filepath.Join("agents", "main", "agent"))
 	assertEqual("List[0].Workspace", unresolved.Agents.List[0].Workspace, "workspace-worker")
-	assertEqual("List[0].AgentDir", unresolved.Agents.List[0].AgentDir, "agents/worker/agent")
+	assertEqual("List[0].AgentDir", unresolved.Agents.List[0].AgentDir, filepath.Join("agents", "worker", "agent"))
 	assertEqual("BrainLocal.ModelsDir", unresolved.BrainLocal.ModelsDir, "models")
 	assertEqual("Cerebellum.ModelsDir", unresolved.Cerebellum.ModelsDir, "cerebellum-models")
 	assertEqual("BrowserDriverDir", unresolved.Tools.BrowserDriverDir, "playwright-driver")
-	assertEqual("Data.Entries[kb].Path", unresolved.Data.Entries["kb"].Path, "data/kb")
-	assertEqual("Logging.File", unresolved.Logging.File, "logs/kocort.log")
+	assertEqual("Data.Entries[kb].Path", unresolved.Data.Entries["kb"].Path, filepath.Join("data", "kb"))
+	assertEqual("Logging.File", unresolved.Logging.File, filepath.Join("logs", "kocort.log"))
 
 	// SandboxDirs must remain absolute after round-trip.
-	if unresolved.Agents.Defaults.SandboxDirs[0] != "/absolute/sandbox/dir" {
+	if unresolved.Agents.Defaults.SandboxDirs[0] != testAbsPath("absolute", "sandbox", "dir") {
 		t.Fatalf("SandboxDirs[0] changed after round-trip: %q", unresolved.Agents.Defaults.SandboxDirs[0])
 	}
-	if unresolved.Agents.List[0].SandboxDirs[0] != "/worker/sandbox" {
+	if unresolved.Agents.List[0].SandboxDirs[0] != testAbsPath("worker", "sandbox") {
 		t.Fatalf("List[0].SandboxDirs[0] changed after round-trip: %q", unresolved.Agents.List[0].SandboxDirs[0])
 	}
 }
@@ -414,33 +447,33 @@ func TestUnresolveConfigPathsRoundTrip(t *testing.T) {
 // outside the configDir are NOT converted to relative (because they would start
 // with ".." which is forbidden by the convention).
 func TestUnresolveConfigPathsKeepsOutsidePathsAbsolute(t *testing.T) {
-	configDir := "/home/user/.kocort"
+	configDir := testAbsPath("home", "user", ".kocort")
 	cfg := AppConfig{
-		StateDir: "/opt/kocort/state", // outside configDir
+		StateDir: testAbsPath("opt", "kocort", "state"), // outside configDir
 		Agents: AgentsConfig{
 			Defaults: &AgentDefaultsConfig{
-				Workspace: "/var/workspace",                        // outside configDir
+				Workspace: testAbsPath("var", "workspace"),        // outside configDir
 				AgentDir:  filepath.Join(configDir, "agents/main"), // inside configDir
 			},
 		},
-		BrainLocal: BrainLocalConfig{ModelsDir: "/mnt/models"}, // outside configDir
+		BrainLocal: BrainLocalConfig{ModelsDir: testAbsPath("mnt", "models")}, // outside configDir
 	}
 
 	UnresolveConfigPaths(&cfg, configDir)
 
 	// Paths outside configDir stay absolute.
-	if cfg.StateDir != "/opt/kocort/state" {
+	if cfg.StateDir != testAbsPath("opt", "kocort", "state") {
 		t.Fatalf("outside StateDir should stay absolute, got %q", cfg.StateDir)
 	}
-	if cfg.Agents.Defaults.Workspace != "/var/workspace" {
+	if cfg.Agents.Defaults.Workspace != testAbsPath("var", "workspace") {
 		t.Fatalf("outside Workspace should stay absolute, got %q", cfg.Agents.Defaults.Workspace)
 	}
-	if cfg.BrainLocal.ModelsDir != "/mnt/models" {
+	if cfg.BrainLocal.ModelsDir != testAbsPath("mnt", "models") {
 		t.Fatalf("outside ModelsDir should stay absolute, got %q", cfg.BrainLocal.ModelsDir)
 	}
 
 	// Path inside configDir should be unresolved to relative.
-	if cfg.Agents.Defaults.AgentDir != "agents/main" {
+	if cfg.Agents.Defaults.AgentDir != filepath.Join("agents", "main") {
 		t.Fatalf("inside AgentDir should be relative, got %q", cfg.Agents.Defaults.AgentDir)
 	}
 }

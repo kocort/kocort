@@ -16,7 +16,11 @@ type SessionEntry struct {
 	LastThreadID               string            `json:"lastThreadId,omitempty"`
 	DeliveryContext            *DeliveryContext  `json:"deliveryContext,omitempty"`
 	ThinkingLevel              string            `json:"thinkingLevel,omitempty"`
+	FastMode                   bool              `json:"fastMode,omitempty"`
 	VerboseLevel               string            `json:"verboseLevel,omitempty"`
+	ReasoningLevel             string            `json:"reasoningLevel,omitempty"`
+	ResponseUsage              string            `json:"responseUsage,omitempty"`
+	ElevatedLevel              string            `json:"elevatedLevel,omitempty"`
 	ProviderOverride           string            `json:"providerOverride,omitempty"`
 	ModelOverride              string            `json:"modelOverride,omitempty"`
 	AuthProfileOverride        string            `json:"authProfileOverride,omitempty"`
@@ -138,19 +142,26 @@ type TranscriptMessage struct {
 // ---------------------------------------------------------------------------
 
 type ChatSendRequest struct {
-	AgentID     string       `json:"agentId,omitempty"`
-	SessionKey  string       `json:"sessionKey,omitempty"`
-	RunID       string       `json:"runId,omitempty"`
-	Message     string       `json:"message"`
-	Channel     string       `json:"channel,omitempty"`
-	To          string       `json:"to,omitempty"`
-	AccountID   string       `json:"accountId,omitempty"`
-	ThreadID    string       `json:"threadId,omitempty"`
-	ChatType    ChatType     `json:"chatType,omitempty"`
-	TimeoutMs   int          `json:"timeoutMs,omitempty"`
-	Stop        bool         `json:"stop,omitempty"`
-	Deliver     *bool        `json:"deliver,omitempty"`
-	Attachments []Attachment `json:"attachments,omitempty"`
+	AgentID                 string         `json:"agentId,omitempty"`
+	SessionKey              string         `json:"sessionKey,omitempty"`
+	RunID                   string         `json:"runId,omitempty"`
+	Message                 string         `json:"message"`
+	Channel                 string         `json:"channel,omitempty"`
+	To                      string         `json:"to,omitempty"`
+	AccountID               string         `json:"accountId,omitempty"`
+	ThreadID                string         `json:"threadId,omitempty"`
+	ChatType                ChatType       `json:"chatType,omitempty"`
+	TimeoutMs               int            `json:"timeoutMs,omitempty"`
+	Stop                    bool           `json:"stop,omitempty"`
+	Deliver                 *bool          `json:"deliver,omitempty"`
+	Attachments             []Attachment   `json:"attachments,omitempty"`
+	ThinkingLevel           string         `json:"thinkingLevel,omitempty"`
+	VerboseLevel            string         `json:"verboseLevel,omitempty"`
+	SessionModelOverride    string         `json:"sessionModelOverride,omitempty"`
+	WorkspaceOverride       string         `json:"workspaceOverride,omitempty"`
+	ExtraSystemPrompt       string         `json:"extraSystemPrompt,omitempty"`
+	SystemInputProvenance   map[string]any `json:"systemInputProvenance,omitempty"`
+	SystemProvenanceReceipt string         `json:"systemProvenanceReceipt,omitempty"`
 }
 
 type ChatSendResponse struct {

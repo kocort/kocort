@@ -755,3 +755,55 @@ type mockTool struct {
 
 func (m *mockTool) Name() string        { return m.name }
 func (m *mockTool) Description() string { return m.desc }
+
+func TestBuildSystemPromptIncludesAttachmentContents(t *testing.T) {
+	prompt := BuildSystemPrompt(PromptBuildParams{
+		Identity: core.AgentIdentity{ID: "main"},
+		Request: core.AgentRunRequest{
+			Message: "review attachments",
+			Attachments: []core.Attachment{
+				{
+					Type:     "file",
+					Name:     "notes.md",
+					MIMEType: "text/markdown",
+					Content:  []byte("# Notes\nShip it.\n"),
+				},
+				{
+					Type:     "file",
+					Name:     "archive.zip",
+					MIMEType: "application/zip",
+					Content:  []byte{0x50, 0x4b, 0x03, 0x04},
+				},
+			},
+		},
+	})
+	if !strings.Contains(prompt, "Attachments:") || !strings.Contains(prompt, "notes.md [text/markdown]") {
+		t.Fatalf("expected attachment summary, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "Attachment content: notes.md") || !strings.Contains(prompt, "# Notes\nShip it.") {
+		t.Fatalf("expected text attachment content, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "archive.zip [application/zip] (binary") {
+		t.Fatalf("expected binary attachment note, got %q", prompt)
+	}
+}
+
+func TestBuildSystemPromptMinimalModeKeepsSkillsButSkipsExtendedSections(t *testing.T) {
+	prompt := BuildSystemPrompt(PromptBuildParams{
+		Identity: core.AgentIdentity{ID: "main"},
+		Request:  core.AgentRunRequest{Message: "hello", ExtraSystemPrompt: "Subagent details"},
+		Skills: &core.SkillSnapshot{
+			Prompt: "<available_skills>\n<skill>\n<name>deploy</name>\n</skill>\n</available_skills>",
+		},
+		Mode: PromptModeMinimal,
+	})
+	if !strings.Contains(prompt, "## Skills (mandatory)") {
+		t.Fatalf("expected skills section, got %q", prompt)
+	}
+	if strings.Contains(prompt, "## Reply Tags") || strings.Contains(prompt, "## Messaging") || strings.Contains(prompt, "## Documentation") {
+		t.Fatalf("did not expect extended sections in minimal mode, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "## Subagent Context") || !strings.Contains(prompt, "Subagent details") {
+		t.Fatalf("expected subagent context section, got %q", prompt)
+	}
+}

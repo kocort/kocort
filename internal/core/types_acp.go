@@ -57,11 +57,12 @@ type AcpRuntimeEvent struct {
 }
 
 type AcpEnsureSessionInput struct {
-	SessionKey string
-	Agent      string
-	Mode       AcpRuntimeSessionMode
-	Cwd        string
-	Env        map[string]string
+	SessionKey      string
+	Agent           string
+	Mode            AcpRuntimeSessionMode
+	ResumeSessionID string
+	Cwd             string
+	Env             map[string]string
 }
 
 type AcpRunTurnInput struct {

@@ -291,7 +291,6 @@ func normalizeOAuthBaseURL(defaultBase, resourceURL string) string {
 	if !strings.HasPrefix(raw, "http") {
 		raw = "https://" + raw
 	}
-	// Ensure the URL ends with /v1 (matching openclaw normalizeBaseUrl).
 	raw = strings.TrimRight(raw, "/")
 	if !strings.HasSuffix(raw, "/v1") {
 		raw += "/v1"

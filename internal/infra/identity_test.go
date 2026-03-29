@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kocort/kocort/internal/core"
@@ -228,5 +229,33 @@ func TestNullMemoryProvider(t *testing.T) {
 	}
 	if hits != nil {
 		t.Error("NullMemoryProvider should return nil hits")
+	}
+}
+
+func TestIdentityResolverLoadsIdentityMarkdownFromWorkspace(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	if _, err := EnsureWorkspaceDir(workspace); err != nil {
+		t.Fatalf("ensure workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, DefaultIdentityFilename), []byte("Name: Library Bot\nEmoji: :books:\nTheme: paper\n"), 0o644); err != nil {
+		t.Fatalf("write identity: %v", err)
+	}
+	resolver := NewStaticIdentityResolver(map[string]core.AgentIdentity{
+		"main": {
+			ID:              "main",
+			WorkspaceDir:    workspace,
+			DefaultProvider: "openai",
+			DefaultModel:    "gpt-4.1",
+		},
+	})
+	identity, err := resolver.Resolve(context.Background(), "main")
+	if err != nil {
+		t.Fatalf("resolve identity: %v", err)
+	}
+	if identity.Name != "Library Bot" {
+		t.Fatalf("expected identity file name, got %+v", identity)
+	}
+	if !strings.Contains(identity.PersonaPrompt, "Identity theme: paper") {
+		t.Fatalf("expected persona prompt from identity file, got %q", identity.PersonaPrompt)
 	}
 }

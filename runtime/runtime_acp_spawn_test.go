@@ -83,7 +83,14 @@ func TestSpawnACPSessionStartsNestedACPChildRun(t *testing.T) {
 	if result.Lane != core.LaneNested || result.AgentID != "worker" || result.Mode != "run" {
 		t.Fatalf("unexpected accepted metadata: %+v", result)
 	}
-	time.Sleep(20 * time.Millisecond)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		record = rt.Subagents.Get(result.RunID)
+		if record != nil && record.Outcome != nil && !record.CompletionMessageSentAt.IsZero() {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	record = rt.Subagents.Get(result.RunID)
 	if record == nil || record.Outcome == nil || record.CompletionMessageSentAt.IsZero() {
 		t.Fatalf("expected ACP registry completion lifecycle to settle, got %+v", record)

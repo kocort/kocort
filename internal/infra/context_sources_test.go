@@ -10,15 +10,19 @@ import (
 )
 
 func TestResolveContextSourcePath(t *testing.T) {
+	absPath := filepath.Join(filepath.VolumeName(os.TempDir())+string(os.PathSeparator), "data", "file.db")
+	if filepath.VolumeName(os.TempDir()) == "" {
+		absPath = filepath.Join(string(os.PathSeparator), "data", "file.db")
+	}
 	tests := []struct {
 		name         string
 		workspaceDir string
 		rawPath      string
 		wantAbs      bool
 	}{
-		{"absolute_path", "/workspace", "/data/file.db", true},
-		{"relative_path", "/workspace", "data/file.db", false},
-		{"empty_path", "/workspace", "", false},
+		{"absolute_path", filepath.Join("workspace"), absPath, true},
+		{"relative_path", filepath.Join("workspace"), filepath.Join("data", "file.db"), false},
+		{"empty_path", filepath.Join("workspace"), "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

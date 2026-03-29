@@ -64,7 +64,7 @@ func (p *AgentPipeline) buildRunContext(_ context.Context, state *PipelineState)
 			WorkspaceDir:      state.WorkspaceDir,
 			Identity:          identity,
 			Run:               rtypes.AgentRunContext{Request: req, Session: sess, Identity: identity},
-			ExistingToolNames: existingToolNames(tools),
+			ExistingToolNames: toolfn.ExistingToolNames(tools),
 			ToolAllowlist:     append([]string{}, identity.ToolAllowlist...),
 		})
 		if err != nil {

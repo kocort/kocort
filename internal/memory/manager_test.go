@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -12,20 +13,39 @@ import (
 	"github.com/kocort/kocort/internal/core"
 )
 
-func TestQMDMemoryBackendRecallParsesJSONHits(t *testing.T) {
-	dir := t.TempDir()
-	commandPath := filepath.Join(dir, "fake-qmd.sh")
-	script := "#!/bin/sh\nprintf '%s\\n' '[{\"path\":\"MEMORY.md\",\"snippet\":\"Atlas code BLUE-SPARROW-17\",\"score\":0.9,\"fromLine\":2,\"toLine\":2}]'\n"
-	if err := os.WriteFile(commandPath, []byte(script), 0o755); err != nil {
+const qmdTestTimeoutMs = 20000
+
+func writeTestCommand(t *testing.T, dir, baseName, unixScript, windowsScript string) string {
+	t.Helper()
+	ext := ".sh"
+	content := unixScript
+	if runtime.GOOS == "windows" {
+		ext = ".cmd"
+		content = windowsScript
+	}
+	commandPath := filepath.Join(dir, baseName+ext)
+	if err := os.WriteFile(commandPath, []byte(content), 0o755); err != nil {
 		t.Fatalf("write command: %v", err)
 	}
+	return commandPath
+}
+
+func TestQMDMemoryBackendRecallParsesJSONHits(t *testing.T) {
+	dir := t.TempDir()
+	commandPath := writeTestCommand(
+		t,
+		dir,
+		"fake-qmd",
+		"#!/bin/sh\nprintf '%s\\n' '[{\"path\":\"MEMORY.md\",\"snippet\":\"Atlas code BLUE-SPARROW-17\",\"score\":0.9,\"fromLine\":2,\"toLine\":2}]'\n",
+		"@echo off\r\necho [{\"path\":\"MEMORY.md\",\"snippet\":\"Atlas code BLUE-SPARROW-17\",\"score\":0.9,\"fromLine\":2,\"toLine\":2}]\r\n",
+	)
 
 	manager := NewManager(config.AppConfig{
 		Memory: config.MemoryConfig{
 			Backend: "qmd",
 			QMD: &config.MemoryQMDConfig{
 				Command: commandPath,
-				Limits:  &config.MemoryQMDLimitsConfig{TimeoutMs: 5000},
+				Limits:  &config.MemoryQMDLimitsConfig{TimeoutMs: qmdTestTimeoutMs},
 			},
 		},
 	})
@@ -69,19 +89,21 @@ func TestMemoryManagerFallsBackFromQMDToBuiltin(t *testing.T) {
 
 func TestQMDMemoryBackendRecallPassesResolvedLimit(t *testing.T) {
 	dir := t.TempDir()
-	commandPath := filepath.Join(dir, "fake-qmd.sh")
 	argsPath := filepath.Join(dir, "args.txt")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" >" + argsPath + "\necho '[]'\n"
-	if err := os.WriteFile(commandPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("write command: %v", err)
-	}
+	commandPath := writeTestCommand(
+		t,
+		dir,
+		"fake-qmd",
+		"#!/bin/sh\nprintf '%s\\n' \"$@\" >" + argsPath + "\necho '[]'\n",
+		"@echo off\r\n>\"" + argsPath + "\" echo %*\r\necho []\r\n",
+	)
 
 	manager := NewManager(config.AppConfig{
 		Memory: config.MemoryConfig{
 			Backend: "qmd",
 			QMD: &config.MemoryQMDConfig{
 				Command: commandPath,
-				Limits:  &config.MemoryQMDLimitsConfig{TimeoutMs: 5000, MaxResults: 2},
+				Limits:  &config.MemoryQMDLimitsConfig{TimeoutMs: qmdTestTimeoutMs, MaxResults: 2},
 			},
 		},
 	})
@@ -175,12 +197,14 @@ func TestMemoryManagerIncludesSessionTranscriptHitsWhenEnabled(t *testing.T) {
 
 func TestQMDMemoryBackendRecallUsesConfiguredCollections(t *testing.T) {
 	dir := t.TempDir()
-	commandPath := filepath.Join(dir, "fake-qmd.sh")
 	argsPath := filepath.Join(dir, "args.txt")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" >>" + argsPath + "\nprintf '\\n' >>" + argsPath + "\necho '[]'\n"
-	if err := os.WriteFile(commandPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("write command: %v", err)
-	}
+	commandPath := writeTestCommand(
+		t,
+		dir,
+		"fake-qmd",
+		"#!/bin/sh\nprintf '%s\\n' \"$@\" >>" + argsPath + "\nprintf '\\n' >>" + argsPath + "\necho '[]'\n",
+		"@echo off\r\n>>\"" + argsPath + "\" echo %*\r\necho []\r\n",
+	)
 	if err := os.MkdirAll(filepath.Join(dir, "notes"), 0o755); err != nil {
 		t.Fatalf("mkdir notes: %v", err)
 	}
@@ -193,7 +217,7 @@ func TestQMDMemoryBackendRecallUsesConfiguredCollections(t *testing.T) {
 					{Name: "workspace", Path: dir, Pattern: "**/*.md"},
 					{Name: "notes", Path: filepath.Join(dir, "notes"), Pattern: "**/*.md"},
 				},
-				Limits: &config.MemoryQMDLimitsConfig{TimeoutMs: 5000, MaxResults: 2},
+				Limits: &config.MemoryQMDLimitsConfig{TimeoutMs: qmdTestTimeoutMs, MaxResults: 2},
 			},
 		},
 	})
@@ -219,36 +243,67 @@ func TestQMDMemoryBackendRecallUsesConfiguredCollections(t *testing.T) {
 
 func TestQMDMemoryBackendRepairsMissingCollectionAndRetriesOnce(t *testing.T) {
 	dir := t.TempDir()
-	commandPath := filepath.Join(dir, "fake-qmd.sh")
 	argsPath := filepath.Join(dir, "args.txt")
 	searchStatePath := filepath.Join(dir, "search_state")
 	addStatePath := filepath.Join(dir, "add_state")
-	script := strings.Join([]string{
-		"#!/bin/sh",
-		"printf '%s\\n' \"$@\" >>" + argsPath,
-		"printf '\\n' >>" + argsPath,
-		"if [ \"$1\" = \"collection\" ] && [ \"$2\" = \"list\" ]; then",
-		"  echo '[]'",
-		"  exit 0",
-		"fi",
-		"if [ \"$1\" = \"collection\" ] && [ \"$2\" = \"add\" ]; then",
-		"  touch " + addStatePath,
-		"  exit 0",
-		"fi",
-		"if [ \"$1\" = \"search\" ]; then",
-		"  if [ ! -f " + searchStatePath + " ]; then",
-		"    touch " + searchStatePath,
-		"    echo 'Collection not found: workspace-main' 1>&2",
-		"    exit 1",
-		"  fi",
-		"  echo '[{\"path\":\"MEMORY.md\",\"snippet\":\"Atlas code BLUE-SPARROW-17\",\"score\":0.9}]'",
-		"  exit 0",
-		"fi",
-		"echo '[]'",
-	}, "\n")
-	if err := os.WriteFile(commandPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("write command: %v", err)
+	resultPath := filepath.Join(dir, "result.json")
+	if err := os.WriteFile(resultPath, []byte(`[{"path":"MEMORY.md","snippet":"Atlas code BLUE-SPARROW-17","score":0.9}]`), 0o644); err != nil {
+		t.Fatalf("write result: %v", err)
 	}
+	commandPath := writeTestCommand(
+		t,
+		dir,
+		"fake-qmd",
+		strings.Join([]string{
+			"#!/bin/sh",
+			"printf '%s\\n' \"$@\" >>" + argsPath,
+			"printf '\\n' >>" + argsPath,
+			"if [ \"$1\" = \"collection\" ] && [ \"$2\" = \"list\" ]; then",
+			"  echo '[]'",
+			"  exit 0",
+			"fi",
+			"if [ \"$1\" = \"collection\" ] && [ \"$2\" = \"add\" ]; then",
+			"  touch " + addStatePath,
+			"  exit 0",
+			"fi",
+			"if [ \"$1\" = \"search\" ]; then",
+			"  if [ ! -f " + searchStatePath + " ]; then",
+			"    touch " + searchStatePath,
+			"    echo 'Collection not found: workspace-main' 1>&2",
+			"    exit 1",
+			"  fi",
+			"  echo '[{\"path\":\"MEMORY.md\",\"snippet\":\"Atlas code BLUE-SPARROW-17\",\"score\":0.9}]'",
+			"  exit 0",
+			"fi",
+			"echo '[]'",
+		}, "\n"),
+		strings.Join([]string{
+			"@echo off",
+			">>\"" + argsPath + "\" echo %*",
+			"if \"%1\"==\"collection\" goto collection",
+			"if \"%1\"==\"search\" goto search",
+			"echo []",
+			"exit /b 0",
+			":collection",
+			"if \"%2\"==\"list\" (",
+			"  echo []",
+			"  exit /b 0",
+			")",
+			"if \"%2\"==\"add\" (",
+			"  type nul > \"" + addStatePath + "\"",
+			"  exit /b 0",
+			")",
+			"echo []",
+			"exit /b 0",
+			":search",
+			"if exist \"" + searchStatePath + "\" goto search_ok",
+			"type nul > \"" + searchStatePath + "\"",
+			">&2 echo Collection not found: workspace-main",
+			"exit /b 1",
+			":search_ok",
+			"type \"" + resultPath + "\"",
+		}, "\r\n")+"\r\n",
+	)
 	manager := NewManager(config.AppConfig{
 		Memory: config.MemoryConfig{
 			Backend: "qmd",
@@ -257,7 +312,7 @@ func TestQMDMemoryBackendRepairsMissingCollectionAndRetriesOnce(t *testing.T) {
 				Paths: []config.MemoryQMDIndexPath{
 					{Name: "workspace", Path: dir, Pattern: "**/*.md"},
 				},
-				Limits: &config.MemoryQMDLimitsConfig{TimeoutMs: 5000, MaxResults: 2},
+				Limits: &config.MemoryQMDLimitsConfig{TimeoutMs: qmdTestTimeoutMs, MaxResults: 2},
 			},
 		},
 	})
@@ -278,8 +333,8 @@ func TestQMDMemoryBackendRepairsMissingCollectionAndRetriesOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read args: %v", err)
 	}
-	got := string(argsData)
-	if strings.Count(got, "collection\nadd") < 2 {
+	got := strings.ReplaceAll(string(argsData), "\r\n", "\n")
+	if strings.Count(got, "collection add") < 2 {
 		t.Fatalf("expected collection add to rerun after missing collection repair, got %q", got)
 	}
 }
