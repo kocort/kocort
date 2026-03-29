@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +51,9 @@ type profileState struct {
 type sessionState struct {
 	ActiveByProfile map[string]string
 	TabsByProfile   map[string][]string
+	// OwnedTabs tracks tab IDs that were explicitly created by the AI (via Open).
+	// Tabs not in this set are considered user-owned and protected from implicit close.
+	OwnedTabs map[string]struct{}
 }
 
 type dialogArm struct {
@@ -261,8 +265,10 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) (map[string]any, er
 		return map[string]any{"ok": false, "action": "open", "profile": profileName, "error": err.Error()}, nil
 	}
 	tab := pageToTab(page)
+	openedTargetID := tab["targetId"].(string)
 	m.mu.Lock()
-	m.setActiveLocked(req.SessionKey, profileName, tab["targetId"].(string))
+	m.setActiveLocked(req.SessionKey, profileName, openedTargetID)
+	m.markOwnedTabLocked(req.SessionKey, openedTargetID)
 	sessionTabs := m.trackedTabsLocked(req.SessionKey, profileName)
 	m.mu.Unlock()
 	return map[string]any{
@@ -315,11 +321,27 @@ func (m *Manager) Close(ctx context.Context, req TargetRequest) (map[string]any,
 	if err != nil {
 		return map[string]any{"ok": false, "action": "close", "profile": profileName, "error": err.Error()}, nil
 	}
+	// Guard: when no explicit targetId was requested, only allow closing AI-owned tabs.
+	// This prevents accidentally closing user's pre-existing tabs via fallback resolution.
+	explicitTarget := strings.TrimSpace(req.TargetID) != ""
+	m.mu.Lock()
+	owned := m.isOwnedTabLocked(req.SessionKey, targetID)
+	m.mu.Unlock()
+	if !explicitTarget && !owned {
+		return map[string]any{
+			"ok":       false,
+			"action":   "close",
+			"profile":  profileName,
+			"targetId": targetID,
+			"error":    fmt.Sprintf("tab %q was not opened by this session; specify targetId explicitly to close it", targetID),
+		}, nil
+	}
 	if err := page.Close(); err != nil {
 		return map[string]any{"ok": false, "action": "close", "profile": profileName, "targetId": targetID, "error": err.Error()}, nil
 	}
 	m.mu.Lock()
 	delete(m.snapshots, snapshotKey(profileName, targetID))
+	m.unmarkOwnedTabLocked(req.SessionKey, targetID)
 	active := m.reconcileActiveAfterCloseLocked(req.SessionKey, profileName, targetID, state.context)
 	sessionTabs := m.trackedTabsLocked(req.SessionKey, profileName)
 	m.mu.Unlock()
