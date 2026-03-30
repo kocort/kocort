@@ -22,10 +22,11 @@ interface QRPollResponse {
 interface WeixinQRLoginProps {
     baseUrl?: string;
     autoStart?: boolean;
+    successActionLabel?: string;
     onLoginSuccess: (token: string, baseUrl?: string) => void;
 }
 
-export function WeixinQRLogin({ baseUrl, autoStart, onLoginSuccess }: WeixinQRLoginProps) {
+export function WeixinQRLogin({ baseUrl, autoStart, successActionLabel, onLoginSuccess }: WeixinQRLoginProps) {
     const { t } = useI18n();
     const [qrState, setQRState] = useState<QRState>('idle');
     const [qrImgData, setQRImgData] = useState('');
@@ -195,7 +196,9 @@ export function WeixinQRLogin({ baseUrl, autoStart, onLoginSuccess }: WeixinQRLo
                 <div className="flex flex-col items-center py-6 gap-3">
                     <CheckCircle2 className="w-10 h-10 text-green-500" />
                     <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                        {t('channels.weixin.loginSuccess' as any)}
+                        {t('channels.weixin.loginSuccess' as any, {
+                            action: successActionLabel || t('common.add' as any),
+                        })}
                     </span>
                 </div>
             )}

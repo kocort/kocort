@@ -354,7 +354,7 @@
   "channels.title": "Channel",
   "channels.weixin.confirmOnPhone": "Please confirm the login on your phone",
   "channels.weixin.loadingQR": "Loading QR code...",
-  "channels.weixin.loginSuccess": "WeChat bot bindind successful!",
+  "channels.weixin.loginSuccess": "QR scan succeeded. Click \"{action}\" to finish adding the channel.",
   "channels.weixin.qrError": "Failed to load QR code",
   "channels.weixin.qrExpired": "QR code has expired",
   "channels.weixin.qrAlt": "WeChat QR code",
