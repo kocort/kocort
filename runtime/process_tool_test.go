@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	stdruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -211,5 +212,113 @@ func TestExecToolUsesDefaultBackgroundWindowWhenYieldNotSpecified(t *testing.T) 
 	}
 	if !strings.Contains(text, "alpha") || !strings.Contains(text, "omega") {
 		t.Fatalf("expected captured output, got %s", text)
+	}
+}
+
+func TestExecToolPTYBackgroundSupportsProcessWriteAndLog(t *testing.T) {
+	if stdruntime.GOOS == "windows" {
+		t.Skip("PTY flow is not implemented on Windows yet")
+	}
+	runtime := &Runtime{
+		Tools:     tool.NewToolRegistry(tool.NewExecTool(), tool.NewProcessTool()),
+		Processes: tool.NewProcessRegistry(),
+	}
+	runCtx := rtypes.AgentRunContext{
+		Runtime:      runtime,
+		WorkspaceDir: t.TempDir(),
+		Identity: core.AgentIdentity{
+			ID:          session.DefaultAgentID,
+			ToolProfile: "coding",
+		},
+		Request: core.AgentRunRequest{RunID: "run_pty_write"},
+		Session: core.SessionResolution{SessionKey: session.BuildMainSessionKey(session.DefaultAgentID)},
+	}
+
+	result, err := runtime.ExecuteTool(context.Background(), runCtx, "exec", map[string]any{
+		"command":    newTestShellHelper(t).StdinEchoScript(),
+		"background": true,
+		"pty":        true,
+	})
+	if err != nil {
+		t.Fatalf("exec background pty: %v", err)
+	}
+	sessionID := tool.ParseExecToolResultSessionID(result)
+	if strings.TrimSpace(sessionID) == "" {
+		t.Fatalf("expected sessionId, got %s", string(result.JSON))
+	}
+
+	if _, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+		"action":    "write",
+		"sessionId": sessionID,
+		"data":      "hello via pty",
+	}); err != nil {
+		t.Fatalf("process write: %v", err)
+	}
+	if _, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+		"action":    "submit",
+		"sessionId": sessionID,
+	}); err != nil {
+		t.Fatalf("process submit: %v", err)
+	}
+	if _, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+		"action":    "kill",
+		"sessionId": sessionID,
+	}); err != nil {
+		t.Fatalf("process kill: %v", err)
+	}
+
+	logResult, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+		"action":    "log",
+		"sessionId": sessionID,
+	})
+	if err != nil {
+		t.Fatalf("process log: %v", err)
+	}
+	if !strings.Contains(string(logResult.JSON), "hello via pty") {
+		t.Fatalf("expected echoed pty content, got %s", string(logResult.JSON))
+	}
+}
+
+func TestProcessToolClearRemovesFinishedSession(t *testing.T) {
+	runtime := &Runtime{
+		Tools:     tool.NewToolRegistry(tool.NewExecTool(), tool.NewProcessTool()),
+		Processes: tool.NewProcessRegistry(),
+	}
+	runCtx := rtypes.AgentRunContext{
+		Runtime:      runtime,
+		WorkspaceDir: t.TempDir(),
+		Identity: core.AgentIdentity{
+			ID:          session.DefaultAgentID,
+			ToolProfile: "coding",
+		},
+		Request: core.AgentRunRequest{RunID: "run_clear"},
+		Session: core.SessionResolution{SessionKey: session.BuildMainSessionKey(session.DefaultAgentID)},
+	}
+
+	result, err := runtime.ExecuteTool(context.Background(), runCtx, "exec", map[string]any{
+		"command":    "echo clear-me",
+		"background": true,
+	})
+	if err != nil {
+		t.Fatalf("exec background: %v", err)
+	}
+	sessionID := tool.ParseExecToolResultSessionID(result)
+	if sessionID == "" {
+		t.Fatalf("expected session id, got %s", string(result.JSON))
+	}
+	_ = waitForProcessCompletion(t, runtime, runCtx, sessionID)
+
+	if _, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+		"action":    "clear",
+		"sessionId": sessionID,
+	}); err != nil {
+		t.Fatalf("process clear: %v", err)
+	}
+
+	if _, err := runtime.ExecuteTool(context.Background(), runCtx, "process", map[string]any{
+		"action":    "log",
+		"sessionId": sessionID,
+	}); err == nil {
+		t.Fatal("expected cleared session to be missing")
 	}
 }

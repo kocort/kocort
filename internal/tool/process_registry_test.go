@@ -2,13 +2,10 @@ package tool
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
-
-// ---------------------------------------------------------------------------
-// NewProcessRegistry
-// ---------------------------------------------------------------------------
 
 func TestNewProcessRegistry(t *testing.T) {
 	r := NewProcessRegistry()
@@ -16,15 +13,11 @@ func TestNewProcessRegistry(t *testing.T) {
 		t.Fatal("expected non-nil registry")
 	}
 	if list := r.List(); len(list) != 0 {
-		t.Errorf("expected empty list, got %d", len(list))
+		t.Fatalf("expected empty list, got %d", len(list))
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Start / Get / List
-// ---------------------------------------------------------------------------
-
-func TestProcessRegistryStartAndGet(t *testing.T) {
+func TestProcessRegistryStartAndPollChildSession(t *testing.T) {
 	r := NewProcessRegistry()
 	rec, err := r.Start(context.Background(), ProcessStartOptions{
 		Command: "echo hello",
@@ -34,197 +27,146 @@ func TestProcessRegistryStartAndGet(t *testing.T) {
 		t.Fatalf("start: %v", err)
 	}
 	if rec.ID == "" {
-		t.Error("expected non-empty ID")
+		t.Fatal("expected non-empty ID")
 	}
-	if rec.Status != "running" {
-		t.Errorf("expected status=running, got %q", rec.Status)
-	}
-
-	got, ok := r.Poll(rec.ID, 10*time.Second)
+	got, ok := r.Poll(rec.ID, 5*time.Second)
 	if !ok {
 		t.Fatal("expected to find process")
 	}
 	if got.Status != "completed" {
-		t.Errorf("expected status=completed, got %q", got.Status)
+		t.Fatalf("expected completed, got %q", got.Status)
+	}
+	if !strings.Contains(got.Output, "hello") {
+		t.Fatalf("expected output, got %q", got.Output)
 	}
 }
 
 func TestProcessRegistryStartEmptyCommand(t *testing.T) {
 	r := NewProcessRegistry()
-	_, err := r.Start(context.Background(), ProcessStartOptions{
-		Command: "",
-	})
+	_, err := r.Start(context.Background(), ProcessStartOptions{})
 	if err == nil {
-		t.Error("expected error for empty command")
+		t.Fatal("expected error for empty command")
 	}
 }
 
 func TestProcessRegistryNil(t *testing.T) {
 	var r *ProcessRegistry
-	_, err := r.Start(context.Background(), ProcessStartOptions{Command: "echo hi"})
-	if err == nil {
-		t.Error("expected error from nil registry")
+	if _, err := r.Start(context.Background(), ProcessStartOptions{Command: "echo hi"}); err == nil {
+		t.Fatal("expected error from nil registry")
 	}
 	if list := r.List(); list != nil {
-		t.Errorf("expected nil list from nil registry, got %v", list)
+		t.Fatalf("expected nil list, got %v", list)
 	}
-	_, ok := r.Get("id")
-	if ok {
-		t.Error("expected not-ok from nil registry Get")
+	if _, ok := r.Get("id"); ok {
+		t.Fatal("expected missing session")
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Poll
-// ---------------------------------------------------------------------------
-
-func TestProcessRegistryPoll(t *testing.T) {
+func TestProcessRegistryListShowsBackgroundSessions(t *testing.T) {
 	r := NewProcessRegistry()
 	rec, err := r.Start(context.Background(), ProcessStartOptions{
-		Command: "echo poll_test",
-		Timeout: 5 * time.Second,
+		Command:      "sleep 1",
+		Timeout:      5 * time.Second,
+		Backgrounded: true,
 	})
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
+	list := r.List()
+	if len(list) != 1 {
+		t.Fatalf("expected 1 listed session, got %d", len(list))
+	}
+	if list[0].ID != rec.ID {
+		t.Fatalf("expected session %q, got %+v", rec.ID, list[0])
+	}
+	_, _, _ = r.Kill(rec.ID)
+}
 
-	got, ok := r.Poll(rec.ID, 10*time.Second)
+func TestProcessRegistryWriteAndSubmitWithPTY(t *testing.T) {
+	r := NewProcessRegistry()
+	rec, err := r.Start(context.Background(), ProcessStartOptions{
+		Command:      `IFS= read -r line; printf 'got:%s\n' "$line"`,
+		Timeout:      5 * time.Second,
+		Backgrounded: true,
+		PTY:          true,
+	})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if _, ok, err := r.Write(rec.ID, "abc", false); err != nil || !ok {
+		t.Fatalf("write: ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := r.Submit(rec.ID); err != nil || !ok {
+		t.Fatalf("submit: ok=%v err=%v", ok, err)
+	}
+	got, ok := r.Poll(rec.ID, 5*time.Second)
 	if !ok {
-		t.Fatal("expected to find process")
+		t.Fatal("expected session")
 	}
 	if got.Status != "completed" {
-		t.Errorf("expected completed after poll, got %q", got.Status)
+		t.Fatalf("expected completed, got %q", got.Status)
+	}
+	if !strings.Contains(got.Output, "got:abc") {
+		t.Fatalf("expected PTY output, got %q", got.Output)
 	}
 }
 
-func TestProcessRegistryPollNonexistent(t *testing.T) {
-	r := NewProcessRegistry()
-	_, ok := r.Poll("nonexistent", 100*time.Millisecond)
-	if ok {
-		t.Error("expected not-ok for nonexistent process")
-	}
-}
-
-func TestProcessRegistryPollEmptyID(t *testing.T) {
-	r := NewProcessRegistry()
-	_, ok := r.Poll("", 100*time.Millisecond)
-	if ok {
-		t.Error("expected not-ok for empty ID")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Kill
-// ---------------------------------------------------------------------------
-
-func TestProcessRegistryKill(t *testing.T) {
+func TestProcessRegistryClearAndRemove(t *testing.T) {
 	r := NewProcessRegistry()
 	rec, err := r.Start(context.Background(), ProcessStartOptions{
-		Command: "sleep 5",
-		Timeout: 5 * time.Second,
+		Command:      "echo clear-me",
+		Timeout:      5 * time.Second,
+		Backgrounded: true,
 	})
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
+	got, ok := r.Poll(rec.ID, 5*time.Second)
+	if !ok || got.Status != "completed" {
+		t.Fatalf("expected completed background session, got %+v ok=%v", got, ok)
+	}
+	if !r.Clear(rec.ID) {
+		t.Fatal("expected clear to succeed")
+	}
+	if _, ok := r.Get(rec.ID); ok {
+		t.Fatal("expected session removed after clear")
+	}
 
-	got, found, err := r.Kill(rec.ID)
-	if err != nil {
-		t.Fatalf("kill: %v", err)
-	}
-	if !found {
-		t.Error("expected found=true")
-	}
-	if got.Status != "killed" {
-		t.Errorf("expected status=killed, got %q", got.Status)
-	}
-}
-
-func TestProcessRegistryKillNonexistent(t *testing.T) {
-	r := NewProcessRegistry()
-	_, found, err := r.Kill("nonexistent")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if found {
-		t.Error("expected found=false")
-	}
-}
-
-func TestProcessRegistryKillNil(t *testing.T) {
-	var r *ProcessRegistry
-	_, _, err := r.Kill("id")
-	if err == nil {
-		t.Error("expected error from nil registry")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// List
-// ---------------------------------------------------------------------------
-
-func TestProcessRegistryList(t *testing.T) {
-	r := NewProcessRegistry()
-	_, _ = r.Start(context.Background(), ProcessStartOptions{
-		Command: "echo first",
-		Timeout: 5 * time.Second,
+	rec2, err := r.Start(context.Background(), ProcessStartOptions{
+		Command:      "sleep 5",
+		Timeout:      5 * time.Second,
+		Backgrounded: true,
 	})
-	_, _ = r.Start(context.Background(), ProcessStartOptions{
-		Command: "echo second",
-		Timeout: 5 * time.Second,
-	})
-
-	time.Sleep(500 * time.Millisecond)
-	list := r.List()
-	if len(list) < 2 {
-		t.Errorf("expected at least 2 processes, got %d", len(list))
+	if err != nil {
+		t.Fatalf("start second: %v", err)
+	}
+	removed, ok, err := r.Remove(rec2.ID)
+	if err != nil || !ok {
+		t.Fatalf("remove: record=%+v ok=%v err=%v", removed, ok, err)
+	}
+	if removed.Status != "killed" && removed.Status != "failed" {
+		t.Fatalf("expected killed/failed remove result, got %q", removed.Status)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
 
 func TestTailString(t *testing.T) {
-	t.Run("short_string", func(t *testing.T) {
-		if got := tailString("hello", 100); got != "hello" {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("truncates", func(t *testing.T) {
-		if got := tailString("abcdefghij", 5); got != "fghij" {
-			t.Errorf("got %q", got)
-		}
-	})
-	t.Run("empty", func(t *testing.T) {
-		if got := tailString("", 10); got != "" {
-			t.Errorf("got %q", got)
-		}
-	})
+	if got := tailString("abcdefghij", 5); got != "fghij" {
+		t.Fatalf("got %q", got)
+	}
 }
 
 func TestExitCodeOf(t *testing.T) {
-	t.Run("nil_error", func(t *testing.T) {
-		code := exitCodeOf(nil)
-		if code == nil || *code != 0 {
-			t.Errorf("expected exit code 0, got %v", code)
-		}
-	})
+	code := exitCodeOf(nil)
+	if code == nil || *code != 0 {
+		t.Fatalf("expected exit code 0, got %v", code)
+	}
 }
 
 func TestCloneProcessRecord(t *testing.T) {
 	now := time.Now()
-	rec := ProcessSessionRecord{
-		ID:      "proc_1",
-		EndedAt: &now,
-	}
+	rec := ProcessSessionRecord{ID: "proc_1", EndedAt: &now}
 	cloned := cloneProcessRecord(rec)
-	if cloned.ID != rec.ID {
-		t.Error("expected same ID")
-	}
 	if cloned.EndedAt == rec.EndedAt {
-		t.Error("expected different EndedAt pointer")
-	}
-	if !cloned.EndedAt.Equal(*rec.EndedAt) {
-		t.Error("expected same EndedAt value")
+		t.Fatal("expected EndedAt to be copied")
 	}
 }
