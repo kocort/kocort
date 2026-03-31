@@ -611,6 +611,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
 
                 <WeixinQRLogin
                   autoStart
+                  successActionLabel={t('onboarding.next' as any)}
                   onLoginSuccess={(token, baseUrl) => {
                     setChannelToken(token);
                     if (baseUrl) setChannelBaseUrl(baseUrl);

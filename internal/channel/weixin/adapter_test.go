@@ -126,7 +126,7 @@ func TestBuildInboundMessage(t *testing.T) {
 	}
 	ch := adapter.ChannelConfig{Agent: "test-agent"}
 
-	inbound, ok := buildInboundMessage("weixin", msg, ch)
+	inbound, ok := buildInboundMessage("weixin", msg, ch, "")
 	if !ok {
 		t.Fatal("expected inbound message to be built")
 	}
@@ -158,7 +158,7 @@ func TestBuildInboundMessageUsesRuntimeChannelID(t *testing.T) {
 		},
 	}
 
-	inbound, ok := buildInboundMessage("weixin50", msg, adapter.ChannelConfig{Agent: "test-agent"})
+	inbound, ok := buildInboundMessage("weixin50", msg, adapter.ChannelConfig{Agent: "test-agent"}, "")
 	if !ok {
 		t.Fatal("expected inbound message to be built")
 	}
@@ -176,7 +176,7 @@ func TestBuildInboundMessageWithSeq(t *testing.T) {
 			{Type: ItemTypeText, TextItem: &TextItem{Text: "Hi"}},
 		},
 	}
-	inbound, ok := buildInboundMessage("weixin", msg, adapter.ChannelConfig{})
+	inbound, ok := buildInboundMessage("weixin", msg, adapter.ChannelConfig{}, "")
 	if !ok {
 		t.Fatal("expected inbound message")
 	}
@@ -191,7 +191,7 @@ func TestBuildInboundMessageEmptySkipped(t *testing.T) {
 		FromUserID: "user-abc",
 		ItemList:   nil,
 	}
-	_, ok := buildInboundMessage("weixin", msg, adapter.ChannelConfig{})
+	_, ok := buildInboundMessage("weixin", msg, adapter.ChannelConfig{}, "")
 	if ok {
 		t.Error("expected empty message to be skipped")
 	}
@@ -212,11 +212,11 @@ func TestBuildInboundMessageRefText(t *testing.T) {
 			},
 		},
 	}
-	inbound, ok := buildInboundMessage("weixin", msg, adapter.ChannelConfig{})
+	inbound, ok := buildInboundMessage("weixin", msg, adapter.ChannelConfig{}, "")
 	if !ok {
 		t.Fatal("expected inbound message")
 	}
-	if inbound.Text != "[\u5f15\u7528: \u539f\u59cb\u6d88\u606f | \u539f\u6587]\n\u56de\u590d\u5185\u5bb9" {
+	if inbound.Text != "[引用: 原始消息 | 原文]\n回复内容" {
 		t.Errorf("unexpected text: %q", inbound.Text)
 	}
 }
@@ -232,7 +232,7 @@ func TestExtractContentImage(t *testing.T) {
 			},
 		},
 	}
-	text, attachments := extractContent(msg)
+	text, attachments := extractContent(msg, "")
 	if text != "" {
 		t.Errorf("expected empty text, got %q", text)
 	}
@@ -241,6 +241,55 @@ func TestExtractContentImage(t *testing.T) {
 	}
 	if attachments[0].Type != "image" {
 		t.Errorf("expected image type, got %q", attachments[0].Type)
+	}
+}
+
+func TestExtractContentImageWithCDN(t *testing.T) {
+	// Set up a fake CDN that returns encrypted image data.
+	plaintext := []byte("fake-image-png-data")
+	aesKey := []byte("0123456789abcdef") // 16 bytes
+	encrypted, err := encryptAESECB(plaintext, aesKey)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	cdnServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(encrypted)
+	}))
+	defer cdnServer.Close()
+
+	aesKeyB64 := encodeCDNMediaAESKey(aesKey) // base64(hex(key))
+
+	msg := WeixinMessage{
+		ItemList: []MessageItem{
+			{
+				Type: ItemTypeImage,
+				ImageItem: &ImageItem{
+					Media: &CDNMedia{
+						EncryptQueryParam: "test-enc-param",
+						AESKey:            aesKeyB64,
+						EncryptType:       1,
+					},
+				},
+			},
+		},
+	}
+	text, attachments := extractContent(msg, cdnServer.URL)
+	if text != "" {
+		t.Errorf("expected empty text, got %q", text)
+	}
+	if len(attachments) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(attachments))
+	}
+	if attachments[0].Type != "image" {
+		t.Errorf("expected image type, got %q", attachments[0].Type)
+	}
+	if len(attachments[0].Content) == 0 {
+		t.Fatal("expected image Content to be populated after CDN download")
+	}
+	if !bytes.Equal(attachments[0].Content, plaintext) {
+		t.Errorf("image content mismatch: got %d bytes, want %d bytes", len(attachments[0].Content), len(plaintext))
 	}
 }
 
@@ -255,7 +304,7 @@ func TestExtractContentVoiceWithText(t *testing.T) {
 			},
 		},
 	}
-	text, attachments := extractContent(msg)
+	text, attachments := extractContent(msg, "")
 	if text != "\u8bed\u97f3\u8f6c\u6587\u5b57\u5185\u5bb9" {
 		t.Errorf("expected speech-to-text, got %q", text)
 	}

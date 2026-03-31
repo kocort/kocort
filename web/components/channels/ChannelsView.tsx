@@ -622,6 +622,7 @@ export function ChannelsView() {
             <WeixinQRLogin
               baseUrl={String(draft.fields['baseUrl'] || '')}
               autoStart
+              successActionLabel={t('common.add')}
               onLoginSuccess={(token, baseUrl) => {
                 setDraft((current) => ({
                   ...current,

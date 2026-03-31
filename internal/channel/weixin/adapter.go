@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/md5" //nolint:gosec
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -341,7 +342,7 @@ func (a *WeixinAdapter) pollLoop(ctx context.Context, channelID string, ch adapt
 				continue
 			}
 
-			inbound, ok := buildInboundMessage(channelID, msg, ch)
+			inbound, ok := buildInboundMessage(channelID, msg, ch, cfg.CDNBaseURL)
 			if !ok {
 				continue
 			}
@@ -381,8 +382,8 @@ func (a *WeixinAdapter) pollLoop(ctx context.Context, channelID string, ch adapt
 // Inbound Message Builder
 // ---------------------------------------------------------------------------
 
-func buildInboundMessage(channelID string, msg WeixinMessage, ch adapter.ChannelConfig) (adapter.InboundMessage, bool) {
-	text, attachments := extractContent(msg)
+func buildInboundMessage(channelID string, msg WeixinMessage, ch adapter.ChannelConfig, cdnBaseURL string) (adapter.InboundMessage, bool) {
+	text, attachments := extractContent(msg, cdnBaseURL)
 	if strings.TrimSpace(text) == "" && len(attachments) == 0 {
 		return adapter.InboundMessage{}, false
 	}
@@ -414,7 +415,7 @@ func buildInboundMessage(channelID string, msg WeixinMessage, ch adapter.Channel
 	}, true
 }
 
-func extractContent(msg WeixinMessage) (string, []adapter.Attachment) {
+func extractContent(msg WeixinMessage, cdnBaseURL string) (string, []adapter.Attachment) {
 	if len(msg.ItemList) == 0 {
 		return "", nil
 	}
@@ -430,21 +431,21 @@ func extractContent(msg WeixinMessage) (string, []adapter.Attachment) {
 				textParts = append(textParts, t)
 			}
 		case ItemTypeImage:
-			if att, ok := buildImageAttachment(item); ok {
+			if att, ok := buildImageAttachment(item, cdnBaseURL); ok {
 				attachments = append(attachments, att)
 			}
 		case ItemTypeVoice:
 			if item.VoiceItem != nil && strings.TrimSpace(item.VoiceItem.Text) != "" && !hasMediaRef(item) {
 				textParts = append(textParts, item.VoiceItem.Text)
-			} else if att, ok := buildVoiceAttachment(item); ok {
+			} else if att, ok := buildVoiceAttachment(item, cdnBaseURL); ok {
 				attachments = append(attachments, att)
 			}
 		case ItemTypeFile:
-			if att, ok := buildFileAttachment(item); ok {
+			if att, ok := buildFileAttachment(item, cdnBaseURL); ok {
 				attachments = append(attachments, att)
 			}
 		case ItemTypeVideo:
-			if att, ok := buildVideoAttachment(item); ok {
+			if att, ok := buildVideoAttachment(item, cdnBaseURL); ok {
 				attachments = append(attachments, att)
 			}
 		}
@@ -483,36 +484,83 @@ func isMediaItemType(t int) bool {
 	return t == ItemTypeImage || t == ItemTypeVideo || t == ItemTypeFile || t == ItemTypeVoice
 }
 
+// downloadCDNMedia downloads and optionally decrypts media from the WeChat CDN.
+// The fallbackAESKeyHex parameter provides an alternate hex-encoded AES key
+// (e.g. from ImageItem.AESKey) when CDNMedia.AESKey is empty.
+func downloadCDNMedia(cdnBaseURL string, media *CDNMedia, fallbackAESKeyHex string) ([]byte, error) {
+	if cdnBaseURL == "" {
+		return nil, errors.New("weixin: CDN base URL is empty")
+	}
+	if media == nil || strings.TrimSpace(media.EncryptQueryParam) == "" {
+		return nil, errors.New("weixin: no CDN media reference")
+	}
+
+	encParam := strings.TrimSpace(media.EncryptQueryParam)
+
+	// Determine AES key: prefer CDNMedia.AESKey (base64), fall back to hex key.
+	aesKeyB64 := strings.TrimSpace(media.AESKey)
+	if aesKeyB64 == "" && strings.TrimSpace(fallbackAESKeyHex) != "" {
+		// Wrap hex key in base64 so parseAESKey can handle it.
+		aesKeyB64 = base64.StdEncoding.EncodeToString([]byte(strings.TrimSpace(fallbackAESKeyHex)))
+	}
+
+	if media.EncryptType == 0 || aesKeyB64 == "" {
+		return downloadPlain(cdnBaseURL, encParam)
+	}
+	return downloadAndDecrypt(cdnBaseURL, encParam, aesKeyB64)
+}
+
 func hasMediaRef(item MessageItem) bool {
 	return item.VoiceItem != nil && item.VoiceItem.Media != nil &&
 		strings.TrimSpace(item.VoiceItem.Media.EncryptQueryParam) != ""
 }
 
-func buildImageAttachment(item MessageItem) (adapter.Attachment, bool) {
+func buildImageAttachment(item MessageItem, cdnBaseURL string) (adapter.Attachment, bool) {
 	img := item.ImageItem
 	if img == nil || img.Media == nil || strings.TrimSpace(img.Media.EncryptQueryParam) == "" {
 		return adapter.Attachment{}, false
 	}
-	return adapter.Attachment{
+	att := adapter.Attachment{
 		Type:     "image",
 		MIMEType: "image/jpeg",
 		Name:     "image.jpg",
-	}, true
+	}
+	if content, err := downloadCDNMedia(cdnBaseURL, img.Media, img.AESKey); err != nil {
+		slog.Warn("[weixin] failed to download image from CDN",
+			"error", err,
+			"encryptQueryParam", img.Media.EncryptQueryParam,
+		)
+	} else {
+		att.Content = content
+		if detected := strings.TrimSpace(strings.Split(http.DetectContentType(content), ";")[0]); detected != "" {
+			att.MIMEType = detected
+		}
+	}
+	return att, true
 }
 
-func buildVoiceAttachment(item MessageItem) (adapter.Attachment, bool) {
+func buildVoiceAttachment(item MessageItem, cdnBaseURL string) (adapter.Attachment, bool) {
 	v := item.VoiceItem
 	if v == nil || v.Media == nil || strings.TrimSpace(v.Media.EncryptQueryParam) == "" {
 		return adapter.Attachment{}, false
 	}
-	return adapter.Attachment{
+	att := adapter.Attachment{
 		Type:     "audio",
 		MIMEType: "audio/silk",
 		Name:     "voice.silk",
-	}, true
+	}
+	if content, err := downloadCDNMedia(cdnBaseURL, v.Media, ""); err != nil {
+		slog.Warn("[weixin] failed to download voice from CDN",
+			"error", err,
+			"encryptQueryParam", v.Media.EncryptQueryParam,
+		)
+	} else {
+		att.Content = content
+	}
+	return att, true
 }
 
-func buildFileAttachment(item MessageItem) (adapter.Attachment, bool) {
+func buildFileAttachment(item MessageItem, cdnBaseURL string) (adapter.Attachment, bool) {
 	f := item.FileItem
 	if f == nil || f.Media == nil || strings.TrimSpace(f.Media.EncryptQueryParam) == "" {
 		return adapter.Attachment{}, false
@@ -521,23 +569,41 @@ func buildFileAttachment(item MessageItem) (adapter.Attachment, bool) {
 	if name == "" {
 		name = "file"
 	}
-	return adapter.Attachment{
+	att := adapter.Attachment{
 		Type:     "file",
 		MIMEType: "application/octet-stream",
 		Name:     name,
-	}, true
+	}
+	if content, err := downloadCDNMedia(cdnBaseURL, f.Media, ""); err != nil {
+		slog.Warn("[weixin] failed to download file from CDN",
+			"error", err,
+			"encryptQueryParam", f.Media.EncryptQueryParam,
+		)
+	} else {
+		att.Content = content
+	}
+	return att, true
 }
 
-func buildVideoAttachment(item MessageItem) (adapter.Attachment, bool) {
+func buildVideoAttachment(item MessageItem, cdnBaseURL string) (adapter.Attachment, bool) {
 	v := item.VideoItem
 	if v == nil || v.Media == nil || strings.TrimSpace(v.Media.EncryptQueryParam) == "" {
 		return adapter.Attachment{}, false
 	}
-	return adapter.Attachment{
+	att := adapter.Attachment{
 		Type:     "video",
 		MIMEType: "video/mp4",
 		Name:     "video.mp4",
-	}, true
+	}
+	if content, err := downloadCDNMedia(cdnBaseURL, v.Media, ""); err != nil {
+		slog.Warn("[weixin] failed to download video from CDN",
+			"error", err,
+			"encryptQueryParam", v.Media.EncryptQueryParam,
+		)
+	} else {
+		att.Content = content
+	}
+	return att, true
 }
 
 // ---------------------------------------------------------------------------

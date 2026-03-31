@@ -398,7 +398,7 @@
   "channels.title": "聊天通道",
   "channels.weixin.confirmOnPhone": "请在手机上确认登录",
   "channels.weixin.loadingQR": "正在加载二维码...",
-  "channels.weixin.loginSuccess": "绑定微信机器人成功！",
+  "channels.weixin.loginSuccess": "扫码成功，请点击“{action}”按钮完成渠道添加",
   "channels.weixin.qrError": "加载二维码失败",
   "channels.weixin.qrExpired": "二维码已过期",
   "channels.weixin.qrAlt": "微信二维码",

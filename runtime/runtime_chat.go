@@ -2,9 +2,13 @@ package runtime
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/kocort/kocort/internal/backend"
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/event"
 	"github.com/kocort/kocort/internal/session"
@@ -291,7 +295,7 @@ func (r *Runtime) PushInbound(ctx context.Context, msg core.ChannelInboundMessag
 		"text":            normalized.Text,
 		"attachmentCount": len(normalized.Attachments),
 	})
-	return r.ChatSend(ctx, core.ChatSendRequest{
+	resp, chatErr := r.ChatSend(ctx, core.ChatSendRequest{
 		AgentID:     agentID,
 		Message:     normalized.Text,
 		Channel:     normalized.Channel,
@@ -302,4 +306,89 @@ func (r *Runtime) PushInbound(ctx context.Context, msg core.ChannelInboundMessag
 		Deliver:     utils.BoolPtr(true),
 		Attachments: append([]core.Attachment{}, normalized.Attachments...),
 	})
+	if chatErr != nil {
+		// For channel-originated messages, deliver the error back to the user
+		// so they know what went wrong (webchat handles errors via HTTP response).
+		r.deliverInboundError(ctx, chatErr, core.DeliveryTarget{
+			SessionKey: sessionKey,
+			Channel:    normalized.Channel,
+			To:         replyTarget,
+			AccountID:  normalized.AccountID,
+			ThreadID:   normalized.ThreadID,
+		})
+	}
+	return resp, chatErr
+}
+
+// deliverInboundError sends a human-readable error message back through the
+// channel when a ChatSend triggered by an inbound channel message fails.
+// This ensures users on WeChat, Feishu, Telegram, etc. see error feedback
+// instead of silence.
+func (r *Runtime) deliverInboundError(ctx context.Context, err error, target core.DeliveryTarget) {
+	if r == nil || r.Deliverer == nil {
+		return
+	}
+	text := formatChannelErrorMessage(err)
+	if text == "" {
+		return
+	}
+	deliverErr := r.Deliverer.Deliver(ctx, core.ReplyKindFinal, core.ReplyPayload{
+		Text:    text,
+		IsError: true,
+	}, target)
+	if deliverErr != nil {
+		slog.Warn("[PushInbound] failed to deliver error message back to channel",
+			"channel", target.Channel,
+			"to", target.To,
+			"originalError", err.Error(),
+			"deliverError", deliverErr.Error(),
+		)
+	}
+}
+
+// formatChannelErrorMessage converts a runtime/backend error into a concise,
+// user-friendly message suitable for delivery through messaging channels.
+func formatChannelErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	// Check well-known sentinel errors first.
+	switch {
+	case errors.Is(err, core.ErrNoDefaultModelConfigured):
+		return "⚠️ No model is configured. Please set up a model in the dashboard before chatting."
+	case errors.Is(err, core.ErrRuntimeNotReady):
+		return "⚠️ The service is starting up. Please try again in a moment."
+	case errors.Is(err, core.ErrModelNotFound):
+		return "⚠️ The configured model was not found. Please check the model settings."
+	}
+
+	// Check backend-specific error reasons.
+	reason := backend.ErrorReason(err)
+	switch reason {
+	case backend.BackendFailureRateLimit:
+		return "⚠️ Rate limit exceeded. Please wait a moment and try again."
+	case backend.BackendFailureAuth:
+		return "⚠️ Model authentication failed. Please check the API key configuration."
+	case backend.BackendFailureBilling:
+		return "⚠️ API quota exceeded or billing issue. Please check your account."
+	case backend.BackendFailureOverloaded:
+		return "⚠️ The model service is currently overloaded. Please try again later."
+	case backend.BackendFailureContextOverflow:
+		return "⚠️ The conversation is too long. Please start a new session."
+	case backend.BackendFailureTransientHTTP:
+		return "⚠️ A temporary network error occurred. Please try again."
+	}
+
+	// Generic fallback — include a trimmed version of the error.
+	msg := strings.TrimSpace(err.Error())
+	if msg == "" {
+		return ""
+	}
+	// Cap at a reasonable length to avoid flooding the channel.
+	const maxLen = 200
+	if len(msg) > maxLen {
+		msg = msg[:maxLen] + "…"
+	}
+	return fmt.Sprintf("❌ Error: %s", msg)
 }
