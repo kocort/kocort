@@ -497,6 +497,16 @@ func TestServerDataSavePersistsSystemPromptAndContextFiles(t *testing.T) {
 	if !containsContextFile(payload.Files, "AGENTS.md", "Follow the checklist.") {
 		t.Fatalf("expected AGENTS.md in payload, got %+v", payload.Files)
 	}
+	for _, name := range []string{"SOUL.md", "TOOLS.md", "USER.md", "HEARTBEAT.md", "BOOTSTRAP.md"} {
+		if !hasManagedContextFile(payload.Files, name) {
+			t.Fatalf("expected managed context file %s in payload, got %+v", name, payload.Files)
+		}
+	}
+	for _, name := range []string{"README.md", "CONTEXT.md", "SYSTEM.md"} {
+		if hasManagedContextFile(payload.Files, name) {
+			t.Fatalf("did not expect legacy managed context file %s in payload, got %+v", name, payload.Files)
+		}
+	}
 	raw, err := os.ReadFile(filepath.Join(configDir, "kocort.json"))
 	if err != nil {
 		t.Fatalf("read config: %v", err)
@@ -1087,6 +1097,15 @@ func testRuntimeWithConfigStore(t *testing.T) (*runtime.Runtime, string) {
 func containsContextFile(files []types.ContextFileState, name string, snippet string) bool {
 	for _, file := range files {
 		if file.Name == name && strings.Contains(file.Content, snippet) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasManagedContextFile(files []types.ContextFileState, name string) bool {
+	for _, file := range files {
+		if file.Name == name {
 			return true
 		}
 	}

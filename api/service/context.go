@@ -17,11 +17,13 @@ import (
 
 var managedContextFileNames = []string{
 	"AGENTS.md",
+	"SOUL.md",
+	"TOOLS.md",
 	"IDENTITY.md",
+	"USER.md",
+	"HEARTBEAT.md",
+	"BOOTSTRAP.md",
 	"MEMORY.md",
-	"README.md",
-	"CONTEXT.md",
-	"SYSTEM.md",
 }
 
 // BuildDataState builds the data state response.

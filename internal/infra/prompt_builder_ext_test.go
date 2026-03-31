@@ -72,8 +72,8 @@ func TestBuildSystemPromptIncludesTranscriptAndMemory(t *testing.T) {
 	if !strings.Contains(prompt, "Runtime: agent=main") || !strings.Contains(prompt, "thinking=high") {
 		t.Fatalf("expected runtime line, got %q", prompt)
 	}
-	if !strings.Contains(prompt, "User-invocable skill commands:") || !strings.Contains(prompt, "/deploy -> deploy") {
-		t.Fatalf("expected skill commands section, got %q", prompt)
+	if strings.Contains(prompt, "User-invocable skill commands:") || strings.Contains(prompt, "/deploy -> deploy") {
+		t.Fatalf("did not expect rendered skill commands, got %q", prompt)
 	}
 }
 
@@ -110,13 +110,13 @@ When invoked, reply with exactly AGENT-OK and nothing else.
 
 func TestBuildSystemPromptIncludesInternalEventsContextFilesAndWarnings(t *testing.T) {
 	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "README.md"), []byte(strings.Repeat("R", 9000)), 0o644); err != nil {
-		t.Fatalf("write README.md: %v", err)
+	if err := os.WriteFile(filepath.Join(workspace, "SOUL.md"), []byte(strings.Repeat("S", 9000)), 0o644); err != nil {
+		t.Fatalf("write SOUL.md: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "CONTEXT.md"), []byte("Context rules.\nBe precise."), 0o644); err != nil {
-		t.Fatalf("write CONTEXT.md: %v", err)
+	if err := os.WriteFile(filepath.Join(workspace, "TOOLS.md"), []byte("Tool rules.\nBe precise."), 0o644); err != nil {
+		t.Fatalf("write TOOLS.md: %v", err)
 	}
-	contextFiles, warnings := memorypkg.LoadPromptContextFiles(workspace, core.ChatTypeDirect, false)
+	contextFiles, warnings := memorypkg.LoadPromptContextFiles(workspace, core.ChatTypeDirect, false, false)
 	prompt := infra.BuildSystemPrompt(infra.PromptBuildParams{
 		Identity: core.AgentIdentity{ID: "main"},
 		Request:  core.AgentRunRequest{Message: "hello"},
@@ -130,7 +130,7 @@ func TestBuildSystemPromptIncludesInternalEventsContextFilesAndWarnings(t *testi
 	if !strings.Contains(prompt, "## Internal Events") || !strings.Contains(prompt, "All descendants settled.") {
 		t.Fatalf("expected internal events section, got %q", prompt)
 	}
-	if !strings.Contains(prompt, "## Context Files") || !strings.Contains(prompt, "Workspace README (README.md):") {
+	if !strings.Contains(prompt, "## Context Files") || !strings.Contains(prompt, "Workspace SOUL (SOUL.md):") {
 		t.Fatalf("expected context files section, got %q", prompt)
 	}
 	if !strings.Contains(prompt, "[truncated]") {

@@ -149,7 +149,7 @@ func (p *AgentPipeline) loadContext(ctx context.Context, state *PipelineState) e
 	}
 
 	// ---- Load context files ----
-	contextFiles, bootstrapWarnings := memorypkg.LoadPromptContextFiles(workspaceDir, req.ChatType, req.IsHeartbeat)
+	contextFiles, bootstrapWarnings := memorypkg.LoadPromptContextFiles(workspaceDir, req.ChatType, req.IsHeartbeat, strings.TrimSpace(req.SpawnedBy) != "")
 	if lightHeartbeat {
 		contextFiles = nil
 		bootstrapWarnings = nil

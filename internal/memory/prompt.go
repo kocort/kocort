@@ -16,12 +16,12 @@ type PromptContextFile struct {
 	Truncated bool
 }
 
-func LoadPromptContextFiles(workspaceDir string, chatType core.ChatType, includeHeartbeat bool) ([]PromptContextFile, []string) {
+func LoadPromptContextFiles(workspaceDir string, chatType core.ChatType, includeHeartbeat bool, isSubagent bool) ([]PromptContextFile, []string) {
 	workspaceDir = strings.TrimSpace(workspaceDir)
 	if workspaceDir == "" {
 		return nil, nil
 	}
-	candidates := PromptContextCandidates(chatType, includeHeartbeat)
+	candidates := PromptContextCandidates(chatType, includeHeartbeat, isSubagent)
 	const perFileLimit = 8 * 1024
 	const totalLimit = 24 * 1024
 	var (
@@ -70,21 +70,32 @@ func LoadPromptContextFiles(workspaceDir string, chatType core.ChatType, include
 	return files, warnings
 }
 
-func PromptContextCandidates(chatType core.ChatType, includeHeartbeat bool) []PromptContextFile {
+func PromptContextCandidates(chatType core.ChatType, includeHeartbeat bool, isSubagent bool) []PromptContextFile {
+	_ = chatType
+	if isSubagent {
+		return []PromptContextFile{
+			{Path: "AGENTS.md", Title: "Workspace AGENTS"},
+			{Path: "TOOLS.md", Title: "Workspace TOOLS"},
+		}
+	}
 	candidates := []PromptContextFile{
 		{Path: "AGENTS.md", Title: "Workspace AGENTS"},
+		{Path: "SOUL.md", Title: "Workspace SOUL"},
+		{Path: "TOOLS.md", Title: "Workspace TOOLS"},
+		{Path: "IDENTITY.md", Title: "Workspace IDENTITY"},
+		{Path: "USER.md", Title: "Workspace USER"},
+		{Path: "BOOTSTRAP.md", Title: "Workspace BOOTSTRAP"},
 		{Path: DefaultMemoryFilename, Title: "Workspace MEMORY"},
 		{Path: DefaultMemoryAltFile, Title: "Workspace memory"},
-		{Path: "README.md", Title: "Workspace README"},
-		{Path: "CONTEXT.md", Title: "Workspace CONTEXT"},
-		{Path: "SYSTEM.md", Title: "Workspace SYSTEM"},
 	}
 	if chatType == core.ChatTypeGroup || chatType == core.ChatTypeThread || chatType == core.ChatTypeTopic {
 		candidates = []PromptContextFile{
 			{Path: "AGENTS.md", Title: "Workspace AGENTS"},
-			{Path: "README.md", Title: "Workspace README"},
-			{Path: "CONTEXT.md", Title: "Workspace CONTEXT"},
-			{Path: "SYSTEM.md", Title: "Workspace SYSTEM"},
+			{Path: "SOUL.md", Title: "Workspace SOUL"},
+			{Path: "TOOLS.md", Title: "Workspace TOOLS"},
+			{Path: "IDENTITY.md", Title: "Workspace IDENTITY"},
+			{Path: "USER.md", Title: "Workspace USER"},
+			{Path: "BOOTSTRAP.md", Title: "Workspace BOOTSTRAP"},
 		}
 	}
 	if includeHeartbeat {

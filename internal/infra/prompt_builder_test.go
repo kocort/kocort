@@ -3,6 +3,7 @@ package infra
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -463,19 +464,20 @@ func TestSelectInternalPromptEvents(t *testing.T) {
 
 func TestLoadPromptContextFiles(t *testing.T) {
 	t.Run("empty_workspace", func(t *testing.T) {
-		files, warnings := loadPromptContextFiles("", core.ChatTypeDirect, false)
+		files, warnings := loadPromptContextFiles("", core.ChatTypeDirect, false, false)
 		if files != nil || warnings != nil {
 			t.Error("empty workspace should return nil")
 		}
 	})
 
-	t.Run("loads_agents_and_readme", func(t *testing.T) {
+	t.Run("loads_openclaw_bootstrap_files", func(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("agents info"), 0o644)
-		os.WriteFile(filepath.Join(dir, "README.md"), []byte("readme info"), 0o644)
-		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, false)
-		if len(files) < 2 {
-			t.Errorf("expected at least 2 files, got %d", len(files))
+		os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte("soul info"), 0o644)
+		os.WriteFile(filepath.Join(dir, "TOOLS.md"), []byte("tools info"), 0o644)
+		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, false, false)
+		if len(files) != 3 {
+			t.Errorf("expected 3 files, got %d", len(files))
 		}
 	})
 
@@ -483,7 +485,7 @@ func TestLoadPromptContextFiles(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte("durable memory"), 0o644)
 		os.WriteFile(filepath.Join(dir, "memory.md"), []byte("fallback memory"), 0o644)
-		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, false)
+		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, false, false)
 		foundMemory := false
 		foundAltMemory := false
 		for _, f := range files {
@@ -499,22 +501,26 @@ func TestLoadPromptContextFiles(t *testing.T) {
 		}
 	})
 
-	t.Run("group_context_excludes_long_term_memory_files", func(t *testing.T) {
+	t.Run("non_subagent_group_context_still_includes_long_term_memory_files", func(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte("durable memory"), 0o644)
 		os.WriteFile(filepath.Join(dir, "memory.md"), []byte("fallback memory"), 0o644)
-		files, _ := loadPromptContextFiles(dir, core.ChatTypeGroup, false)
+		files, _ := loadPromptContextFiles(dir, core.ChatTypeGroup, false, false)
+		foundMemory := false
 		for _, f := range files {
 			if f.Path == "MEMORY.md" || f.Path == "memory.md" {
-				t.Fatalf("expected long-term memory excluded in group context, got %+v", files)
+				foundMemory = true
 			}
+		}
+		if !foundMemory {
+			t.Fatalf("expected long-term memory included outside subagent context, got %+v", files)
 		}
 	})
 
 	t.Run("heartbeat_included", func(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "HEARTBEAT.md"), []byte("heartbeat"), 0o644)
-		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, true)
+		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, true, false)
 		found := false
 		for _, f := range files {
 			if f.Path == "HEARTBEAT.md" {
@@ -529,11 +535,49 @@ func TestLoadPromptContextFiles(t *testing.T) {
 	t.Run("heartbeat_excluded", func(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "HEARTBEAT.md"), []byte("heartbeat"), 0o644)
-		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, false)
+		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, false, false)
 		for _, f := range files {
 			if f.Path == "HEARTBEAT.md" {
 				t.Error("HEARTBEAT.md should not be included when includeHeartbeat=false")
 			}
+		}
+	})
+
+	t.Run("legacy_project_docs_not_injected", func(t *testing.T) {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "README.md"), []byte("readme info"), 0o644)
+		os.WriteFile(filepath.Join(dir, "CONTEXT.md"), []byte("context info"), 0o644)
+		os.WriteFile(filepath.Join(dir, "SYSTEM.md"), []byte("system info"), 0o644)
+		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, false, false)
+		for _, f := range files {
+			if f.Path == "README.md" || f.Path == "CONTEXT.md" || f.Path == "SYSTEM.md" {
+				t.Fatalf("expected legacy project docs excluded, got %+v", files)
+			}
+		}
+	})
+
+	t.Run("subagent_only_injects_agents_and_tools", func(t *testing.T) {
+		dir := t.TempDir()
+		for name, body := range map[string]string{
+			"AGENTS.md":    "agents",
+			"TOOLS.md":     "tools",
+			"SOUL.md":      "soul",
+			"IDENTITY.md":  "identity",
+			"USER.md":      "user",
+			"HEARTBEAT.md": "heartbeat",
+			"BOOTSTRAP.md": "bootstrap",
+			"MEMORY.md":    "memory",
+			"memory.md":    "memory-lower",
+		} {
+			os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
+		}
+		files, _ := loadPromptContextFiles(dir, core.ChatTypeDirect, true, true)
+		if len(files) != 2 {
+			t.Fatalf("expected 2 files for subagent, got %+v", files)
+		}
+		paths := []string{files[0].Path, files[1].Path}
+		if !slices.Equal(paths, []string{"AGENTS.md", "TOOLS.md"}) {
+			t.Fatalf("unexpected subagent files: %+v", paths)
 		}
 	})
 }
@@ -565,8 +609,8 @@ func TestBuildSkillsPromptSection(t *testing.T) {
 		if !strings.Contains(result, "with `read`") {
 			t.Error("should mention read tool when available")
 		}
-		if !strings.Contains(result, "/code -> coding: Write code") {
-			t.Error("should list commands")
+		if strings.Contains(result, "User-invocable skill commands:") || strings.Contains(result, "/code -> coding: Write code") {
+			t.Error("should not render skill commands in prompt")
 		}
 		if !strings.Contains(result, "respect 429/Retry-After") {
 			t.Error("should contain rate limit guidance")
@@ -799,6 +843,9 @@ func TestBuildSystemPromptMinimalModeKeepsSkillsButSkipsExtendedSections(t *test
 	})
 	if !strings.Contains(prompt, "## Skills (mandatory)") {
 		t.Fatalf("expected skills section, got %q", prompt)
+	}
+	if strings.Contains(prompt, "User-invocable skill commands:") {
+		t.Fatalf("did not expect rendered skill commands, got %q", prompt)
 	}
 	if strings.Contains(prompt, "## Reply Tags") || strings.Contains(prompt, "## Messaging") || strings.Contains(prompt, "## Documentation") {
 		t.Fatalf("did not expect extended sections in minimal mode, got %q", prompt)
