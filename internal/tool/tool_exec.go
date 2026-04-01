@@ -73,6 +73,10 @@ func (t *ExecTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
 					"type":        "number",
 					"description": "Timeout in seconds (optional, kills the process on expiry).",
 				},
+				"pty": map[string]any{
+					"type":        "boolean",
+					"description": "Run under a PTY for TTY-required commands.",
+				},
 			},
 			"required": []string{"command"},
 		},
@@ -104,9 +108,14 @@ func (t *ExecTool) Execute(ctx context.Context, toolCtx ToolContext, args map[st
 	if err != nil {
 		return core.ToolResult{}, err
 	}
+	ptyEnabled, err := ReadBoolParam(args, "pty")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
 	allowBackground := t.allowBackground()
 	defaultBackgroundWindow := t.defaultBackgroundWindow()
 	defaultTimeout := t.defaultTimeout()
+	defaultNoOutputTimeout := t.defaultNoOutputTimeout()
 	backgroundRequested := background
 	yieldRequested := yieldDelay > 0
 	canBackground := allowBackground && toolCtx.Runtime != nil && toolCtx.Runtime.GetProcesses() != nil
@@ -148,7 +157,7 @@ func (t *ExecTool) Execute(ctx context.Context, toolCtx ToolContext, args map[st
 		)
 	}
 	if canBackground && (background || yieldDelay > 0) {
-		record, err := t.startManagedProcess(toolCtx, command, workdir, baseEnv, timeout, background)
+		record, err := t.startManagedProcess(toolCtx, command, workdir, baseEnv, timeout, defaultNoOutputTimeout, background, ptyEnabled)
 		if err != nil {
 			return core.ToolResult{}, err
 		}
@@ -160,6 +169,7 @@ func (t *ExecTool) Execute(ctx context.Context, toolCtx ToolContext, args map[st
 				"startedAt":    record.StartedAt,
 				"workdir":      record.Workdir,
 				"command":      record.Command,
+				"mode":         record.Mode,
 			})
 		}
 		record, finished, err := t.waitForForegroundYield(toolCtx, record.ID, yieldDelay)
@@ -174,8 +184,30 @@ func (t *ExecTool) Execute(ctx context.Context, toolCtx ToolContext, args map[st
 				"startedAt":    record.StartedAt,
 				"workdir":      record.Workdir,
 				"command":      record.Command,
+				"mode":         record.Mode,
 				"tail":         record.Tail,
 			})
+		}
+		text := strings.TrimSpace(record.Output)
+		if text == "" {
+			text = strings.TrimSpace(record.Tail)
+		}
+		if text == "" {
+			text = record.Status
+		}
+		return core.ToolResult{Text: text}, nil
+	}
+	if ptyEnabled && canBackground {
+		record, err := t.startManagedProcess(toolCtx, command, workdir, baseEnv, timeout, defaultNoOutputTimeout, false, true)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		record, finished, err := t.waitForForegroundYield(toolCtx, record.ID, timeoutOrFallback(timeout, defaultTimeout))
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		if !finished {
+			return core.ToolResult{}, fmt.Errorf("pty exec session %q did not finish in foreground window", record.ID)
 		}
 		text := strings.TrimSpace(record.Output)
 		if text == "" {
@@ -223,18 +255,20 @@ func (t *ExecTool) Execute(ctx context.Context, toolCtx ToolContext, args map[st
 	return core.ToolResult{Text: text}, nil
 }
 
-func (t *ExecTool) startManagedProcess(toolCtx ToolContext, command string, workdir string, env []string, timeout time.Duration, background bool) (ProcessSessionRecord, error) {
+func (t *ExecTool) startManagedProcess(toolCtx ToolContext, command string, workdir string, env []string, timeout time.Duration, noOutputTimeout time.Duration, background bool, pty bool) (ProcessSessionRecord, error) {
 	if toolCtx.Runtime == nil || toolCtx.Runtime.GetProcesses() == nil {
 		return ProcessSessionRecord{}, core.ErrProcessNotConfigured
 	}
 	return toolCtx.Runtime.GetProcesses().Start(context.Background(), ProcessStartOptions{
-		SessionKey:   toolCtx.Run.Session.SessionKey,
-		RunID:        toolCtx.Run.Request.RunID,
-		Command:      command,
-		Workdir:      workdir,
-		Env:          env,
-		Timeout:      timeout,
-		Backgrounded: background,
+		SessionKey:      toolCtx.Run.Session.SessionKey,
+		RunID:           toolCtx.Run.Request.RunID,
+		Command:         command,
+		Workdir:         workdir,
+		Env:             env,
+		Timeout:         timeout,
+		NoOutputTimeout: noOutputTimeout,
+		Backgrounded:    background,
+		PTY:             pty,
 	})
 }
 
@@ -272,6 +306,20 @@ func (t *ExecTool) defaultTimeout() time.Duration {
 		return time.Duration(t.defaults.TimeoutSec) * time.Second
 	}
 	return defaultExecTimeoutSec * time.Second
+}
+
+func (t *ExecTool) defaultNoOutputTimeout() time.Duration {
+	if t.defaults.NoOutputTimeoutMs > 0 {
+		return time.Duration(t.defaults.NoOutputTimeoutMs) * time.Millisecond
+	}
+	return 0
+}
+
+func timeoutOrFallback(timeout time.Duration, fallback time.Duration) time.Duration {
+	if timeout > 0 {
+		return timeout
+	}
+	return fallback
 }
 
 func ParseExecToolResultSessionID(result core.ToolResult) string {

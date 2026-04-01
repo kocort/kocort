@@ -4,6 +4,7 @@ go 1.23.0
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.26.0
+	github.com/creack/pty v1.1.24
 	github.com/energye/systray v1.0.3
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gin-gonic/gin v1.10.1

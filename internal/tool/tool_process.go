@@ -20,7 +20,7 @@ func (t *ProcessTool) Name() string {
 }
 
 func (t *ProcessTool) Description() string {
-	return "Manage background exec sessions."
+	return "Manage background exec sessions: list, poll, log, write, submit, paste, kill, clear, remove."
 }
 
 func (t *ProcessTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
@@ -32,12 +32,32 @@ func (t *ProcessTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
 			"properties": map[string]any{
 				"action": map[string]any{
 					"type":        "string",
-					"enum":        []string{"list", "poll", "log", "kill"},
+					"enum":        []string{"list", "poll", "log", "write", "submit", "paste", "kill", "clear", "remove"},
 					"description": "Process action to perform.",
 				},
 				"sessionId": map[string]any{
 					"type":        "string",
-					"description": "Process session id for poll/log/kill.",
+					"description": "Process session id for actions other than list.",
+				},
+				"data": map[string]any{
+					"type":        "string",
+					"description": "For write: raw data to send to stdin.",
+				},
+				"text": map[string]any{
+					"type":        "string",
+					"description": "For paste: text to send to stdin.",
+				},
+				"eof": map[string]any{
+					"type":        "boolean",
+					"description": "For write: close stdin after writing.",
+				},
+				"offset": map[string]any{
+					"type":        "number",
+					"description": "For log: line offset.",
+				},
+				"limit": map[string]any{
+					"type":        "number",
+					"description": "For log: number of lines to return.",
 				},
 				"timeout": map[string]any{
 					"type":        "number",
@@ -86,12 +106,73 @@ func (t *ProcessTool) Execute(_ context.Context, toolCtx ToolContext, args map[s
 		if !ok {
 			return core.ToolResult{}, fmt.Errorf("no process session found for %q", sessionID)
 		}
+		offset, err := ReadOptionalIntParam(args, "offset")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		limit, err := ReadOptionalIntParam(args, "limit")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		output, paging := sliceProcessLog(record.Output, offset, limit)
 		return JSONResult(map[string]any{
 			"sessionId": record.ID,
 			"status":    record.Status,
-			"output":    record.Output,
+			"output":    output,
 			"tail":      record.Tail,
+			"paging":    paging,
 		})
+	case "write":
+		sessionID, err := ReadStringParam(args, "sessionId", true)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		data, err := ReadStringParam(args, "data", false)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		eof, err := ReadBoolParam(args, "eof")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		record, ok, err := toolCtx.Runtime.GetProcesses().Write(sessionID, data, eof)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		if !ok {
+			return core.ToolResult{}, fmt.Errorf("no process session found for %q", sessionID)
+		}
+		return JSONResult(record)
+	case "submit":
+		sessionID, err := ReadStringParam(args, "sessionId", true)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		record, ok, err := toolCtx.Runtime.GetProcesses().Submit(sessionID)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		if !ok {
+			return core.ToolResult{}, fmt.Errorf("no process session found for %q", sessionID)
+		}
+		return JSONResult(record)
+	case "paste":
+		sessionID, err := ReadStringParam(args, "sessionId", true)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		text, err := ReadStringParam(args, "text", false)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		record, ok, err := toolCtx.Runtime.GetProcesses().Paste(sessionID, text)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		if !ok {
+			return core.ToolResult{}, fmt.Errorf("no process session found for %q", sessionID)
+		}
+		return JSONResult(record)
 	case "kill":
 		sessionID, err := ReadStringParam(args, "sessionId", true)
 		if err != nil {
@@ -105,7 +186,76 @@ func (t *ProcessTool) Execute(_ context.Context, toolCtx ToolContext, args map[s
 			return core.ToolResult{}, fmt.Errorf("no process session found for %q", sessionID)
 		}
 		return JSONResult(record)
+	case "clear":
+		sessionID, err := ReadStringParam(args, "sessionId", true)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		if !toolCtx.Runtime.GetProcesses().Clear(sessionID) {
+			return core.ToolResult{}, fmt.Errorf("no finished process session found for %q", sessionID)
+		}
+		return JSONResult(map[string]any{
+			"sessionId": sessionID,
+			"cleared":   true,
+		})
+	case "remove":
+		sessionID, err := ReadStringParam(args, "sessionId", true)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		record, ok, err := toolCtx.Runtime.GetProcesses().Remove(sessionID)
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		if !ok {
+			return core.ToolResult{}, fmt.Errorf("no process session found for %q", sessionID)
+		}
+		return JSONResult(record)
 	default:
 		return core.ToolResult{}, fmt.Errorf("unsupported process action %q", action)
 	}
+}
+
+const defaultProcessLogTailLines = 200
+
+func sliceProcessLog(value string, offset int, limit int) (string, map[string]any) {
+	lines := strings.Split(value, "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		lines = nil
+	}
+	total := len(lines)
+	usingDefaultTail := offset <= 0 && limit <= 0
+	if usingDefaultTail {
+		if total > defaultProcessLogTailLines {
+			offset = total - defaultProcessLogTailLines
+			limit = defaultProcessLogTailLines
+		} else {
+			offset = 0
+			limit = total
+		}
+	} else {
+		if offset < 0 {
+			offset = 0
+		}
+		if offset > total {
+			offset = total
+		}
+		if limit <= 0 || offset+limit > total {
+			limit = total - offset
+		}
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	sliced := strings.Join(lines[offset:end], "\n")
+	paging := map[string]any{
+		"offset":     offset,
+		"limit":      limit,
+		"totalLines": total,
+	}
+	if usingDefaultTail && total > defaultProcessLogTailLines {
+		paging["note"] = fmt.Sprintf("showing last %d of %d lines; pass offset/limit to page", defaultProcessLogTailLines, total)
+	}
+	return sliced, paging
 }

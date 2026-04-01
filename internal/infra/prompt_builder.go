@@ -268,8 +268,8 @@ func SelectInternalPromptEvents(history []core.TranscriptMessage) []core.Transcr
 	return out
 }
 
-func loadPromptContextFiles(workspaceDir string, chatType core.ChatType, includeHeartbeat bool) ([]PromptContextFile, []string) {
-	return memorypkg.LoadPromptContextFiles(workspaceDir, chatType, includeHeartbeat)
+func loadPromptContextFiles(workspaceDir string, chatType core.ChatType, includeHeartbeat bool, isSubagent bool) ([]PromptContextFile, []string) {
+	return memorypkg.LoadPromptContextFiles(workspaceDir, chatType, includeHeartbeat, isSubagent)
 }
 
 func BuildInternalEventsPromptSection(events []core.TranscriptMessage) string {
@@ -375,16 +375,6 @@ func BuildSkillsPromptSection(snapshot *core.SkillSnapshot, tools []PromptTool) 
 		"Constraints: never read more than one skill up front; only read after selecting.",
 		"- When a skill drives external API writes, assume rate limits: prefer fewer larger writes, avoid tight one-item loops, serialize bursts when possible, and respect 429/Retry-After.",
 		snapshot.Prompt,
-	}
-	if len(snapshot.Commands) > 0 {
-		lines = append(lines, "", "User-invocable skill commands:")
-		for _, command := range snapshot.Commands {
-			line := fmt.Sprintf("- /%s -> %s", command.Name, command.SkillName)
-			if strings.TrimSpace(command.Description) != "" {
-				line += ": " + strings.TrimSpace(command.Description)
-			}
-			lines = append(lines, line)
-		}
 	}
 	return strings.Join(lines, "\n")
 }

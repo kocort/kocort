@@ -457,9 +457,11 @@ type ToolSandboxConfig struct {
 }
 
 type ToolExecConfig struct {
-	AllowBackground *bool `json:"allowBackground,omitempty"`
-	BackgroundMs    int   `json:"backgroundMs,omitempty"`
-	TimeoutSec      int   `json:"timeoutSec,omitempty"`
+	AllowBackground   *bool `json:"allowBackground,omitempty"`
+	BackgroundMs      int   `json:"backgroundMs,omitempty"`
+	TimeoutSec        int   `json:"timeoutSec,omitempty"`
+	CleanupMs         int   `json:"cleanupMs,omitempty"`
+	NoOutputTimeoutMs int   `json:"noOutputTimeoutMs,omitempty"`
 }
 
 type ToolsConfig struct {
