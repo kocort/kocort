@@ -56,20 +56,6 @@ brew install create-dmg
 
 构建产物位于 `dist/Kocort.app`。
 
-## Optional Browser Bundling
-
-桌面构建脚本支持把 Playwright 运行时一并打包进应用：
-
-```bash
-# 仅打包 driver，依赖系统 Chrome/Edge
-./scripts/build-desktop.sh --macos --with-browser
-
-# 打包 driver + Chromium，可离线使用，体积更大
-./scripts/build-desktop.sh --macos --with-chromium
-```
-
-对应环境变量为 `KOCORT_WITH_BROWSER=driver` 或 `KOCORT_WITH_BROWSER=chromium`。
-
 ## Signing and Distribution
 
 ### Sign `.app`

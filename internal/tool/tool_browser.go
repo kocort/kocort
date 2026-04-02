@@ -2,30 +2,57 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
-	browserpkg "github.com/kocort/kocort/internal/browser"
 	"github.com/kocort/kocort/internal/core"
+	"github.com/libi/ko-browser/browser"
 )
 
-type BrowserTool struct {
-	service browserpkg.Service
+// BrowserToolOptions holds configuration for the browser tool.
+type BrowserToolOptions struct {
+	Headless      bool
+	ArtifactDir   string
+	Profile       string
+	Timeout       time.Duration
+	ScreenshotDir string
+	DownloadPath  string
+	UserAgent     string
+	Proxy         string
+	ProxyBypass   string
 }
 
-func NewBrowserTool(service browserpkg.Service) *BrowserTool {
-	return &BrowserTool{service: service}
+type BrowserTool struct {
+	opts     BrowserToolOptions
+	mu       sync.Mutex
+	instance *browser.Browser
+}
+
+func NewBrowserTool(opts BrowserToolOptions) *BrowserTool {
+	if opts.Timeout <= 0 {
+		opts.Timeout = 30 * time.Second
+	}
+	if opts.ScreenshotDir == "" && opts.ArtifactDir != "" {
+		opts.ScreenshotDir = filepath.Join(opts.ArtifactDir, "screenshots")
+	}
+	if opts.DownloadPath == "" && opts.ArtifactDir != "" {
+		opts.DownloadPath = filepath.Join(opts.ArtifactDir, "downloads")
+	}
+	return &BrowserTool{opts: opts}
 }
 
 func (t *BrowserTool) Name() string { return "browser" }
 
 func (t *BrowserTool) Description() string {
-	return "Control the browser (status/start/stop/profiles/tabs/open/snapshot/screenshot/act). " +
-		"Use snapshot+act for UI automation: ALWAYS call snapshot first to see page structure and element refs, then use act with ref from snapshot results. " +
-		"When using refs from snapshot (e.g. e12), keep the same tab: prefer passing targetId from the snapshot response into subsequent actions. " +
-		`For stable, self-resolving refs across calls, use snapshot with refs=\"aria\" (Playwright aria-ref ids). Default refs=\"role\" are role+name-based. ` +
-		"Avoid act:wait by default; use only in exceptional cases when no reliable UI state exists."
+	return "Control the browser. Use snapshot to inspect page structure and get numeric element IDs, then interact using those IDs. " +
+		"Workflow: open a URL → snapshot → interact (click/type/fill/press) → re-snapshot. " +
+		"Numeric refs from snapshot (e.g. 3) are used for targeting elements: click 3, type 3 \"text\". " +
+		"The snapshot is token-efficient and provides role+name-based element descriptions."
 }
 
 func (t *BrowserTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
@@ -35,510 +62,845 @@ func (t *BrowserTool) OpenAIFunctionTool() *core.OpenAIFunctionToolSchema {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action":         map[string]any{"type": "string", "enum": []string{"install", "status", "start", "stop", "profiles", "tabs", "open", "focus", "close", "snapshot", "screenshot", "navigate", "console", "errors", "requests", "trace.start", "trace.stop", "pdf", "upload", "dialog", "act", "download", "wait.download"}, "description": "The browser action to perform. Use snapshot to inspect page structure before act. Use ref from snapshot results for precise element targeting."},
-				"target":         map[string]any{"type": "string", "enum": []string{"host", "sandbox", "node"}, "description": "Browser target surface."},
-				"node":           map[string]any{"type": "string", "description": "Optional node id when target=node."},
-				"profile":        map[string]any{"type": "string", "description": "Optional browser profile name."},
-				"headless":       map[string]any{"type": "boolean", "description": "Whether to run the browser in headless mode. When false, a visible browser window is opened. Only takes effect on start/open when a new browser session is launched."},
-				"targetUrl":      map[string]any{"type": "string", "description": "Preferred target URL for open or navigate."},
-				"url":            map[string]any{"type": "string", "description": "Legacy URL field for open or navigate."},
-				"targetId":       map[string]any{"type": "string", "description": "Optional browser target id."},
-				"limit":          map[string]any{"type": "integer", "description": "Optional result limit."},
-				"maxChars":       map[string]any{"type": "integer", "description": "Optional text cap for snapshot output."},
-				"mode":           map[string]any{"type": "string"},
-				"snapshotFormat": map[string]any{"type": "string", "enum": []string{"aria", "ai"}, "description": "Snapshot output format. aria returns structured accessibility tree, ai returns an LLM-friendly text summary."},
-				"refs":           map[string]any{"type": "string", "enum": []string{"role", "aria"}, "description": "Ref style for snapshot. role (default) uses role+name-based refs; aria uses stable Playwright aria-ref ids that survive across calls."},
-				"interactive":    map[string]any{"type": "boolean"},
-				"compact":        map[string]any{"type": "boolean"},
-				"depth":          map[string]any{"type": "integer"},
-				"selector":       map[string]any{"type": "string", "description": "CSS selector or Playwright selector engine string to target an element. Supports: CSS selectors (e.g. #id, .class, button[title=\"Submit\"]), text selectors (text=Submit, text=\"exact match\"), role selectors (role=button[name=\"Submit\"]), and XPath (xpath=//button). Prefer specific attribute selectors like button[title=\"创建\"] over generic class selectors to avoid strict mode violations when multiple elements match."},
-				"frame":          map[string]any{"type": "string"},
-				"labels":         map[string]any{"type": "boolean"},
-				"fullPage":       map[string]any{"type": "boolean"},
-				"ref":            map[string]any{"type": "string", "description": "Element ref from a previous snapshot result. Preferred over selector for precise element targeting."},
-				"startRef":       map[string]any{"type": "string"},
-				"endRef":         map[string]any{"type": "string"},
-				"element":        map[string]any{"type": "string"},
-				"type":           map[string]any{"type": "string", "description": "Artifact type for screenshot or act sub-type."},
-				"level":          map[string]any{"type": "string", "description": "Console level filter."},
-				"clear":          map[string]any{"type": "boolean"},
-				"filter":         map[string]any{"type": "string"},
-				"screenshots":    map[string]any{"type": "boolean"},
-				"snapshots":      map[string]any{"type": "boolean"},
-				"sources":        map[string]any{"type": "boolean"},
-				"path":           map[string]any{"type": "string"},
-				"paths":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"inputRef":       map[string]any{"type": "string"},
-				"timeoutMs":      map[string]any{"type": "integer"},
-				"accept":         map[string]any{"type": "boolean"},
-				"promptText":     map[string]any{"type": "string"},
-				"doubleClick":    map[string]any{"type": "boolean"},
-				"button":         map[string]any{"type": "string"},
-				"modifiers":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"delayMs":        map[string]any{"type": "integer"},
-				"kind":           map[string]any{"type": "string", "enum": []string{"click", "type", "fill", "input", "press", "hover", "select", "resize", "drag", "wait", "evaluate", "close"}, "description": "Required for action=act. The interaction kind. Use fill/input to set input value, type for keystroke-by-keystroke input."},
-				"text":           map[string]any{"type": "string", "description": "Text content for fill, input, or type actions."},
-				"key":            map[string]any{"type": "string", "description": "Key name for press action (e.g. Enter, Tab, Escape, ArrowDown)."},
-				"fn":             map[string]any{"type": "string", "description": "JavaScript expression for evaluate action."},
-				"timeMs":         map[string]any{"type": "integer"},
-				"textGone":       map[string]any{"type": "string"},
-				"loadState":      map[string]any{"type": "string"},
-				"slowly":         map[string]any{"type": "boolean"},
-				"submit":         map[string]any{"type": "boolean"},
-				"values":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-				"width":          map[string]any{"type": "integer"},
-				"height":         map[string]any{"type": "integer"},
-				"request":        map[string]any{"type": "object"},
+				"action": map[string]any{
+					"type": "string",
+					"enum": []string{
+						"open", "snapshot", "screenshot", "click", "dblclick",
+						"type", "fill", "press", "hover", "focus", "check", "uncheck",
+						"select", "scroll", "drag", "back", "forward", "reload",
+						"wait_load", "wait_text", "wait_selector", "wait_url", "wait_hidden",
+						"tab_list", "tab_new", "tab_switch", "tab_close",
+						"get_title", "get_url", "get_text", "get_html", "get_value", "get_attr",
+						"eval", "console_start", "console_messages", "console_clear",
+						"errors_list", "errors_clear",
+						"upload", "download", "wait_download",
+						"set_viewport", "set_device", "set_geo",
+						"trace_start", "trace_stop",
+						"pdf", "highlight",
+						"status", "close",
+					},
+					"description": "The browser action to perform.",
+				},
+				"url": map[string]any{
+					"type":        "string",
+					"description": "URL for open action.",
+				},
+				"id": map[string]any{
+					"type":        "integer",
+					"description": "Numeric element ID from snapshot for interaction actions (click, type, fill, hover, focus, etc.).",
+				},
+				"text": map[string]any{
+					"type":        "string",
+					"description": "Text for type/fill actions, or text to wait for.",
+				},
+				"key": map[string]any{
+					"type":        "string",
+					"description": "Key name for press action (e.g. Enter, Tab, Escape, ArrowDown, Control+a).",
+				},
+				"selector": map[string]any{
+					"type":        "string",
+					"description": "CSS selector for wait_selector, wait_hidden, or scoped snapshot.",
+				},
+				"values": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Values for select action.",
+				},
+				"direction": map[string]any{
+					"type":        "string",
+					"enum":        []string{"up", "down", "left", "right"},
+					"description": "Scroll direction.",
+				},
+				"pixels": map[string]any{
+					"type":        "integer",
+					"description": "Number of pixels to scroll.",
+				},
+				"srcId": map[string]any{
+					"type":        "integer",
+					"description": "Source element ID for drag action.",
+				},
+				"dstId": map[string]any{
+					"type":        "integer",
+					"description": "Destination element ID for drag action.",
+				},
+				"tabIndex": map[string]any{
+					"type":        "integer",
+					"description": "Tab index for tab_switch/tab_close.",
+				},
+				"path": map[string]any{
+					"type":        "string",
+					"description": "File path for screenshot, pdf, trace_stop, download, etc.",
+				},
+				"paths": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "File paths for upload action.",
+				},
+				"fn": map[string]any{
+					"type":        "string",
+					"description": "JavaScript expression for eval action.",
+				},
+				"fullPage": map[string]any{
+					"type":        "boolean",
+					"description": "Whether to capture full page for screenshot.",
+				},
+				"interactive": map[string]any{
+					"type":        "boolean",
+					"description": "Show only interactive elements in snapshot.",
+				},
+				"compact": map[string]any{
+					"type":        "boolean",
+					"description": "Compact snapshot mode.",
+				},
+				"depth": map[string]any{
+					"type":        "integer",
+					"description": "Max depth for snapshot.",
+				},
+				"attr": map[string]any{
+					"type":        "string",
+					"description": "Attribute name for get_attr.",
+				},
+				"width": map[string]any{
+					"type":        "integer",
+					"description": "Viewport width for set_viewport.",
+				},
+				"height": map[string]any{
+					"type":        "integer",
+					"description": "Viewport height for set_viewport.",
+				},
+				"device": map[string]any{
+					"type":        "string",
+					"description": "Device name for set_device (e.g. 'iPhone 12').",
+				},
+				"lat": map[string]any{
+					"type":        "number",
+					"description": "Latitude for set_geo.",
+				},
+				"lon": map[string]any{
+					"type":        "number",
+					"description": "Longitude for set_geo.",
+				},
+				"level": map[string]any{
+					"type":        "string",
+					"description": "Console level filter.",
+				},
+				"pattern": map[string]any{
+					"type":        "string",
+					"description": "URL pattern for wait_url.",
+				},
+				"headless": map[string]any{
+					"type":        "boolean",
+					"description": "Run browser in headless mode. Only applies when browser is first launched.",
+				},
 			},
 			"required":             []string{"action"},
-			"additionalProperties": true,
+			"additionalProperties": false,
 		},
 	}
 }
 
-func (t *BrowserTool) Execute(ctx context.Context, toolCtx ToolContext, args map[string]any) (core.ToolResult, error) {
-	if t.service == nil {
-		return JSONResult(map[string]any{"ok": false, "status": "unavailable", "error": "browser service is not configured"})
+// ensureBrowser lazily creates a browser instance if one does not exist.
+func (t *BrowserTool) ensureBrowser(headlessOverride *bool) (*browser.Browser, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.instance != nil {
+		return t.instance, nil
 	}
+
+	headless := t.opts.Headless
+	if headlessOverride != nil {
+		headless = *headlessOverride
+	}
+
+	opts := browser.Options{
+		Headless:      headless,
+		Timeout:       t.opts.Timeout,
+		Profile:       t.opts.Profile,
+		DownloadPath:  t.opts.DownloadPath,
+		ScreenshotDir: t.opts.ScreenshotDir,
+		UserAgent:     t.opts.UserAgent,
+		Proxy:         t.opts.Proxy,
+		ProxyBypass:   t.opts.ProxyBypass,
+	}
+
+	b, err := browser.New(opts)
+	if err != nil {
+		return nil, fmt.Errorf("launch browser: %w", err)
+	}
+	t.instance = b
+	return b, nil
+}
+
+func (t *BrowserTool) Execute(ctx context.Context, toolCtx ToolContext, args map[string]any) (core.ToolResult, error) {
 	action, err := ReadStringParam(args, "action", true)
 	if err != nil {
 		return core.ToolResult{}, err
 	}
 	action = strings.ToLower(strings.TrimSpace(action))
-	req, err := readBrowserRequest(toolCtx, args)
-	if err != nil {
-		return core.ToolResult{}, err
-	}
-	switch action {
-	case "install":
-		return t.executeMap(ctx, func() (map[string]any, error) { return t.service.Install(ctx, req) })
-	case "status":
-		return t.executeMap(ctx, func() (map[string]any, error) { return t.service.Status(ctx, req) })
-	case "start":
-		return t.executeMap(ctx, func() (map[string]any, error) { return t.service.Start(ctx, req) })
-	case "stop":
-		return t.executeMap(ctx, func() (map[string]any, error) { return t.service.Stop(ctx, req) })
-	case "profiles":
-		return t.executeMap(ctx, func() (map[string]any, error) { return t.service.Profiles(ctx, req) })
-	case "tabs":
-		return t.executeBrowserWrapped(ctx, "tabs", func() (map[string]any, error) { return t.service.Tabs(ctx, req) })
-	case "open":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			openReq := browserpkg.OpenRequest{
-				Request:   req,
-				URL:       readOptionalString(args, "url"),
-				TargetURL: readOptionalString(args, "targetUrl"),
-			}
-			return t.service.Open(ctx, openReq)
-		})
-	case "focus":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.Focus(ctx, browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")})
-		})
-	case "close":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.Close(ctx, browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")})
-		})
-	case "navigate":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.Navigate(ctx, browserpkg.NavigateRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				URL:           readOptionalString(args, "url"),
-				TargetURL:     readOptionalString(args, "targetUrl"),
-			})
-		})
-	case "snapshot":
-		limit, err := ReadOptionalIntParam(args, "limit")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		maxChars, err := ReadOptionalIntParam(args, "maxChars")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		depth, err := ReadOptionalIntParam(args, "depth")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		interactive, err := ReadBoolParam(args, "interactive")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		compact, err := ReadBoolParam(args, "compact")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		labels, err := ReadBoolParam(args, "labels")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		return t.executeBrowserSnapshot(ctx, func() (map[string]any, error) {
-			return t.service.Snapshot(ctx, browserpkg.SnapshotRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Format:        readOptionalString(args, "snapshotFormat"),
-				Refs:          readOptionalString(args, "refs"),
-				Selector:      readOptionalString(args, "selector"),
-				Frame:         readOptionalString(args, "frame"),
-				Mode:          readOptionalString(args, "mode"),
-				Limit:         limit,
-				MaxChars:      maxChars,
-				Depth:         depth,
-				Interactive:   interactive,
-				Compact:       compact,
-				Labels:        labels,
-			})
-		})
-	case "screenshot":
-		fullPage, err := ReadBoolParam(args, "fullPage")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		return t.executeBrowserImage(ctx, "screenshot", func() (map[string]any, error) {
-			return t.service.Screenshot(ctx, browserpkg.ScreenshotRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Type:          readOptionalString(args, "type"),
-				FullPage:      fullPage,
-			})
-		})
-	case "pdf":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.PDF(ctx, browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")})
-		})
-	case "console":
-		limit, err := ReadOptionalIntParam(args, "limit")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		return t.executeBrowserWrapped(ctx, "console", func() (map[string]any, error) {
-			return t.service.Console(ctx, browserpkg.ConsoleRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Level:         readOptionalString(args, "level"),
-				Limit:         limit,
-			})
-		})
-	case "errors":
-		limit, err := ReadOptionalIntParam(args, "limit")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		clearValue, err := ReadBoolParam(args, "clear")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		return t.executeBrowserWrapped(ctx, "errors", func() (map[string]any, error) {
-			return t.service.Errors(ctx, browserpkg.DebugRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Clear:         clearValue,
-				Limit:         limit,
-			})
-		})
-	case "requests":
-		limit, err := ReadOptionalIntParam(args, "limit")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		clearValue, err := ReadBoolParam(args, "clear")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		return t.executeBrowserWrapped(ctx, "requests", func() (map[string]any, error) {
-			return t.service.Requests(ctx, browserpkg.RequestsRequest{
-				DebugRequest: browserpkg.DebugRequest{
-					TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-					Clear:         clearValue,
-					Limit:         limit,
-				},
-				Filter: readOptionalString(args, "filter"),
-			})
-		})
-	case "trace.start":
-		screenshotsValue, err := ReadBoolParam(args, "screenshots")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		snapshotsValue, err := ReadBoolParam(args, "snapshots")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		sourcesValue, err := ReadBoolParam(args, "sources")
-		if err != nil {
-			return core.ToolResult{}, err
-		}
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.TraceStart(ctx, browserpkg.TraceStartRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Screenshots:   screenshotsValue,
-				Snapshots:     snapshotsValue,
-				Sources:       sourcesValue,
-			})
-		})
-	case "trace.stop":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.TraceStop(ctx, browserpkg.TraceStopRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Path:          readOptionalString(args, "path"),
-			})
-		})
-	case "act":
-		return t.executeActWithRetry(ctx, req, args)
-	case "upload":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			paths, pathErr := resolveUploadPaths(toolCtx, args)
-			if pathErr != nil {
-				return nil, pathErr
-			}
-			return t.service.Upload(ctx, browserpkg.UploadRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Ref:           readOptionalString(args, "ref"),
-				InputRef:      readOptionalString(args, "inputRef"),
-				Element:       readOptionalString(args, "element"),
-				Selector:      readOptionalString(args, "selector"),
-				Paths:         paths,
-			})
-		})
-	case "dialog":
-		accept, acceptErr := ReadBoolParam(args, "accept")
-		if acceptErr != nil {
-			return core.ToolResult{}, acceptErr
-		}
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.Dialog(ctx, browserpkg.DialogRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Accept:        accept,
-				PromptText:    readOptionalString(args, "promptText"),
-			})
-		})
-	case "download":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.Download(ctx, browserpkg.DownloadRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Ref:           readOptionalString(args, "ref"),
-				Path:          readOptionalString(args, "path"),
-			})
-		})
-	case "wait.download":
-		return t.executeMap(ctx, func() (map[string]any, error) {
-			return t.service.WaitDownload(ctx, browserpkg.WaitDownloadRequest{
-				TargetRequest: browserpkg.TargetRequest{Request: req, TargetID: readOptionalString(args, "targetId")},
-				Path:          readOptionalString(args, "path"),
-			})
-		})
-	default:
-		return JSONResult(map[string]any{"ok": false, "status": "error", "error": fmt.Sprintf("unsupported action %q", action)})
-	}
-}
 
-func (t *BrowserTool) executeMap(ctx context.Context, fn func() (map[string]any, error)) (core.ToolResult, error) {
-	result, err := fn()
-	if err != nil {
-		if ctx.Err() != nil {
-			return core.ToolResult{}, ctx.Err()
-		}
-		return core.ToolResult{}, err
+	// status doesn't need a browser instance
+	if action == "status" {
+		return t.executeStatus()
 	}
-	return JSONResult(result)
-}
+	if action == "close" {
+		return t.executeClose()
+	}
 
-// safeActKindsForRetry are act kinds that are safe to retry without a targetId
-// when the original targetId becomes stale (read-only or idempotent).
-var safeActKindsForRetry = map[string]bool{
-	"hover": true,
-	"wait":  true,
-}
-
-// isStaleTargetResult checks if an act result indicates a stale/closed target.
-func isStaleTargetResult(result map[string]any) bool {
-	if result == nil {
-		return false
-	}
-	ok, _ := result["ok"].(bool)
-	if ok {
-		return false
-	}
-	errMsg, _ := result["error"].(string)
-	errMsg = strings.ToLower(errMsg)
-	return strings.Contains(errMsg, "tab not found") ||
-		strings.Contains(errMsg, "no browser tab") ||
-		strings.Contains(errMsg, "target closed") ||
-		strings.Contains(errMsg, "page closed")
-}
-
-func (t *BrowserTool) executeActWithRetry(ctx context.Context, req browserpkg.Request, args map[string]any) (core.ToolResult, error) {
-	actReq, err := readBrowserActRequest(req, args)
-	if err != nil {
-		return core.ToolResult{}, err
-	}
-	result, err := t.service.Act(ctx, actReq)
-	if err != nil {
-		if ctx.Err() != nil {
-			return core.ToolResult{}, ctx.Err()
-		}
-		return core.ToolResult{}, err
-	}
-	// If the act failed due to a stale targetId, retry safe actions without it.
-	if isStaleTargetResult(result) && actReq.TargetID != "" && safeActKindsForRetry[strings.ToLower(actReq.Kind)] {
-		retryReq := actReq
-		retryReq.TargetID = ""
-		retryReq.TargetRequest.TargetID = ""
-		retryResult, retryErr := t.service.Act(ctx, retryReq)
-		if retryErr == nil && !isStaleTargetResult(retryResult) {
-			return JSONResult(retryResult)
-		}
-		// Retry failed — enrich the original error with guidance.
-		result["hint"] = `Target may be stale. Run action="tabs" to get current targetIds, then retry with a valid targetId.`
-	} else if isStaleTargetResult(result) {
-		result["hint"] = `Target may be stale. Run action="tabs" to get current targetIds, then retry with a valid targetId.`
-	}
-	return JSONResult(result)
-}
-
-func (t *BrowserTool) executeBrowserWrapped(ctx context.Context, kind string, fn func() (map[string]any, error)) (core.ToolResult, error) {
-	result, err := fn()
-	if err != nil {
-		if ctx.Err() != nil {
-			return core.ToolResult{}, ctx.Err()
-		}
-		return core.ToolResult{}, err
-	}
-	return BrowserWrappedJSONResult(kind, result)
-}
-
-func (t *BrowserTool) executeBrowserImage(ctx context.Context, kind string, fn func() (map[string]any, error)) (core.ToolResult, error) {
-	result, err := fn()
-	if err != nil {
-		if ctx.Err() != nil {
-			return core.ToolResult{}, ctx.Err()
-		}
-		return core.ToolResult{}, err
-	}
-	path, _ := result["path"].(string)
-	return BrowserImageResult(kind, path, result)
-}
-
-func (t *BrowserTool) executeBrowserSnapshot(ctx context.Context, fn func() (map[string]any, error)) (core.ToolResult, error) {
-	result, err := fn()
-	if err != nil {
-		if ctx.Err() != nil {
-			return core.ToolResult{}, ctx.Err()
-		}
-		return core.ToolResult{}, err
-	}
-	imagePath, _ := result["imagePath"].(string)
-	if strings.TrimSpace(imagePath) != "" {
-		return BrowserImageResult("snapshot", imagePath, result)
-	}
-	return BrowserWrappedJSONResult("snapshot", result)
-}
-
-func readBrowserRequest(toolCtx ToolContext, args map[string]any) (browserpkg.Request, error) {
-	timeout, err := ReadOptionalPositiveDurationParam(args, "timeoutMs", time.Millisecond)
-	if err != nil {
-		return browserpkg.Request{}, err
-	}
+	// Parse optional headless override
 	var headless *bool
 	if raw, ok := args["headless"]; ok && raw != nil {
-		switch v := raw.(type) {
-		case bool:
+		if v, ok := raw.(bool); ok {
 			headless = &v
-		default:
-			// ignore non-bool values
 		}
 	}
-	return browserpkg.Request{
-		SessionKey: strings.TrimSpace(toolCtx.Run.Session.SessionKey),
-		Target:     readOptionalString(args, "target"),
-		Profile:    readOptionalString(args, "profile"),
-		Node:       readOptionalString(args, "node"),
-		TimeoutMs:  int(timeout / time.Millisecond),
-		Headless:   headless,
-	}, nil
+
+	b, err := t.ensureBrowser(headless)
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+
+	switch action {
+	case "open":
+		return t.executeOpen(b, args)
+	case "snapshot":
+		return t.executeSnapshot(b, args)
+	case "screenshot":
+		return t.executeScreenshot(b, args)
+	case "click":
+		return t.executeClick(b, args)
+	case "dblclick":
+		return t.executeDblClick(b, args)
+	case "type":
+		return t.executeType(b, args)
+	case "fill":
+		return t.executeFill(b, args)
+	case "press":
+		return t.executePress(b, args)
+	case "hover":
+		return t.executeHover(b, args)
+	case "focus":
+		return t.executeFocus(b, args)
+	case "check":
+		return t.executeCheck(b, args)
+	case "uncheck":
+		return t.executeUncheck(b, args)
+	case "select":
+		return t.executeSelect(b, args)
+	case "scroll":
+		return t.executeScroll(b, args)
+	case "drag":
+		return t.executeDrag(b, args)
+	case "back":
+		return wrapBrowserErr(b.Back(), "back")
+	case "forward":
+		return wrapBrowserErr(b.Forward(), "forward")
+	case "reload":
+		return wrapBrowserErr(b.Reload(), "reload")
+	case "wait_load":
+		return wrapBrowserErr(b.WaitLoad(), "wait_load")
+	case "wait_text":
+		text := readOptionalString(args, "text")
+		if text == "" {
+			return core.ToolResult{}, ToolInputError{Message: `wait_text requires "text"`}
+		}
+		return wrapBrowserErr(b.WaitText(text), "wait_text")
+	case "wait_selector":
+		sel := readOptionalString(args, "selector")
+		if sel == "" {
+			return core.ToolResult{}, ToolInputError{Message: `wait_selector requires "selector"`}
+		}
+		return wrapBrowserErr(b.WaitSelector(sel), "wait_selector")
+	case "wait_url":
+		pat := readOptionalString(args, "pattern")
+		if pat == "" {
+			pat = readOptionalString(args, "url")
+		}
+		if pat == "" {
+			return core.ToolResult{}, ToolInputError{Message: `wait_url requires "pattern" or "url"`}
+		}
+		return wrapBrowserErr(b.WaitURL(pat), "wait_url")
+	case "wait_hidden":
+		sel := readOptionalString(args, "selector")
+		if sel == "" {
+			return core.ToolResult{}, ToolInputError{Message: `wait_hidden requires "selector"`}
+		}
+		return wrapBrowserErr(b.WaitHidden(sel), "wait_hidden")
+	case "tab_list":
+		return t.executeTabList(b)
+	case "tab_new":
+		url := readOptionalString(args, "url")
+		return wrapBrowserErr(b.TabNew(url), "tab_new")
+	case "tab_switch":
+		idx, err := ReadOptionalIntParam(args, "tabIndex")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		return wrapBrowserErr(b.TabSwitch(idx), "tab_switch")
+	case "tab_close":
+		idx, err := ReadOptionalIntParam(args, "tabIndex")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		if idx == 0 {
+			idx = -1 // default: close current
+		}
+		return wrapBrowserErr(b.TabClose(idx), "tab_close")
+	case "get_title":
+		return t.executeGetString(func() (string, error) { return b.GetTitle() }, "title")
+	case "get_url":
+		return t.executeGetString(func() (string, error) { return b.GetURL() }, "url")
+	case "get_text":
+		id, err := readRequiredIntParam(args, "id")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		return t.executeGetString(func() (string, error) { return b.GetText(id) }, "text")
+	case "get_html":
+		id, err := readRequiredIntParam(args, "id")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		return t.executeGetString(func() (string, error) { return b.GetHTML(id) }, "html")
+	case "get_value":
+		id, err := readRequiredIntParam(args, "id")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		return t.executeGetString(func() (string, error) { return b.GetValue(id) }, "value")
+	case "get_attr":
+		id, err := readRequiredIntParam(args, "id")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		attr := readOptionalString(args, "attr")
+		if attr == "" {
+			return core.ToolResult{}, ToolInputError{Message: `get_attr requires "attr"`}
+		}
+		return t.executeGetString(func() (string, error) { return b.GetAttr(id, attr) }, "attr")
+	case "eval":
+		fn := readOptionalString(args, "fn")
+		if fn == "" {
+			return core.ToolResult{}, ToolInputError{Message: `eval requires "fn"`}
+		}
+		return t.executeGetString(func() (string, error) { return b.Eval(fn) }, "eval")
+	case "console_start":
+		return wrapBrowserErr(b.ConsoleStart(), "console_start")
+	case "console_messages":
+		return t.executeConsoleMessages(b, args)
+	case "console_clear":
+		b.ConsoleClear()
+		return JSONResult(map[string]any{"ok": true, "action": "console_clear"})
+	case "errors_list":
+		return t.executeErrorsList(b)
+	case "errors_clear":
+		b.PageErrorsClear()
+		return JSONResult(map[string]any{"ok": true, "action": "errors_clear"})
+	case "upload":
+		return t.executeUpload(toolCtx, b, args)
+	case "download":
+		return t.executeDownload(b, args)
+	case "wait_download":
+		return t.executeWaitDownload(b, args)
+	case "set_viewport":
+		return t.executeSetViewport(b, args)
+	case "set_device":
+		device := readOptionalString(args, "device")
+		if device == "" {
+			return core.ToolResult{}, ToolInputError{Message: `set_device requires "device"`}
+		}
+		return wrapBrowserErr(b.SetDevice(device), "set_device")
+	case "set_geo":
+		return t.executeSetGeo(b, args)
+	case "trace_start":
+		return wrapBrowserErr(b.TraceStart(), "trace_start")
+	case "trace_stop":
+		path := readOptionalString(args, "path")
+		if path == "" && t.opts.ArtifactDir != "" {
+			path = filepath.Join(t.opts.ArtifactDir, fmt.Sprintf("trace-%d.json", time.Now().UnixMilli()))
+		}
+		return wrapBrowserErr(b.TraceStop(path), "trace_stop")
+	case "pdf":
+		return t.executePDF(b, args)
+	case "highlight":
+		id, err := readRequiredIntParam(args, "id")
+		if err != nil {
+			return core.ToolResult{}, err
+		}
+		return wrapBrowserErr(b.Highlight(id), "highlight")
+	default:
+		return JSONResult(map[string]any{"ok": false, "error": fmt.Sprintf("unsupported action %q", action)})
+	}
 }
 
+// --- Action implementations ---
+
+func (t *BrowserTool) executeStatus() (core.ToolResult, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	running := t.instance != nil
+	return JSONResult(map[string]any{
+		"ok":      true,
+		"action":  "status",
+		"running": running,
+	})
+}
+
+func (t *BrowserTool) executeClose() (core.ToolResult, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.instance != nil {
+		t.instance.Close()
+		t.instance = nil
+	}
+	return JSONResult(map[string]any{"ok": true, "action": "close"})
+}
+
+func (t *BrowserTool) executeOpen(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	url := readOptionalString(args, "url")
+	if url == "" {
+		return core.ToolResult{}, ToolInputError{Message: `open requires "url"`}
+	}
+	if err := b.Open(url); err != nil {
+		return core.ToolResult{}, fmt.Errorf("open %s: %w", url, err)
+	}
+	// Auto-start console listening
+	_ = b.ConsoleStart()
+	title, _ := b.GetTitle()
+	currentURL, _ := b.GetURL()
+	return JSONResult(map[string]any{
+		"ok":     true,
+		"action": "open",
+		"title":  title,
+		"url":    currentURL,
+	})
+}
+
+func (t *BrowserTool) executeSnapshot(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	interactive, _ := ReadBoolParam(args, "interactive")
+	compact, _ := ReadBoolParam(args, "compact")
+	depth, _ := ReadOptionalIntParam(args, "depth")
+	selector := readOptionalString(args, "selector")
+
+	snap, err := b.Snapshot(browser.SnapshotOptions{
+		InteractiveOnly: interactive,
+		Compact:         compact,
+		MaxDepth:        depth,
+		Selector:        selector,
+	})
+	if err != nil {
+		return core.ToolResult{}, fmt.Errorf("snapshot: %w", err)
+	}
+	payload := map[string]any{
+		"ok":       true,
+		"action":   "snapshot",
+		"snapshot": snap.Text,
+		"count":    snap.RawCount,
+	}
+	return BrowserWrappedJSONResult("snapshot", payload)
+}
+
+func (t *BrowserTool) executeScreenshot(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	fullPage, _ := ReadBoolParam(args, "fullPage")
+	path := readOptionalString(args, "path")
+	if path == "" {
+		dir := t.opts.ScreenshotDir
+		if dir == "" {
+			dir = os.TempDir()
+		}
+		_ = os.MkdirAll(dir, 0755)
+		path = filepath.Join(dir, fmt.Sprintf("screenshot-%d.png", time.Now().UnixMilli()))
+	}
+
+	err := b.Screenshot(path, browser.ScreenshotOptions{FullPage: fullPage})
+	if err != nil {
+		return core.ToolResult{}, fmt.Errorf("screenshot: %w", err)
+	}
+	return BrowserImageResult("screenshot", path, map[string]any{
+		"ok":     true,
+		"action": "screenshot",
+		"path":   path,
+	})
+}
+
+func (t *BrowserTool) executeClick(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.Click(id), "click")
+}
+
+func (t *BrowserTool) executeDblClick(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.DblClick(id), "dblclick")
+}
+
+func (t *BrowserTool) executeType(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	text := readOptionalString(args, "text")
+	return wrapBrowserErr(b.Type(id, text), "type")
+}
+
+func (t *BrowserTool) executeFill(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	text := readOptionalString(args, "text")
+	return wrapBrowserErr(b.Fill(id, text), "fill")
+}
+
+func (t *BrowserTool) executePress(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	key := readOptionalString(args, "key")
+	if key == "" {
+		return core.ToolResult{}, ToolInputError{Message: `press requires "key"`}
+	}
+	return wrapBrowserErr(b.Press(key), "press")
+}
+
+func (t *BrowserTool) executeHover(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.Hover(id), "hover")
+}
+
+func (t *BrowserTool) executeFocus(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.Focus(id), "focus")
+}
+
+func (t *BrowserTool) executeCheck(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.Check(id), "check")
+}
+
+func (t *BrowserTool) executeUncheck(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.Uncheck(id), "uncheck")
+}
+
+func (t *BrowserTool) executeSelect(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	values, err := readOptionalStringSlice(args, "values")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	if len(values) == 0 {
+		return core.ToolResult{}, ToolInputError{Message: `select requires "values"`}
+	}
+	return wrapBrowserErr(b.Select(id, values...), "select")
+}
+
+func (t *BrowserTool) executeScroll(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	direction := readOptionalString(args, "direction")
+	if direction == "" {
+		direction = "down"
+	}
+	pixels, err := ReadOptionalIntParam(args, "pixels")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	if pixels <= 0 {
+		pixels = 300
+	}
+	return wrapBrowserErr(b.Scroll(direction, pixels), "scroll")
+}
+
+func (t *BrowserTool) executeDrag(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	srcId, err := readRequiredIntParam(args, "srcId")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	dstId, err := readRequiredIntParam(args, "dstId")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.Drag(srcId, dstId), "drag")
+}
+
+func (t *BrowserTool) executeTabList(b *browser.Browser) (core.ToolResult, error) {
+	tabs, err := b.TabList()
+	if err != nil {
+		return core.ToolResult{}, fmt.Errorf("tab_list: %w", err)
+	}
+	tabsJSON := make([]map[string]any, len(tabs))
+	for i, tab := range tabs {
+		tabsJSON[i] = map[string]any{
+			"index":  tab.Index,
+			"url":    tab.URL,
+			"title":  tab.Title,
+			"active": tab.Active,
+		}
+	}
+	return BrowserWrappedJSONResult("tabs", map[string]any{
+		"ok":     true,
+		"action": "tab_list",
+		"tabs":   tabsJSON,
+	})
+}
+
+func (t *BrowserTool) executeGetString(fn func() (string, error), field string) (core.ToolResult, error) {
+	val, err := fn()
+	if err != nil {
+		return core.ToolResult{}, fmt.Errorf("%s: %w", field, err)
+	}
+	return BrowserWrappedJSONResult(field, map[string]any{
+		"ok":     true,
+		"action": "get_" + field,
+		field:    val,
+	})
+}
+
+func (t *BrowserTool) executeConsoleMessages(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	level := readOptionalString(args, "level")
+	var msgs []browser.ConsoleMessage
+	var err error
+	if level != "" {
+		msgs, err = b.ConsoleMessagesByLevel(level)
+	} else {
+		msgs, err = b.ConsoleMessages()
+	}
+	if err != nil {
+		return core.ToolResult{}, fmt.Errorf("console_messages: %w", err)
+	}
+	msgsJSON := make([]map[string]any, len(msgs))
+	for i, m := range msgs {
+		msgsJSON[i] = map[string]any{
+			"level": m.Level,
+			"text":  m.Text,
+		}
+	}
+	return BrowserWrappedJSONResult("console", map[string]any{
+		"ok":       true,
+		"action":   "console_messages",
+		"messages": msgsJSON,
+	})
+}
+
+func (t *BrowserTool) executeErrorsList(b *browser.Browser) (core.ToolResult, error) {
+	errs, err := b.PageErrors()
+	if err != nil {
+		return core.ToolResult{}, fmt.Errorf("errors_list: %w", err)
+	}
+	errsJSON := make([]map[string]any, len(errs))
+	for i, e := range errs {
+		errsJSON[i] = map[string]any{
+			"message": e.Message,
+			"url":     e.URL,
+			"line":    e.Line,
+			"column":  e.Column,
+		}
+	}
+	return BrowserWrappedJSONResult("errors", map[string]any{
+		"ok":     true,
+		"action": "errors_list",
+		"errors": errsJSON,
+	})
+}
+
+func (t *BrowserTool) executeUpload(toolCtx ToolContext, b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	paths, err := resolveUploadPaths(toolCtx, args)
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.Upload(id, paths...), "upload")
+}
+
+func (t *BrowserTool) executeDownload(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	id, err := readRequiredIntParam(args, "id")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	saveDir := readOptionalString(args, "path")
+	if saveDir == "" {
+		saveDir = t.opts.DownloadPath
+	}
+	if saveDir == "" {
+		saveDir = os.TempDir()
+	}
+	downloadPath, downloadErr := b.Download(id, saveDir)
+	if downloadErr != nil {
+		return core.ToolResult{}, fmt.Errorf("download: %w", downloadErr)
+	}
+	return JSONResult(map[string]any{
+		"ok":     true,
+		"action": "download",
+		"path":   downloadPath,
+	})
+}
+
+func (t *BrowserTool) executeWaitDownload(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	saveDir := readOptionalString(args, "path")
+	if saveDir == "" {
+		saveDir = t.opts.DownloadPath
+	}
+	if saveDir == "" {
+		saveDir = os.TempDir()
+	}
+	downloadPath, err := b.WaitDownload(saveDir)
+	if err != nil {
+		return core.ToolResult{}, fmt.Errorf("wait_download: %w", err)
+	}
+	return JSONResult(map[string]any{
+		"ok":     true,
+		"action": "wait_download",
+		"path":   downloadPath,
+	})
+}
+
+func (t *BrowserTool) executeSetViewport(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	width, err := readRequiredIntParam(args, "width")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	height, err := readRequiredIntParam(args, "height")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.SetViewport(width, height), "set_viewport")
+}
+
+func (t *BrowserTool) executeSetGeo(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	lat, err := readRequiredFloatParam(args, "lat")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	lon, err := readRequiredFloatParam(args, "lon")
+	if err != nil {
+		return core.ToolResult{}, err
+	}
+	return wrapBrowserErr(b.SetGeo(lat, lon), "set_geo")
+}
+
+func (t *BrowserTool) executePDF(b *browser.Browser, args map[string]any) (core.ToolResult, error) {
+	path := readOptionalString(args, "path")
+	if path == "" {
+		dir := t.opts.ArtifactDir
+		if dir == "" {
+			dir = os.TempDir()
+		}
+		_ = os.MkdirAll(dir, 0755)
+		path = filepath.Join(dir, fmt.Sprintf("page-%d.pdf", time.Now().UnixMilli()))
+	}
+	err := b.PDF(path)
+	if err != nil {
+		return core.ToolResult{}, fmt.Errorf("pdf: %w", err)
+	}
+	return JSONResult(map[string]any{
+		"ok":     true,
+		"action": "pdf",
+		"path":   path,
+	})
+}
+
+// --- Helper functions ---
+
+// readOptionalString reads an optional string parameter, returning "" if absent.
 func readOptionalString(args map[string]any, key string) string {
-	value, _ := ReadStringParam(args, key, false)
-	return strings.TrimSpace(value)
+	val, _ := ReadStringParam(args, key, false)
+	return val
 }
 
-func readBrowserActRequest(req browserpkg.Request, args map[string]any) (browserpkg.ActRequest, error) {
-	requestMap, err := readOptionalObjectParam(args, "request")
+func wrapBrowserErr(err error, action string) (core.ToolResult, error) {
 	if err != nil {
-		return browserpkg.ActRequest{}, err
+		return core.ToolResult{}, fmt.Errorf("%s: %w", action, err)
 	}
-	timeout, err := ReadOptionalPositiveDurationParam(args, "timeoutMs", time.Millisecond)
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	timeMs, err := readOptionalIntFromSources(args, requestMap, "timeMs")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	delayMs, err := readOptionalIntFromSources(args, requestMap, "delayMs")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	slowly, err := readOptionalBoolFromSources(args, requestMap, "slowly")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	submit, err := readOptionalBoolFromSources(args, requestMap, "submit")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	doubleClick, err := readOptionalBoolFromSources(args, requestMap, "doubleClick")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	width, err := readOptionalIntFromSources(args, requestMap, "width")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	height, err := readOptionalIntFromSources(args, requestMap, "height")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	values, err := readOptionalStringSliceFromSources(args, requestMap, "values")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	modifiers, err := readOptionalStringSliceFromSources(args, requestMap, "modifiers")
-	if err != nil {
-		return browserpkg.ActRequest{}, err
-	}
-	actReq := browserpkg.ActRequest{
-		TargetRequest: browserpkg.TargetRequest{
-			Request:  req,
-			TargetID: firstNonEmptyValue(requestMap, args, "targetId"),
-		},
-		Kind:        firstNonEmptyValue(requestMap, args, "kind"),
-		Ref:         firstNonEmptyValue(requestMap, args, "ref"),
-		StartRef:    firstNonEmptyValue(requestMap, args, "startRef"),
-		EndRef:      firstNonEmptyValue(requestMap, args, "endRef"),
-		Element:     firstNonEmptyValue(requestMap, args, "element"),
-		Selector:    firstNonEmptyValue(requestMap, args, "selector"),
-		Text:        firstNonEmptyValue(requestMap, args, "text"),
-		Key:         firstNonEmptyValue(requestMap, args, "key"),
-		Fn:          firstNonEmptyValue(requestMap, args, "fn"),
-		TimeoutMs:   int(timeout / time.Millisecond),
-		TimeMs:      timeMs,
-		LoadState:   firstNonEmptyValue(requestMap, args, "loadState"),
-		URL:         firstNonEmptyValue(requestMap, args, "url"),
-		TextGone:    firstNonEmptyValue(requestMap, args, "textGone"),
-		Slowly:      slowly,
-		Submit:      submit,
-		Values:      values,
-		Width:       width,
-		Height:      height,
-		DoubleClick: doubleClick,
-		Button:      firstNonEmptyValue(requestMap, args, "button"),
-		Modifiers:   modifiers,
-		DelayMs:     delayMs,
-	}
-	if actReq.Kind == "" {
-		return browserpkg.ActRequest{}, ToolInputError{Message: `browser act requires "kind" or request.kind`}
-	}
-	return actReq, nil
+	return JSONResult(map[string]any{"ok": true, "action": action})
 }
 
+func readRequiredIntParam(args map[string]any, key string) (int, error) {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return 0, ToolInputError{Message: fmt.Sprintf("parameter %q is required", key)}
+	}
+	switch v := raw.(type) {
+	case float64:
+		return int(v), nil
+	case int:
+		return v, nil
+	case int64:
+		return int(v), nil
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil {
+			return 0, ToolInputError{Message: fmt.Sprintf("parameter %q must be an integer", key)}
+		}
+		return int(n), nil
+	default:
+		return 0, ToolInputError{Message: fmt.Sprintf("parameter %q must be an integer", key)}
+	}
+}
+
+func readRequiredFloatParam(args map[string]any, key string) (float64, error) {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return 0, ToolInputError{Message: fmt.Sprintf("parameter %q is required", key)}
+	}
+	switch v := raw.(type) {
+	case float64:
+		return v, nil
+	case int:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case json.Number:
+		return v.Float64()
+	default:
+		return 0, ToolInputError{Message: fmt.Sprintf("parameter %q must be a number", key)}
+	}
+}
+
+func readOptionalStringSlice(args map[string]any, key string) ([]string, error) {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	switch typed := raw.(type) {
+	case []string:
+		return typed, nil
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text, ok := item.(string)
+			if !ok {
+				return nil, ToolInputError{Message: fmt.Sprintf("parameter %q must be an array of strings", key)}
+			}
+			if strings.TrimSpace(text) != "" {
+				out = append(out, strings.TrimSpace(text))
+			}
+		}
+		return out, nil
+	default:
+		return nil, ToolInputError{Message: fmt.Sprintf("parameter %q must be an array of strings", key)}
+	}
+}
+
+// resolveUploadPaths resolves workspace-relative upload paths to absolute paths.
 func resolveUploadPaths(toolCtx ToolContext, args map[string]any) ([]string, error) {
 	raw, ok := args["paths"]
 	if !ok || raw == nil {
@@ -570,107 +932,6 @@ func resolveUploadPaths(toolCtx ToolContext, args map[string]any) ([]string, err
 	}
 	if len(out) == 0 {
 		return nil, ToolInputError{Message: `upload requires at least one path`}
-	}
-	return out, nil
-}
-
-func readOptionalObjectParam(args map[string]any, key string) (map[string]any, error) {
-	raw, ok := args[key]
-	if !ok || raw == nil {
-		return nil, nil
-	}
-	typed, ok := raw.(map[string]any)
-	if !ok {
-		return nil, ToolInputError{Message: fmt.Sprintf("parameter %q must be an object", key)}
-	}
-	return typed, nil
-}
-
-func firstNonEmptyValue(requestMap map[string]any, args map[string]any, key string) string {
-	if requestMap != nil {
-		if raw, ok := requestMap[key]; ok {
-			if text, ok := raw.(string); ok && strings.TrimSpace(text) != "" {
-				return strings.TrimSpace(text)
-			}
-		}
-	}
-	return readOptionalString(args, key)
-}
-
-func readOptionalBoolFromSources(args map[string]any, requestMap map[string]any, key string) (bool, error) {
-	if requestMap != nil {
-		if raw, ok := requestMap[key]; ok && raw != nil {
-			value, ok := raw.(bool)
-			if !ok {
-				return false, ToolInputError{Message: fmt.Sprintf("parameter %q must be a boolean", key)}
-			}
-			return value, nil
-		}
-	}
-	return ReadBoolParam(args, key)
-}
-
-func readOptionalIntFromSources(args map[string]any, requestMap map[string]any, key string) (int, error) {
-	if requestMap != nil {
-		if raw, ok := requestMap[key]; ok && raw != nil {
-			switch value := raw.(type) {
-			case float64:
-				return int(value), nil
-			case int:
-				return value, nil
-			case int64:
-				return int(value), nil
-			default:
-				return 0, ToolInputError{Message: fmt.Sprintf("parameter %q must be an integer", key)}
-			}
-		}
-	}
-	return ReadOptionalIntParam(args, key)
-}
-
-func readOptionalStringSliceFromSources(args map[string]any, requestMap map[string]any, key string) ([]string, error) {
-	if requestMap != nil {
-		if raw, ok := requestMap[key]; ok && raw != nil {
-			typed, ok := raw.([]any)
-			if !ok {
-				if typedStrings, ok := raw.([]string); ok {
-					return typedStrings, nil
-				}
-				return nil, ToolInputError{Message: fmt.Sprintf("parameter %q must be an array of strings", key)}
-			}
-			out := make([]string, 0, len(typed))
-			for _, item := range typed {
-				text, ok := item.(string)
-				if !ok {
-					return nil, ToolInputError{Message: fmt.Sprintf("parameter %q must be an array of strings", key)}
-				}
-				if strings.TrimSpace(text) != "" {
-					out = append(out, strings.TrimSpace(text))
-				}
-			}
-			return out, nil
-		}
-	}
-	raw, ok := args[key]
-	if !ok || raw == nil {
-		return nil, nil
-	}
-	typed, ok := raw.([]any)
-	if !ok {
-		if typedStrings, ok := raw.([]string); ok {
-			return typedStrings, nil
-		}
-		return nil, ToolInputError{Message: fmt.Sprintf("parameter %q must be an array of strings", key)}
-	}
-	out := make([]string, 0, len(typed))
-	for _, item := range typed {
-		text, ok := item.(string)
-		if !ok {
-			return nil, ToolInputError{Message: fmt.Sprintf("parameter %q must be an array of strings", key)}
-		}
-		if strings.TrimSpace(text) != "" {
-			out = append(out, strings.TrimSpace(text))
-		}
 	}
 	return out, nil
 }

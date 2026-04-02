@@ -127,7 +127,6 @@ jobs:
         run: |
           bash -n scripts/build.sh
           bash -n scripts/build-desktop.sh
-          bash -n scripts/bundle-browser.sh
           bash -n scripts/sign-and-release.sh
 
       - name: Validate workflow YAML

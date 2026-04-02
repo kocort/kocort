@@ -34,13 +34,7 @@
         "pingPong": true
       }
     },
-    "browserDriverDir": "",
-    "browserAutoInstall": true,
-    "browserUseSystem": true,
-    "browserSkipInstall": false,
-    "browserChannel": "",
     "browserHeadless": true,
-    "browserPersistSession": true,
     "browserUserDataDir": ""
   },
   "plugins": {

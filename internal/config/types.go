@@ -471,14 +471,8 @@ type ToolsConfig struct {
 	LoopDetection *core.ToolLoopDetectionConfig `json:"loopDetection,omitempty"`
 
 	// Browser configuration
-	BrowserDriverDir      string `json:"browserDriverDir,omitempty"`      // relative to configDir; path to playwright driver directory
-	BrowserAutoInstall    bool   `json:"browserAutoInstall,omitempty"`    // auto-install driver if missing
-	BrowserUseSystem      bool   `json:"browserUseSystem,omitempty"`      // use system-installed browser (Chrome/Edge)
-	BrowserChannel        string `json:"browserChannel,omitempty"`        // explicit channel: "chrome", "msedge"
-	BrowserSkipInstall    bool   `json:"browserSkipInstall,omitempty"`    // skip downloading browsers during install
-	BrowserHeadless       *bool  `json:"browserHeadless,omitempty"`       // run browser in headless mode; nil = true (default headless)
-	BrowserPersistSession bool   `json:"browserPersistSession,omitempty"` // persist browser session (cookies, localStorage, etc.)
-	BrowserUserDataDir    string `json:"browserUserDataDir,omitempty"`    // user data dir for persistent sessions; relative to configDir
+	BrowserHeadless    *bool  `json:"browserHeadless,omitempty"`    // run browser in headless mode; nil = true (default headless)
+	BrowserUserDataDir string `json:"browserUserDataDir,omitempty"` // user data dir for persistent sessions; relative to configDir
 }
 
 // ---------------------------------------------------------------------------
