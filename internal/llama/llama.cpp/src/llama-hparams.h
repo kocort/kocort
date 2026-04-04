@@ -55,6 +55,10 @@ struct llama_hparams {
     uint32_t n_embd_head_k_mla = 0;
     uint32_t n_embd_head_v_mla = 0;
 
+    // gemma4: different head size for SWA layers
+    uint32_t n_embd_head_k_swa = 0;
+    uint32_t n_embd_head_v_swa = 0;
+
     // for WavTokenizer
     struct llama_hparams_posnet   posnet;
     struct llama_hparams_convnext convnext;
@@ -125,10 +129,10 @@ struct llama_hparams {
     llama_swa_type swa_type = LLAMA_SWA_TYPE_NONE;
     // the size of the sliding window (0 - no SWA)
     uint32_t n_swa = 0;
-    // if swa_layers[il] == true, then layer il is SWA
-    // if swa_layers[il] == false, then layer il is dense (i.e. non-SWA)
+    // if swa_layers[il] == 1, then layer il is SWA
+    // if swa_layers[il] == 0, then layer il is dense (i.e. non-SWA)
     // by default, all layers are dense
-    std::array<bool, LLAMA_MAX_LAYERS> swa_layers;
+    std::array<uint32_t, LLAMA_MAX_LAYERS> swa_layers;
 
     // for State Space Models
     uint32_t ssm_d_conv  = 0;
@@ -175,6 +179,9 @@ struct llama_hparams {
     uint32_t i_altup_act  = 0; // altup_active_idx
     uint32_t laurel_rank  = 64;
     uint32_t n_embd_altup = 256;
+
+    // gemma4 per-layer embedding
+    uint32_t n_embd_per_layer = 0;
 
     // needed for sentence-transformers dense layers
     uint32_t dense_2_feat_in  = 0;  // in_features of the 2_Dense
