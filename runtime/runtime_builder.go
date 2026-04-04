@@ -345,7 +345,7 @@ func (b *RuntimeBuilder) Build() (*Runtime, error) {
 		ContextSize:    b.cfg.BrainLocal.ContextSize,
 		GpuLayers:      b.cfg.BrainLocal.GpuLayers,
 		Sampling:       configSamplingToLocal(b.cfg.BrainLocal.Sampling),
-		EnableThinking: true,
+		EnableThinking: localmodel.ResolveEnableThinkingDefault(b.cfg.BrainLocal.EnableThinking, b.cfg.BrainLocal.ModelID, b.cfg.BrainLocal.ModelsDir, localmodel.BuiltinBrainCatalog),
 	}, localmodel.BuiltinBrainCatalog)
 	brainLocal.SetDynamicHTTPClient(dynamicHTTPClient)
 

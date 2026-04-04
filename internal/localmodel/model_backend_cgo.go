@@ -7,9 +7,14 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/kocort/kocort/internal/localmodel/llamawrapper"
 )
+
+// stopTimeout is how long Stop waits for the decode goroutine to exit
+// before force-closing the engine.
+const stopTimeout = 10 * time.Second
 
 // engineBackend is the real ModelBackend backed by llamawrapper.Engine.
 // It directly manages llama.cpp model loading and batch inference via
@@ -18,6 +23,7 @@ type engineBackend struct {
 	mu       sync.Mutex
 	engine   *llamawrapper.Engine
 	cancel   context.CancelFunc
+	runDone  chan struct{}
 	sampling SamplingParams
 	ready    bool
 }
@@ -59,11 +65,16 @@ func (eb *engineBackend) Start(modelPath string, threads, contextSize, gpuLayers
 
 	// Start the batch inference loop.
 	ctx, cancel := context.WithCancel(context.Background())
+	runDone := make(chan struct{})
 	eb.engine = engine
 	eb.cancel = cancel
+	eb.runDone = runDone
 	eb.ready = true
 
-	go engine.Run(ctx)
+	go func() {
+		defer close(runDone)
+		engine.Run(ctx)
+	}()
 
 	slog.Info("[model-backend] engine started",
 		"modelPath", modelPath,
@@ -75,23 +86,45 @@ func (eb *engineBackend) Start(modelPath string, threads, contextSize, gpuLayers
 }
 
 // Stop halts the inference loop and releases all resources.
+// It waits up to stopTimeout for the decode goroutine to exit, then
+// force-closes the engine to avoid blocking the caller forever.
 func (eb *engineBackend) Stop() error {
 	eb.mu.Lock()
-	defer eb.mu.Unlock()
-
 	if !eb.ready {
+		eb.mu.Unlock()
 		return nil
 	}
 
-	if eb.cancel != nil {
-		eb.cancel()
-		eb.cancel = nil
-	}
-	if eb.engine != nil {
-		eb.engine.Close()
-		eb.engine = nil
-	}
+	cancel := eb.cancel
+	engine := eb.engine
+	runDone := eb.runDone
+	eb.cancel = nil
+	eb.engine = nil
+	eb.runDone = nil
 	eb.ready = false
+	eb.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if engine != nil {
+		engine.RequestStop()
+
+		// Wait with a timeout so a stuck decode loop can't block us forever.
+		exited := true
+		if runDone != nil {
+			select {
+			case <-runDone:
+				// Clean exit.
+			case <-time.After(stopTimeout):
+				slog.Warn("[model-backend] decode loop did not exit within timeout, force-closing engine",
+					"timeout", stopTimeout)
+				exited = false
+			}
+		}
+		_ = exited // Close either way.
+		engine.Close()
+	}
 
 	slog.Info("[model-backend] engine stopped")
 	return nil

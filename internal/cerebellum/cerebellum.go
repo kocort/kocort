@@ -207,6 +207,9 @@ func (m *Manager) Stop() error { return m.local.Stop() }
 // Restart stops and then starts the cerebellum model.
 func (m *Manager) Restart() error { return m.local.Restart() }
 
+// WaitReady blocks until any pending lifecycle operation finishes.
+func (m *Manager) WaitReady() string { return m.local.WaitReady() }
+
 // SelectModel sets the active model ID.
 func (m *Manager) SelectModel(modelID string) error { return m.local.SelectModel(modelID) }
 

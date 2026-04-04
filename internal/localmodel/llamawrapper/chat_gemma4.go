@@ -6,9 +6,11 @@ import (
 	"sort"
 	"strings"
 )
+
 func init() {
 	registerStopTokens("gemma4", []string{g4TurnClose})
 }
+
 // ── Gemma 4 renderer ─────────────────────────────────────────────────────────
 // Uses <|turn>/<turn|> markers, <|channel>/<channel|> for thinking,
 // <|tool>/<tool|> for declarations, <|tool_call>/<tool_call|> for calls,
@@ -158,6 +160,9 @@ func renderGemma4(messages []renderMsg, tools []Tool, thinkingEnabled bool) (str
 		// Last message: add model generation prefix.
 		if lastMessage && !prefill {
 			sb.WriteString(g4TurnOpen + "model\n")
+			if thinkingEnabled {
+				sb.WriteString(g4ThinkOpen + "thought\n")
+			}
 		}
 	}
 

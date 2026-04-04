@@ -44,6 +44,7 @@ func TestCerebellumStopPersistsAutoStartPreference(t *testing.T) {
 	if err := CerebellumStop(rt); err != nil {
 		t.Fatalf("CerebellumStop: %v", err)
 	}
+	rt.Cerebellum.WaitReady()
 	if rt.Config.Cerebellum.AutoStart == nil || *rt.Config.Cerebellum.AutoStart {
 		t.Fatalf("expected runtime autoStart=false after manual stop, got %+v", rt.Config.Cerebellum.AutoStart)
 	}

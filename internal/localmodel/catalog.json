@@ -14,6 +14,7 @@
                 "threads": 4,
                 "contextSize": 32768,
                 "gpuLayers": -1,
+                "enableThinking": true,
                 "sampling": {
                     "temp": 0.6,
                     "topP": 0.95,
@@ -41,6 +42,7 @@
                 "threads": 4,
                 "contextSize": 32768,
                 "gpuLayers": -1,
+                "enableThinking": true,
                 "sampling": {
                     "temp": 0.6,
                     "topP": 0.95,
@@ -64,6 +66,88 @@
             "size": "~1.67 GB",
             "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q6_K.gguf",
             "filename": "Qwen3-1.7B.Q6_K.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "enableThinking": true,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "gemma-4-e2b-it-q4_k_m",
+            "name": "Gemma 4 E2B Instruct (Q4_K_M)",
+            "description": {
+                "zh": "推荐：Gemma 4 E2B 指令版，速度与质量均衡，适合本地小脑。",
+                "en": "Recommended: Gemma 4 E2B instruct model with balanced speed and quality for the local cerebellum."
+            },
+            "size": "~3.43 GB",
+            "downloadUrl": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
+            "filename": "gemma-4-E2B-it-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "gemma-4-e2b-it-q6_k",
+            "name": "Gemma 4 E2B Instruct (Q6_K)",
+            "description": {
+                "zh": "高质量：更高精度的 Gemma 4 E2B 量化，适合更严格的语义审查。",
+                "en": "Higher quality: a more accurate Gemma 4 E2B quantization for stricter semantic review."
+            },
+            "size": "~3.85 GB",
+            "downloadUrl": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q6_K.gguf",
+            "filename": "gemma-4-E2B-it-Q6_K.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "gemma-4-e2b-it-q8_0",
+            "name": "Gemma 4 E2B Instruct (Q8_0)",
+            "description": {
+                "zh": "最高质量：接近无损的 Gemma 4 E2B 量化，适合资源充足环境。",
+                "en": "Highest quality: near-lossless Gemma 4 E2B quantization for resource-rich environments."
+            },
+            "size": "~4.97 GB",
+            "downloadUrl": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q8_0.gguf",
+            "filename": "gemma-4-E2B-it-Q8_0.gguf",
             "defaults": {
                 "threads": 4,
                 "contextSize": 32768,
@@ -178,6 +262,7 @@
                 "threads": 8,
                 "contextSize": 65536,
                 "gpuLayers": -1,
+                "enableThinking": true,
                 "sampling": {
                     "temp": 0.6,
                     "topP": 0.95,

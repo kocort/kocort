@@ -44,6 +44,12 @@ func newGemma4StreamParser(tools []Tool, lastMsg *renderMsg, thinkingEnabled boo
 		thinkingEnabled: thinkingEnabled,
 		state:           g4CollectContent,
 	}
+	// When thinking is enabled, the prompt already ends with
+	// "<|channel>thought\n", so the model's first output tokens are
+	// thinking content — start directly in thinking state.
+	if thinkingEnabled {
+		p.state = g4CollectThinking
+	}
 	return p
 }
 

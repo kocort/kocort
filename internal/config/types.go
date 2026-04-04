@@ -113,6 +113,7 @@ type BrainLocalConfig struct {
 	Threads     int             `json:"threads,omitempty"`     // inference threads (default: 4)
 	ContextSize int             `json:"contextSize,omitempty"` // model context size (default: 4096)
 	GpuLayers   int             `json:"gpuLayers,omitempty"`   // GPU layers to offload (0=CPU only, -1=all, default: 0)
+	EnableThinking *bool        `json:"enableThinking,omitempty"`
 	AutoStart   *bool           `json:"autoStart,omitempty"`   // auto-start on runtime boot (default: true when enabled)
 	Sampling    *SamplingConfig `json:"sampling,omitempty"`
 }

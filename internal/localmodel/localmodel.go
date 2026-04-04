@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kocort/kocort/internal/infra"
 	"github.com/kocort/kocort/internal/localmodel/llamawrapper"
@@ -48,10 +50,11 @@ type ModelInfo struct {
 
 // ModelPresetDefaults describes default parameters for a model preset.
 type ModelPresetDefaults struct {
-	Threads     int             `json:"threads,omitempty"`
-	ContextSize int             `json:"contextSize,omitempty"`
-	GpuLayers   int             `json:"gpuLayers,omitempty"`
-	Sampling    *SamplingParams `json:"sampling,omitempty"`
+	Threads        int             `json:"threads,omitempty"`
+	ContextSize    int             `json:"contextSize,omitempty"`
+	GpuLayers      int             `json:"gpuLayers,omitempty"`
+	EnableThinking *bool           `json:"enableThinking,omitempty"`
+	Sampling       *SamplingParams `json:"sampling,omitempty"`
 }
 
 // LocalizedText stores Chinese and English display text.
@@ -98,6 +101,7 @@ type Snapshot struct {
 	LastError        string
 	Catalog          []ModelPreset
 	DownloadProgress *DownloadProgress
+	EnableThinking   bool
 	Sampling         SamplingParams
 	Threads          int
 	ContextSize      int
@@ -230,6 +234,42 @@ func resolveInstalledModelPath(modelsDir, modelID string) string {
 	return files[0]
 }
 
+func matchPresetModelID(preset ModelPreset) string {
+	if name := strings.TrimSpace(strings.TrimSuffix(preset.PrimaryFilename(), ".gguf")); name != "" {
+		return name
+	}
+	return strings.TrimSpace(preset.ID)
+}
+
+func findPresetDefaults(catalog []ModelPreset, modelID string) *ModelPresetDefaults {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return nil
+	}
+	for i := range catalog {
+		preset := &catalog[i]
+		if strings.EqualFold(strings.TrimSpace(preset.ID), modelID) || strings.EqualFold(matchPresetModelID(*preset), modelID) {
+			return preset.Defaults
+		}
+	}
+	return nil
+}
+
+func ResolveEnableThinkingDefault(configured *bool, modelID, modelsDir string, catalog []ModelPreset) bool {
+	if configured != nil {
+		return *configured
+	}
+	if defaults := findPresetDefaults(catalog, modelID); defaults != nil && defaults.EnableThinking != nil {
+		return *defaults.EnableThinking
+	}
+	if modelPath := resolveInstalledModelPath(modelsDir, modelID); strings.TrimSpace(modelPath) != "" {
+		if enabled, ok := detectModelThinkingDefault(modelPath); ok {
+			return enabled
+		}
+	}
+	return true
+}
+
 func (pw *progressWriter) Write(p []byte) (int, error) {
 	n, err := pw.w.Write(p)
 	if n > 0 {
@@ -242,6 +282,12 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 
 // Manager manages the lifecycle of a single local model instance.
 // Both brain and cerebellum use their own Manager.
+//
+// Lifecycle operations (Start, Stop, Restart) run in a background goroutine
+// so they never block the caller. The current state is observable via
+// Status() and LastError(). Only one lifecycle operation runs at a time;
+// a new request will wait (with a timeout) for any in-flight operation
+// before proceeding.
 type Manager struct {
 	mu             sync.RWMutex
 	status         string
@@ -259,6 +305,10 @@ type Manager struct {
 	contextSize    int
 	gpuLayers      int
 	enableThinking bool
+
+	// opDone is closed when the current background lifecycle operation
+	// (start / stop / restart) finishes. nil means idle.
+	opDone chan struct{}
 }
 
 // NewManager creates a new local model Manager.
@@ -473,7 +523,38 @@ func (m *Manager) LastError() string {
 	return m.lastError
 }
 
-// Start begins running the local model.
+// opTimeout is the maximum time to wait for a previous lifecycle
+// operation to finish before starting a new one.
+const opTimeout = 30 * time.Second
+
+// waitForIdleLocked waits (with timeout) until any in-flight lifecycle
+// operation completes. Must be called with m.mu held; releases and
+// re-acquires the lock while waiting.
+func (m *Manager) waitForIdleLocked() {
+	for m.opDone != nil {
+		ch := m.opDone
+		m.mu.Unlock()
+		select {
+		case <-ch:
+		case <-time.After(opTimeout):
+			slog.Warn("[localmodel] timed out waiting for previous lifecycle operation")
+		}
+		m.mu.Lock()
+	}
+}
+
+// clearOpDoneLocked clears m.opDone only if it still points to the
+// channel owned by this goroutine. Must be called with m.mu held.
+func (m *Manager) clearOpDoneLocked(done chan struct{}) {
+	if m.opDone == done {
+		m.opDone = nil
+	}
+}
+
+// Start begins running the local model asynchronously.
+// It validates preconditions, sets the status to StatusStarting, and
+// launches a goroutine that loads the model. The caller should observe
+// Status()/LastError() to track progress.
 func (m *Manager) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -481,6 +562,8 @@ func (m *Manager) Start() error {
 	if m.status == StatusRunning || m.status == StatusStarting {
 		return nil
 	}
+
+	m.waitForIdleLocked()
 
 	// Early check: if using a stub backend, local inference is not available.
 	if m.backend.IsStub() {
@@ -499,22 +582,56 @@ func (m *Manager) Start() error {
 	m.lastError = ""
 
 	modelPath := m.resolveModelPath()
-	if err := m.backend.Start(modelPath, m.threads, m.contextSize, m.gpuLayers, m.sampling, m.enableThinking); err != nil {
-		m.status = StatusError
-		m.lastError = fmt.Sprintf("backend start failed: %v", err)
-		return fmt.Errorf("backend start: %w", err)
-	}
+	threads := m.threads
+	contextSize := m.contextSize
+	gpuLayers := m.gpuLayers
+	sampling := m.sampling
+	enableThinking := m.enableThinking
+	backend := m.backend
 
-	// Sync the actual context size back from the backend.
-	if actual := m.backend.ContextSize(); actual > 0 {
-		m.contextSize = actual
-	}
+	done := make(chan struct{})
+	m.opDone = done
 
-	m.status = StatusRunning
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("[localmodel] Start panicked — recovered", "panic", r)
+				m.mu.Lock()
+				m.status = StatusError
+				m.lastError = fmt.Sprintf("start panicked: %v", r)
+				m.clearOpDoneLocked(done)
+				m.mu.Unlock()
+			}
+		}()
+
+		err := backend.Start(modelPath, threads, contextSize, gpuLayers, sampling, enableThinking)
+
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.clearOpDoneLocked(done)
+
+		if err != nil {
+			m.status = StatusError
+			m.lastError = fmt.Sprintf("backend start failed: %v", err)
+			slog.Error("[localmodel] backend start failed", "error", err)
+			return
+		}
+
+		// Sync the actual context size back from the backend.
+		if actual := backend.ContextSize(); actual > 0 {
+			m.contextSize = actual
+		}
+		m.status = StatusRunning
+		slog.Info("[localmodel] model started")
+	}()
+
 	return nil
 }
 
-// Stop shuts down the running model.
+// Stop shuts down the running model asynchronously.
+// Sets the status to StatusStopping and launches a goroutine that
+// performs the actual teardown. Returns immediately.
 func (m *Manager) Stop() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -523,24 +640,138 @@ func (m *Manager) Stop() error {
 		return nil
 	}
 
+	m.waitForIdleLocked()
+
 	m.status = StatusStopping
 	m.lastError = ""
+	backend := m.backend
 
-	if err := m.backend.Stop(); err != nil {
-		m.status = StatusError
-		m.lastError = fmt.Sprintf("backend stop failed: %v", err)
-		return fmt.Errorf("backend stop: %w", err)
-	}
-	m.status = StatusStopped
+	done := make(chan struct{})
+	m.opDone = done
+
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("[localmodel] Stop panicked — recovered", "panic", r)
+				m.mu.Lock()
+				m.status = StatusError
+				m.lastError = fmt.Sprintf("stop panicked: %v", r)
+				m.clearOpDoneLocked(done)
+				m.mu.Unlock()
+			}
+		}()
+
+		err := backend.Stop()
+
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.clearOpDoneLocked(done)
+
+		if err != nil {
+			m.status = StatusError
+			m.lastError = fmt.Sprintf("backend stop failed: %v", err)
+			slog.Error("[localmodel] backend stop failed", "error", err)
+			return
+		}
+		m.status = StatusStopped
+		slog.Info("[localmodel] model stopped")
+	}()
+
 	return nil
 }
 
-// Restart stops and then starts the model.
+// Restart stops and then starts the model asynchronously.
 func (m *Manager) Restart() error {
-	if err := m.Stop(); err != nil {
-		return fmt.Errorf("stop during restart: %w", err)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.waitForIdleLocked()
+
+	if m.status == StatusStopped || m.status == StatusError {
+		// Already stopped — just start.
+		m.mu.Unlock()
+		err := m.Start()
+		m.mu.Lock()
+		return err
 	}
-	return m.Start()
+
+	m.status = StatusStopping
+	m.lastError = ""
+	backend := m.backend
+
+	modelPath := m.resolveModelPath()
+	threads := m.threads
+	contextSize := m.contextSize
+	gpuLayers := m.gpuLayers
+	sampling := m.sampling
+	enableThinking := m.enableThinking
+
+	done := make(chan struct{})
+	m.opDone = done
+
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("[localmodel] Restart panicked — recovered", "panic", r)
+				m.mu.Lock()
+				m.status = StatusError
+				m.lastError = fmt.Sprintf("restart panicked: %v", r)
+				m.clearOpDoneLocked(done)
+				m.mu.Unlock()
+			}
+		}()
+
+		// Phase 1: stop.
+		if err := backend.Stop(); err != nil {
+			m.mu.Lock()
+			m.status = StatusError
+			m.lastError = fmt.Sprintf("stop during restart failed: %v", err)
+			m.clearOpDoneLocked(done)
+			m.mu.Unlock()
+			slog.Error("[localmodel] stop during restart failed", "error", err)
+			return
+		}
+
+		// Phase 2: start.
+		m.mu.Lock()
+		m.status = StatusStarting
+		m.mu.Unlock()
+
+		if err := backend.Start(modelPath, threads, contextSize, gpuLayers, sampling, enableThinking); err != nil {
+			m.mu.Lock()
+			m.status = StatusError
+			m.lastError = fmt.Sprintf("start during restart failed: %v", err)
+			m.clearOpDoneLocked(done)
+			m.mu.Unlock()
+			slog.Error("[localmodel] start during restart failed", "error", err)
+			return
+		}
+
+		m.mu.Lock()
+		if actual := backend.ContextSize(); actual > 0 {
+			m.contextSize = actual
+		}
+		m.status = StatusRunning
+		m.clearOpDoneLocked(done)
+		m.mu.Unlock()
+		slog.Info("[localmodel] model restarted")
+	}()
+
+	return nil
+}
+
+// WaitReady blocks until any pending lifecycle operation finishes.
+// Intended for testing. Returns the final status.
+func (m *Manager) WaitReady() string {
+	m.mu.RLock()
+	ch := m.opDone
+	m.mu.RUnlock()
+	if ch != nil {
+		<-ch
+	}
+	return m.Status()
 }
 
 // SelectModel sets the active model ID. If running, restarts with the new model.
@@ -605,7 +836,8 @@ func (m *Manager) ClearSelectedModel() error {
 
 // DeleteModel removes a downloaded model file from disk.
 // If the model is selected, the selection is cleared first; if it is running,
-// the model is stopped before deletion.
+// the model is stopped before deletion. This method waits for any pending
+// lifecycle operation to finish before proceeding with file removal.
 func (m *Manager) DeleteModel(modelID string) error {
 	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {
@@ -636,6 +868,8 @@ func (m *Manager) DeleteModel(modelID string) error {
 		if err := m.ClearSelectedModel(); err != nil {
 			return err
 		}
+		// Wait for the async stop to finish so the model file is not in use.
+		m.WaitReady()
 	}
 
 	modelPaths := installedModelFiles(modelsDir, modelID)
@@ -812,6 +1046,7 @@ func (m *Manager) Snapshot() Snapshot {
 		LastError:        m.lastError,
 		Catalog:          catalog,
 		DownloadProgress: dlProg,
+		EnableThinking:   m.enableThinking,
 		Sampling:         m.sampling,
 		Threads:          m.threads,
 		ContextSize:      m.contextSize,

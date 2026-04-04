@@ -157,6 +157,7 @@ type LocalModelState struct {
 	LastError        string                      `json:"lastError,omitempty"`
 	DownloadProgress *CerebellumDownloadProgress `json:"downloadProgress,omitempty"`
 	AutoStart        bool                        `json:"autoStart,omitempty"`
+	EnableThinking   bool                        `json:"enableThinking,omitempty"`
 	Sampling         *SamplingParams             `json:"sampling,omitempty"`
 	Threads          int                         `json:"threads"`
 	ContextSize      int                         `json:"contextSize"`
@@ -199,6 +200,7 @@ type LocalModelParamsUpdateRequest struct {
 	Threads     *int            `json:"threads,omitempty"`
 	ContextSize *int            `json:"contextSize,omitempty"`
 	GpuLayers   *int            `json:"gpuLayers,omitempty"`
+	EnableThinking *bool        `json:"enableThinking,omitempty"`
 }
 
 // CerebellumDownloadProgress tracks an ongoing model download.
@@ -234,6 +236,7 @@ type ModelPresetDefaults struct {
 	Threads     int             `json:"threads,omitempty"`
 	ContextSize int             `json:"contextSize,omitempty"`
 	GpuLayers   int             `json:"gpuLayers,omitempty"`
+	EnableThinking *bool        `json:"enableThinking,omitempty"`
 	Sampling    *SamplingParams `json:"sampling,omitempty"`
 }
 
