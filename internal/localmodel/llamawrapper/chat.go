@@ -8,55 +8,6 @@ import (
 	"strings"
 )
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const (
-	imStart = "<|im_start|>"
-	imEnd   = "<|im_end|>"
-
-	thinkOpen  = "<think>"
-	thinkClose = "</think>"
-
-	qwen35ToolPostamble = `
-</tools>
-
-If you choose to call a function ONLY reply in the following format with NO suffix:
-
-<tool_call>
-<function=example_function_name>
-<parameter=example_parameter_1>
-value_1
-</parameter>
-<parameter=example_parameter_2>
-This is the value for the second parameter
-that can span
-multiple lines
-</parameter>
-</function>
-</tool_call>
-
-<IMPORTANT>
-Reminder:
-- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags
-- Required parameters MUST be specified
-- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after
-- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls
-</IMPORTANT>`
-
-	// qwen3ToolSystemPrompt is the system-level tool instruction for Qwen3.
-	// Qwen3 uses JSON-based tool calls inside <tool_call> tags, unlike Qwen3.5's XML format.
-	qwen3ToolSystemPrompt = `# Tools
-
-You are provided with function signatures within <tools></tools> XML tags:
-<tools>
-%s</tools>
-
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call>`
-)
-
 // ── Internal message representation ──────────────────────────────────────────
 
 // renderMsg is a normalized internal message for prompt rendering.
@@ -79,9 +30,28 @@ func (e *Engine) chatRenderer() string {
 		return "qwen3.5"
 	case "qwen3", "qwen3moe":
 		return "qwen3"
+	case "gemma4":
+		return "gemma4"
 	default:
 		return "chatml"
 	}
+}
+
+// rendererStopTokens holds per-renderer stop token registrations.
+// Each chat_*.go file registers its own tokens via init().
+var rendererStopTokens = map[string][]string{}
+
+// registerStopTokens is called by each renderer's init() to declare its stop tokens.
+func registerStopTokens(renderer string, tokens []string) {
+	rendererStopTokens[renderer] = tokens
+}
+
+// stopTokensForRenderer returns the stop tokens registered for the given renderer.
+func stopTokensForRenderer(renderer string) []string {
+	if tokens, ok := rendererStopTokens[renderer]; ok {
+		return tokens
+	}
+	return []string{imEnd}
 }
 
 // ── Public prompt building ───────────────────────────────────────────────────
@@ -105,6 +75,12 @@ func (e *Engine) buildPrompt(req *ChatCompletionRequest) (string, []ImageData, [
 		return prompt, images, rendered, nil
 	case "qwen3":
 		rendered, prompt, err := e.truncateAndRenderQwen3(msgs, req.Tools, thinkingEnabled)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		return prompt, images, rendered, nil
+	case "gemma4":
+		rendered, prompt, err := e.truncateAndRenderGemma4(msgs, req.Tools, thinkingEnabled)
 		if err != nil {
 			return "", nil, nil, err
 		}
@@ -173,360 +149,6 @@ func (e *Engine) applyThinkingTags(prompt string, req *ChatCompletionRequest) st
 		return prompt + thinkOpen + "\n" + thinkClose + "\n\n"
 	}
 	return prompt
-}
-
-// ── ChatML renderer ──────────────────────────────────────────────────────────
-
-// renderChatML converts messages to ChatML format.
-func renderChatML(messages []ChatMessage) string {
-	var sb strings.Builder
-	for _, msg := range messages {
-		sb.WriteString(imStart)
-		sb.WriteString(msg.Role)
-		sb.WriteByte('\n')
-		if content, ok := msg.Content.(string); ok {
-			sb.WriteString(content)
-		}
-		sb.WriteByte('\n')
-		sb.WriteString(imEnd)
-		sb.WriteByte('\n')
-	}
-	sb.WriteString(imStart)
-	sb.WriteString("assistant\n")
-	return sb.String()
-}
-
-// ── Qwen3.5 renderer ────────────────────────────────────────────────────────
-
-func (e *Engine) truncateAndRenderQwen35(messages []renderMsg, tools []Tool, thinkingEnabled bool) ([]renderMsg, string, error) {
-	lastIdx := len(messages) - 1
-	currIdx := 0
-
-	for i := 0; i <= lastIdx; i++ {
-		var system []renderMsg
-		for j := 0; j < i; j++ {
-			if messages[j].Role == "system" {
-				system = append(system, messages[j])
-			}
-		}
-		candidate := append(append([]renderMsg{}, system...), messages[i:]...)
-		prompt, err := renderQwen35(candidate, tools, thinkingEnabled)
-		if err != nil {
-			return nil, "", err
-		}
-		tokens, err := e.Tokenize(prompt)
-		if err != nil {
-			return nil, "", err
-		}
-		ctxLen := len(tokens)
-		if e.image != nil {
-			for _, msg := range candidate {
-				ctxLen += 768 * len(msg.Images)
-			}
-		}
-		if ctxLen <= e.cache.ctxLen {
-			currIdx = i
-			break
-		}
-		if i == lastIdx {
-			currIdx = lastIdx
-			break
-		}
-	}
-
-	var system []renderMsg
-	for i := 0; i < currIdx; i++ {
-		if messages[i].Role == "system" {
-			system = append(system, messages[i])
-		}
-	}
-	rendered := append(append([]renderMsg{}, system...), messages[currIdx:]...)
-	prompt, err := renderQwen35(rendered, tools, thinkingEnabled)
-	if err != nil {
-		return nil, "", err
-	}
-	return rendered, prompt, nil
-}
-
-func renderQwen35(messages []renderMsg, tools []Tool, thinkingEnabled bool) (string, error) {
-	var sb strings.Builder
-
-	// System message with tools.
-	if len(tools) > 0 {
-		sb.WriteString(imStart + "system\n")
-		sb.WriteString("# Tools\n\nYou have access to the following functions:\n\n<tools>")
-		for _, tool := range tools {
-			sb.WriteString("\n")
-			b, err := marshalSpaced(tool)
-			if err != nil {
-				return "", err
-			}
-			sb.Write(b)
-		}
-		sb.WriteString(qwen35ToolPostamble)
-		if len(messages) > 0 && messages[0].Role == "system" {
-			content := renderMsgContent(messages[0], 0)
-			content = strings.TrimSpace(content)
-			if content != "" {
-				sb.WriteString("\n\n" + content)
-			}
-		}
-		sb.WriteString(imEnd + "\n")
-	} else if len(messages) > 0 && messages[0].Role == "system" {
-		content := renderMsgContent(messages[0], 0)
-		sb.WriteString(imStart + "system\n" + strings.TrimSpace(content) + imEnd + "\n")
-	}
-
-	// Find last real user query index (for tool-step detection).
-	lastQueryIdx := len(messages) - 1
-	multiStepTool := true
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
-		if multiStepTool && msg.Role == "user" {
-			content := strings.TrimSpace(renderMsgContent(msg, 0))
-			if !(strings.HasPrefix(content, "<tool_response>") && strings.HasSuffix(content, "</tool_response>")) {
-				multiStepTool = false
-				lastQueryIdx = i
-			}
-		}
-	}
-
-	imgOffset := 0
-	for i, msg := range messages {
-		content := renderMsgContent(msg, imgOffset)
-		imgOffset += len(msg.Images)
-		content = strings.TrimSpace(content)
-		lastMessage := i == len(messages)-1
-		prefill := lastMessage && msg.Role == "assistant"
-
-		switch {
-		case msg.Role == "user" || (msg.Role == "system" && i != 0):
-			sb.WriteString(imStart + msg.Role + "\n" + content + imEnd + "\n")
-
-		case msg.Role == "assistant":
-			reasoning, c := splitReasoning(content, msg.Reasoning, thinkingEnabled)
-			if thinkingEnabled && i > lastQueryIdx {
-				sb.WriteString(imStart + "assistant\n<think>\n" + reasoning + "\n</think>\n\n" + c)
-			} else {
-				sb.WriteString(imStart + "assistant\n" + c)
-			}
-			if len(msg.ToolCalls) > 0 {
-				for j, tc := range msg.ToolCalls {
-					if j == 0 && strings.TrimSpace(c) != "" {
-						sb.WriteString("\n\n")
-					} else if j > 0 {
-						sb.WriteString("\n")
-					}
-					sb.WriteString("<tool_call>\n<function=" + tc.Function.Name + ">\n")
-					args, err := parseOrderedArgs(tc.Function.Arguments)
-					if err != nil {
-						return "", err
-					}
-					for _, arg := range args {
-						sb.WriteString("<parameter=" + arg.name + ">\n")
-						sb.WriteString(formatArgValue(arg.value))
-						sb.WriteString("\n</parameter>\n")
-					}
-					sb.WriteString("</function>\n</tool_call>")
-				}
-			}
-			if !prefill {
-				sb.WriteString(imEnd + "\n")
-			}
-
-		case msg.Role == "tool":
-			if i == 0 || messages[i-1].Role != "tool" {
-				sb.WriteString(imStart + "user")
-			}
-			sb.WriteString("\n<tool_response>\n" + content + "\n</tool_response>")
-			if i == len(messages)-1 || messages[i+1].Role != "tool" {
-				sb.WriteString(imEnd + "\n")
-			}
-		}
-
-		if lastMessage && !prefill {
-			sb.WriteString(imStart + "assistant\n")
-			if thinkingEnabled {
-				sb.WriteString("<think>\n")
-			} else {
-				sb.WriteString("<think>\n\n</think>\n\n")
-			}
-		}
-	}
-
-	return sb.String(), nil
-}
-
-// ── Qwen3 renderer ──────────────────────────────────────────────────────────
-
-func (e *Engine) truncateAndRenderQwen3(messages []renderMsg, tools []Tool, thinkingEnabled bool) ([]renderMsg, string, error) {
-	lastIdx := len(messages) - 1
-	currIdx := 0
-
-	for i := 0; i <= lastIdx; i++ {
-		var system []renderMsg
-		for j := 0; j < i; j++ {
-			if messages[j].Role == "system" {
-				system = append(system, messages[j])
-			}
-		}
-		candidate := append(append([]renderMsg{}, system...), messages[i:]...)
-		prompt, err := renderQwen3(candidate, tools, thinkingEnabled)
-		if err != nil {
-			return nil, "", err
-		}
-		tokens, err := e.Tokenize(prompt)
-		if err != nil {
-			return nil, "", err
-		}
-		ctxLen := len(tokens)
-		if e.image != nil {
-			for _, msg := range candidate {
-				ctxLen += 768 * len(msg.Images)
-			}
-		}
-		if ctxLen <= e.cache.ctxLen {
-			currIdx = i
-			break
-		}
-		if i == lastIdx {
-			currIdx = lastIdx
-			break
-		}
-	}
-
-	var system []renderMsg
-	for i := 0; i < currIdx; i++ {
-		if messages[i].Role == "system" {
-			system = append(system, messages[i])
-		}
-	}
-	rendered := append(append([]renderMsg{}, system...), messages[currIdx:]...)
-	prompt, err := renderQwen3(rendered, tools, thinkingEnabled)
-	if err != nil {
-		return nil, "", err
-	}
-	return rendered, prompt, nil
-}
-
-// renderQwen3 renders messages in Qwen3 ChatML format with JSON-based tool calls.
-// Key differences from Qwen3.5:
-//   - Tool calls use JSON format: <tool_call>{"name":"fn","arguments":{...}}</tool_call>
-//   - Thinking mode controlled via /think or /no_think appended to the system message
-//   - When thinking is enabled, the model outputs <think>...</think> on its own
-func renderQwen3(messages []renderMsg, tools []Tool, thinkingEnabled bool) (string, error) {
-	var sb strings.Builder
-
-	startIdx := 0
-
-	// thinkDirective is appended at the end of the system message, before <|im_end|>.
-	thinkDirective := "\n/no_think"
-	if thinkingEnabled {
-		thinkDirective = "\n/think"
-	}
-
-	// System message with optional tool definitions.
-	if len(tools) > 0 {
-		sb.WriteString(imStart + "system\n")
-
-		// Append user's system message content first (if present).
-		if len(messages) > 0 && messages[0].Role == "system" {
-			content := strings.TrimSpace(renderMsgContent(messages[0], 0))
-			if content != "" {
-				sb.WriteString(content + "\n\n")
-			}
-			startIdx = 1
-		}
-
-		// Build tools JSON block.
-		var toolsBuf strings.Builder
-		for _, tool := range tools {
-			b, err := marshalSpaced(tool)
-			if err != nil {
-				return "", err
-			}
-			toolsBuf.WriteString("\n")
-			toolsBuf.Write(b)
-			toolsBuf.WriteString("\n")
-		}
-		sb.WriteString(fmt.Sprintf(qwen3ToolSystemPrompt, toolsBuf.String()))
-		sb.WriteString(thinkDirective)
-		sb.WriteString(imEnd + "\n")
-	} else if len(messages) > 0 && messages[0].Role == "system" {
-		content := strings.TrimSpace(renderMsgContent(messages[0], 0))
-		sb.WriteString(imStart + "system\n" + content + thinkDirective + imEnd + "\n")
-		startIdx = 1
-	} else {
-		// No system message — inject one purely for the thinking directive.
-		sb.WriteString(imStart + "system" + thinkDirective + imEnd + "\n")
-	}
-
-	imgOffset := 0
-	for i := 0; i < startIdx; i++ {
-		imgOffset += len(messages[i].Images)
-	}
-
-	for i := startIdx; i < len(messages); i++ {
-		msg := messages[i]
-		content := renderMsgContent(msg, imgOffset)
-		imgOffset += len(msg.Images)
-		content = strings.TrimSpace(content)
-		lastMessage := i == len(messages)-1
-		prefill := lastMessage && msg.Role == "assistant"
-
-		switch {
-		case msg.Role == "user":
-			sb.WriteString(imStart + "user\n" + content + imEnd + "\n")
-
-		case msg.Role == "assistant":
-			sb.WriteString(imStart + "assistant\n")
-			// Include reasoning as <think> block if present in history.
-			if msg.Reasoning != "" {
-				sb.WriteString("<think>\n" + strings.TrimSpace(msg.Reasoning) + "\n</think>\n\n")
-			}
-			sb.WriteString(content)
-			// Render tool calls in JSON format.
-			if len(msg.ToolCalls) > 0 {
-				for j, tc := range msg.ToolCalls {
-					if j == 0 && strings.TrimSpace(content) != "" {
-						sb.WriteString("\n\n")
-					} else if j > 0 {
-						sb.WriteString("\n")
-					}
-					sb.WriteString(toolCallOpen + "\n")
-					sb.WriteString(`{"name": "` + tc.Function.Name + `", "arguments": `)
-					sb.WriteString(tc.Function.Arguments)
-					sb.WriteString("}\n")
-					sb.WriteString(toolCallClose)
-				}
-			}
-			if !prefill {
-				sb.WriteString(imEnd + "\n")
-			}
-
-		case msg.Role == "tool":
-			// Qwen3 wraps tool responses in user turn with <tool_response> tags.
-			if i == startIdx || messages[i-1].Role != "tool" {
-				sb.WriteString(imStart + "user")
-			}
-			sb.WriteString("\n<tool_response>\n" + content + "\n</tool_response>")
-			if i == len(messages)-1 || messages[i+1].Role != "tool" {
-				sb.WriteString(imEnd + "\n")
-			}
-
-		case msg.Role == "system":
-			// Non-first system messages rendered inline.
-			sb.WriteString(imStart + "system\n" + content + imEnd + "\n")
-		}
-
-		// Last message: add assistant generation prefix.
-		// Qwen3 relies on /think in the system prompt — no need for <think> tags here.
-		if lastMessage && !prefill {
-			sb.WriteString(imStart + "assistant\n")
-		}
-	}
-
-	return sb.String(), nil
 }
 
 func renderMsgContent(msg renderMsg, imgOffset int) string {
