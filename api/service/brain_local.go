@@ -65,6 +65,7 @@ func BuildBrainLocalState(rt *runtime.Runtime) *types.LocalModelState {
 				Threads:     p.Defaults.Threads,
 				ContextSize: p.Defaults.ContextSize,
 				GpuLayers:   p.Defaults.GpuLayers,
+				EnableThinking: p.Defaults.EnableThinking,
 			}
 			if p.Defaults.Sampling != nil {
 				catalog[i].Defaults.Sampling = &types.SamplingParams{
@@ -105,6 +106,7 @@ func BuildBrainLocalState(rt *runtime.Runtime) *types.LocalModelState {
 		LastError:        snap.LastError,
 		DownloadProgress: dlProgress,
 		AutoStart:        autoStart,
+		EnableThinking:   snap.EnableThinking,
 		Sampling: &types.SamplingParams{
 			Temp:           sp.Temp,
 			TopP:           sp.TopP,
@@ -238,6 +240,9 @@ func BrainLocalSelectModel(rt *runtime.Runtime, modelID string) error {
 		return errNoBrainLocal
 	}
 	previousModel := rt.BrainLocal.ModelID()
+	if rt.Config.BrainLocal.EnableThinking == nil {
+		rt.BrainLocal.SetEnableThinking(localmodel.ResolveEnableThinkingDefault(nil, modelID, rt.Config.BrainLocal.ModelsDir, localmodel.BuiltinBrainCatalog))
+	}
 	if err := rt.BrainLocal.SelectModel(modelID); err != nil {
 		recordBrainLocalEvent(rt, "brain_local_model_select_failed", "error",
 			"brain local model selection failed: "+err.Error(),
@@ -376,6 +381,9 @@ func BrainLocalUpdateParams(rt *runtime.Runtime, req types.LocalModelParamsUpdat
 	if req.GpuLayers != nil {
 		gpuLayers = *req.GpuLayers
 	}
+	if req.EnableThinking != nil {
+		rt.BrainLocal.SetEnableThinking(*req.EnableThinking)
+	}
 
 	// Apply all params atomically (at most one restart)
 	if err := rt.BrainLocal.UpdateAllParams(sp, threads, contextSize, gpuLayers); err != nil {
@@ -409,6 +417,9 @@ func BrainLocalUpdateParams(rt *runtime.Runtime, req types.LocalModelParamsUpdat
 		}
 		if req.GpuLayers != nil {
 			cfg.BrainLocal.GpuLayers = *req.GpuLayers
+		}
+		if req.EnableThinking != nil {
+			cfg.BrainLocal.EnableThinking = req.EnableThinking
 		}
 		return ConfigSections{Main: true}, nil
 	})

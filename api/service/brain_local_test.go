@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kocort/kocort/api/types"
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/delivery"
@@ -15,13 +16,15 @@ import (
 )
 
 type brainLocalTestBackend struct {
-	running     bool
-	contextSize int
+	running            bool
+	contextSize        int
+	lastEnableThinking bool
 }
 
-func (b *brainLocalTestBackend) Start(_ string, _ int, contextSize, _ int, _ localmodel.SamplingParams, _ bool) error {
+func (b *brainLocalTestBackend) Start(_ string, _ int, contextSize, _ int, _ localmodel.SamplingParams, enableThinking bool) error {
 	b.running = true
 	b.contextSize = contextSize
+	b.lastEnableThinking = enableThinking
 	return nil
 }
 
@@ -70,6 +73,7 @@ func TestBrainLocalStartStopPersistAutoStartPreference(t *testing.T) {
 	if err := BrainLocalStart(rt); err != nil {
 		t.Fatalf("BrainLocalStart: %v", err)
 	}
+	rt.BrainLocal.WaitReady()
 	if rt.Config.BrainLocal.AutoStart == nil || !*rt.Config.BrainLocal.AutoStart {
 		t.Fatalf("expected runtime autoStart=true after manual start, got %+v", rt.Config.BrainLocal.AutoStart)
 	}
@@ -77,6 +81,7 @@ func TestBrainLocalStartStopPersistAutoStartPreference(t *testing.T) {
 	if err := BrainLocalStop(rt); err != nil {
 		t.Fatalf("BrainLocalStop: %v", err)
 	}
+	rt.BrainLocal.WaitReady()
 	if rt.Config.BrainLocal.AutoStart == nil || *rt.Config.BrainLocal.AutoStart {
 		t.Fatalf("expected runtime autoStart=false after manual stop, got %+v", rt.Config.BrainLocal.AutoStart)
 	}
@@ -111,6 +116,27 @@ func TestBuildBrainLocalStateIncludesModelsDir(t *testing.T) {
 	}
 	if state.Catalog[0].Description.Zh == "" || state.Catalog[0].Description.En == "" {
 		t.Fatalf("expected bilingual catalog description, got %+v", state.Catalog[0].Description)
+	}
+	if state.Catalog[0].Defaults == nil || state.Catalog[0].Defaults.EnableThinking == nil || !*state.Catalog[0].Defaults.EnableThinking {
+		t.Fatalf("expected catalog thinking default to be present, got %+v", state.Catalog[0].Defaults)
+	}
+	if !state.EnableThinking {
+		t.Fatal("expected brain-local thinking to be enabled by default")
+	}
+}
+
+func TestBrainLocalUpdateParamsPersistsEnableThinking(t *testing.T) {
+	rt, _ := newBrainLocalServiceTestRuntime(t, "local", false)
+	value := false
+
+	if err := BrainLocalUpdateParams(rt, types.LocalModelParamsUpdateRequest{EnableThinking: &value}); err != nil {
+		t.Fatalf("BrainLocalUpdateParams: %v", err)
+	}
+	if rt.Config.BrainLocal.EnableThinking == nil || *rt.Config.BrainLocal.EnableThinking {
+		t.Fatalf("expected runtime enableThinking=false, got %+v", rt.Config.BrainLocal.EnableThinking)
+	}
+	if rt.BrainLocal.EnableThinking() {
+		t.Fatal("expected manager thinking mode to be disabled")
 	}
 }
 
@@ -169,9 +195,22 @@ func newBrainLocalServiceTestRuntime(t *testing.T, brainMode string, autoStart b
 	}
 
 	rt.BrainLocal = localmodel.NewManagerWithBackend(localmodel.Config{
-		ModelID:   "demo",
-		ModelsDir: modelsDir,
-	}, &brainLocalTestBackend{}, localmodel.BuiltinBrainCatalog)
+		ModelID:        "demo",
+		ModelsDir:      modelsDir,
+		EnableThinking: localmodel.ResolveEnableThinkingDefault(nil, "demo", modelsDir, []localmodel.ModelPreset{{
+			ID:       "demo",
+			Filename: "demo.gguf",
+			Defaults: &localmodel.ModelPresetDefaults{EnableThinking: boolPtr(true)},
+		}}),
+	}, &brainLocalTestBackend{}, []localmodel.ModelPreset{{
+		ID:       "demo",
+		Name:     "Demo",
+		Filename: "demo.gguf",
+		Description: &localmodel.LocalizedText{Zh: "演示模型", En: "Demo model"},
+		Defaults: &localmodel.ModelPresetDefaults{EnableThinking: boolPtr(true)},
+	}})
 
 	return rt, configDir
 }
+
+func boolPtr(v bool) *bool { return &v }

@@ -167,6 +167,7 @@ export function BrainView() {
     temp: 0.1, topP: 0.9, topK: 40, minP: 0, typicalP: 0,
     repeatLastN: 64, penaltyRepeat: 1.1, penaltyFreq: 0, penaltyPresent: 0,
     threads: 4, contextSize: 4096, gpuLayers: 0,
+    enableThinking: true,
   });
   const [paramsSaving, setParamsSaving] = useState(false);
   const [paramsError, setParamsError] = useState('');
@@ -737,6 +738,7 @@ export function BrainView() {
       threads: src?.threads ?? dfl?.threads ?? 4,
       contextSize: src?.contextSize ?? dfl?.contextSize ?? 4096,
       gpuLayers: src?.gpuLayers ?? dfl?.gpuLayers ?? 0,
+      enableThinking: src?.enableThinking ?? dfl?.enableThinking ?? true,
     });
     setParamsError('');
     setParamsSaving(false);
@@ -766,6 +768,7 @@ export function BrainView() {
         threads: paramsForm.threads,
         contextSize: paramsForm.contextSize,
         gpuLayers: paramsForm.gpuLayers,
+        enableThinking: paramsForm.enableThinking,
       });
       setState(next);
       setParamsModalTarget(null);
@@ -2000,6 +2003,17 @@ export function BrainView() {
             <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               {t('brain.runtimeParams') || 'Runtime Parameters'}
             </h4>
+            {paramsModalTarget === 'brainLocal' ? (
+              <label className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-200">
+                <span>{t('brain.reasoningEnabled') || 'Reasoning enabled'}</span>
+                <input
+                  type="checkbox"
+                  checked={paramsForm.enableThinking}
+                  onChange={(e) => setParamsForm((f) => ({ ...f, enableThinking: e.target.checked }))}
+                  className="h-4 w-4 rounded border-zinc-300 text-indigo-600 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-800"
+                />
+              </label>
+            ) : null}
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">

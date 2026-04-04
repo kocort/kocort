@@ -37,6 +37,8 @@ func (e *Engine) ChatCompletion(ctx context.Context, req ChatCompletionRequest) 
 
 	slog.Info("[engine] ChatCompletion", "prompt", prompt, "thinking", e.isThinkingActive(&req))
 
+	renderer := e.chatRenderer()
+
 	// Build sampling config.
 	cfg := DefaultSamplingConfig()
 	if req.Temperature != nil {
@@ -60,7 +62,7 @@ func (e *Engine) ChatCompletion(ctx context.Context, req ChatCompletionRequest) 
 	}
 
 	stops := parseStopSequences(req.Stop)
-	stops = append(stops, imEnd)
+	stops = append(stops, stopTokensForRenderer(renderer)...)
 
 	numPredict := -1
 	if req.MaxTokens != nil {
@@ -140,11 +142,13 @@ ws     ::= [ \t\n]*`
 
 	// Create parser if needed.
 	var parser *streamParser
-	switch e.chatRenderer() {
+	switch renderer {
 	case "qwen3.5":
 		parser = newStreamParser("qwen3.5", req.Tools, renderedMsgs, e.isThinkingActive(&req))
 	case "qwen3":
 		parser = newStreamParser("qwen3", req.Tools, renderedMsgs, e.isThinkingActive(&req))
+	case "gemma4":
+		parser = newStreamParser("gemma4", req.Tools, renderedMsgs, e.isThinkingActive(&req))
 	default:
 		if e.isThinkingActive(&req) || len(req.Tools) > 0 {
 			parser = newStreamParser("", req.Tools, renderedMsgs, e.isThinkingActive(&req))

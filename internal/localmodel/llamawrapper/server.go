@@ -36,6 +36,8 @@ type Server struct {
 	modelName string
 	created   int64
 	mu        sync.Mutex
+	runCancel context.CancelFunc
+	runDone   chan struct{}
 	stopped   bool
 }
 
@@ -125,7 +127,16 @@ func (s *Server) Start(ctx context.Context) error {
 			return
 		}
 		slog.Info("[server] model loaded, starting engine run loop")
-		go s.engine.Run(ctx)
+		runCtx, cancel := context.WithCancel(ctx)
+		runDone := make(chan struct{})
+		s.mu.Lock()
+		s.runCancel = cancel
+		s.runDone = runDone
+		s.mu.Unlock()
+		go func() {
+			defer close(runDone)
+			s.engine.Run(runCtx)
+		}()
 		close(errCh)
 	}()
 
@@ -148,7 +159,16 @@ func (s *Server) StartAsync(ctx context.Context) error {
 	}
 	slog.Info("[server] model loaded")
 
-	go s.engine.Run(ctx)
+	runCtx, cancel := context.WithCancel(ctx)
+	runDone := make(chan struct{})
+	s.mu.Lock()
+	s.runCancel = cancel
+	s.runDone = runDone
+	s.mu.Unlock()
+	go func() {
+		defer close(runDone)
+		s.engine.Run(runCtx)
+	}()
 	go func() {
 		if err := s.server.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 			slog.Error("[server] serve error", "err", err)
@@ -174,9 +194,25 @@ func (s *Server) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	runCancel := s.runCancel
+	runDone := s.runDone
+	s.runCancel = nil
+	s.runDone = nil
+
 	var firstErr error
 	if err := s.server.Shutdown(ctx); err != nil {
 		firstErr = err
+	}
+	if runCancel != nil {
+		runCancel()
+	}
+	s.engine.RequestStop()
+	if runDone != nil {
+		select {
+		case <-runDone:
+		case <-time.After(10 * time.Second):
+			slog.Warn("[server] decode loop did not exit within timeout, force-closing engine")
+		}
 	}
 	s.engine.Close()
 	return firstErr

@@ -257,6 +257,9 @@ struct llama_layer {
     struct ggml_tensor * ffn_norm         = nullptr;
     struct ggml_tensor * ffn_norm_b       = nullptr;
     struct ggml_tensor * ffn_post_norm    = nullptr;
+    struct ggml_tensor * ffn_post_norm_1  = nullptr; // gemma4
+    struct ggml_tensor * ffn_post_norm_2  = nullptr; // gemma4
+    struct ggml_tensor * ffn_pre_norm_2   = nullptr; // gemma4
     struct ggml_tensor * layer_out_norm   = nullptr;
     struct ggml_tensor * layer_out_norm_b = nullptr;
     struct ggml_tensor * ffn_norm_exps    = nullptr;
@@ -272,6 +275,7 @@ struct llama_layer {
 
     // ff MoE
     struct ggml_tensor * ffn_gate_inp    = nullptr;
+    struct ggml_tensor * ffn_gate_inp_s   = nullptr; // gemma4 router scale
     struct ggml_tensor * ffn_gate_exps   = nullptr;
     struct ggml_tensor * ffn_down_exps   = nullptr;
     struct ggml_tensor * ffn_up_exps     = nullptr;
@@ -279,6 +283,7 @@ struct llama_layer {
     struct ggml_tensor * ffn_gate_exps_b = nullptr;
     struct ggml_tensor * ffn_down_exps_b = nullptr;
     struct ggml_tensor * ffn_up_exps_b   = nullptr;
+    struct ggml_tensor * ffn_gate_up_exps = nullptr; // gemma4 merged gate+up experts
 
     // ff shared expert (shexp)
     struct ggml_tensor * ffn_gate_inp_shexp = nullptr;
@@ -297,6 +302,9 @@ struct llama_layer {
     struct ggml_tensor * ffn_up_b   = nullptr; // b3
     struct ggml_tensor * ffn_act    = nullptr;
     struct ggml_tensor * ffn_exp_probs_b = nullptr;
+
+    // gemma4 layer output scale
+    struct ggml_tensor * out_scale = nullptr;
 
     // mamba proj
     struct ggml_tensor * ssm_in  = nullptr;

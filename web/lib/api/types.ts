@@ -221,6 +221,7 @@ export type LocalModelState = {
         error?: string;
     };
     autoStart?: boolean;
+    enableThinking?: boolean;
     sampling?: SamplingParams;
     threads?: number;
     contextSize?: number;
@@ -267,6 +268,7 @@ export type ModelPresetDefaults = {
     threads?: number;
     contextSize?: number;
     gpuLayers?: number;
+    enableThinking?: boolean;
     sampling?: SamplingParams;
 };
 

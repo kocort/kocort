@@ -56,6 +56,7 @@ func TestStartStopLifecycle(t *testing.T) {
 	if err := m.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}
+	m.WaitReady()
 	if m.Status() != StatusRunning {
 		t.Fatalf("expected %q, got %q", StatusRunning, m.Status())
 	}
@@ -66,6 +67,7 @@ func TestStartStopLifecycle(t *testing.T) {
 	if err := m.Stop(); err != nil {
 		t.Fatalf("stop failed: %v", err)
 	}
+	m.WaitReady()
 	if m.Status() != StatusStopped {
 		t.Fatalf("expected %q, got %q", StatusStopped, m.Status())
 	}
@@ -80,9 +82,11 @@ func TestRestartLifecycle(t *testing.T) {
 	if err := m.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}
+	m.WaitReady()
 	if err := m.Restart(); err != nil {
 		t.Fatalf("restart failed: %v", err)
 	}
+	m.WaitReady()
 	if m.Status() != StatusRunning {
 		t.Fatalf("expected %q after restart, got %q", StatusRunning, m.Status())
 	}
@@ -121,6 +125,7 @@ func TestSelectModelWhileRunningRestarts(t *testing.T) {
 
 	m := NewManager(config.CerebellumConfig{ModelsDir: dir})
 	_ = m.Start()
+	m.WaitReady()
 	if m.Status() != StatusRunning {
 		t.Fatalf("expected running, got %q", m.Status())
 	}
@@ -128,6 +133,7 @@ func TestSelectModelWhileRunningRestarts(t *testing.T) {
 	if err := m.SelectModel("model-y"); err != nil {
 		t.Fatalf("select model while running failed: %v", err)
 	}
+	m.WaitReady()
 	if m.ModelID() != "model-y" {
 		t.Fatalf("expected modelID %q, got %q", "model-y", m.ModelID())
 	}
@@ -154,6 +160,7 @@ func TestSnapshotReturnsCorrectState(t *testing.T) {
 	}
 
 	_ = m.Start()
+	m.WaitReady()
 	snap = m.Snapshot(false)
 	if snap.Enabled {
 		t.Fatal("expected enabled=false")
@@ -186,6 +193,7 @@ func TestStartIdempotent(t *testing.T) {
 
 	m := NewManager(config.CerebellumConfig{ModelsDir: dir})
 	_ = m.Start()
+	m.WaitReady()
 	if err := m.Start(); err != nil {
 		t.Fatalf("second start should be idempotent: %v", err)
 	}
@@ -214,6 +222,7 @@ func TestConfiguredModelIDUsed(t *testing.T) {
 	if err := m.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}
+	m.WaitReady()
 	if m.ModelID() != "second" {
 		t.Fatalf("expected configured modelID %q, got %q", "second", m.ModelID())
 	}

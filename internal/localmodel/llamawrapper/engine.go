@@ -187,8 +187,19 @@ func (e *Engine) load() error {
 }
 
 // Run starts the main decode loop. It blocks until ctx is cancelled.
+// Panics from the Go layer are caught and logged to prevent
+// the entire process from crashing.
 func (e *Engine) Run(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("[engine] Run panicked — recovered", "panic", r)
+		}
+	}()
+
 	e.ready.Wait()
+	if e.ctx != nil {
+		e.ctx.ResetAbort()
+	}
 
 	tokenBatch, err := llama.NewBatch(e.cfg.batchSize(), len(e.seqs), 0)
 	if err != nil {
@@ -216,6 +227,9 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		default:
 			if err := e.processBatch(tokenBatch, embedBatch); err != nil {
+				if errors.Is(err, llama.ErrDecodeAborted) && ctx.Err() != nil {
+					return
+				}
 				slog.Error("[engine] processBatch error", "error", err)
 				e.mu.Lock()
 				for i, seq := range e.seqs {
@@ -231,8 +245,23 @@ func (e *Engine) Run(ctx context.Context) {
 	}
 }
 
+// RequestStop asks llama.cpp to abort any in-flight decode work.
+func (e *Engine) RequestStop() {
+	if e.ctx != nil {
+		e.ctx.RequestAbort()
+	}
+}
+
 // Close releases all resources held by the engine.
+// Panics from the Go layer are caught and logged to prevent
+// the entire process from crashing during teardown.
 func (e *Engine) Close() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("[engine] Close panicked — recovered", "panic", r)
+		}
+	}()
+
 	e.status = StatusClosed
 	if e.image != nil {
 		e.image.Free()
