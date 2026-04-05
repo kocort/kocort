@@ -117,13 +117,27 @@ func (eb *engineBackend) Stop() error {
 			case <-runDone:
 				// Clean exit.
 			case <-time.After(stopTimeout):
-				slog.Warn("[model-backend] decode loop did not exit within timeout, force-closing engine",
+				slog.Warn("[model-backend] decode loop did not exit within timeout, leaking engine to avoid crash",
 					"timeout", stopTimeout)
 				exited = false
 			}
 		}
-		_ = exited // Close either way.
-		engine.Close()
+		if exited {
+			engine.Close()
+		} else {
+			// The decode goroutine is still inside C code (llama_decode).
+			// Calling llama_free while C code is executing causes SIGSEGV.
+			// We intentionally leak the engine resources here; a memory leak
+			// is far preferable to crashing the entire process.
+			// Wait asynchronously so resources are freed once the goroutine finally exits.
+			go func() {
+				if runDone != nil {
+					<-runDone
+				}
+				engine.Close()
+				slog.Info("[model-backend] leaked engine finally closed after decode loop exit")
+			}()
+		}
 	}
 
 	slog.Info("[model-backend] engine stopped")

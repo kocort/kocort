@@ -5,11 +5,8 @@ package service
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/url"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/kocort/kocort/api/presets"
 	"github.com/kocort/kocort/api/types"
@@ -27,7 +24,7 @@ func BuildBrainModelRecords(ctx context.Context, rt *runtime.Runtime) []types.Br
 	}
 	healthByProvider := map[string]core.ProviderHealthSummary{}
 	for _, item := range SummarizeProviders(ctx, rt) {
-		healthByProvider[item.Provider] = probeBrainProviderHealth(ctx, rt, item)
+		healthByProvider[item.Provider] = item
 	}
 	primary, fallbacks := resolveDefaultAgentModelRefs(rt.Config)
 	fallbackSet := map[string]struct{}{}
@@ -67,113 +64,6 @@ func BuildBrainModelRecords(ctx context.Context, rt *runtime.Runtime) []types.Br
 		return out[i].ModelID < out[j].ModelID
 	})
 	return out
-}
-
-func probeBrainProviderHealth(ctx context.Context, rt *runtime.Runtime, summary core.ProviderHealthSummary) core.ProviderHealthSummary {
-	if rt == nil {
-		return summary
-	}
-	providerCfg, _, err := runtime.ResolveConfiguredProviderWithEnvironment(rt.Config, rt.Environment, summary.Provider)
-	if err != nil {
-		summary.Ready = false
-		summary.LastError = err.Error()
-		return summary
-	}
-	if providerCfg.Command != nil && strings.TrimSpace(providerCfg.Command.Command) != "" {
-		return summary
-	}
-	if strings.TrimSpace(providerCfg.BaseURL) == "" {
-		summary.Ready = false
-		if strings.TrimSpace(summary.LastError) == "" {
-			summary.LastError = "provider baseUrl is required"
-		}
-		return summary
-	}
-	if err := probeBrainProvider(ctx, rt, providerCfg); err != nil {
-		summary.Ready = false
-		summary.LastError = err.Error()
-		return summary
-	}
-	summary.Ready = true
-	summary.LastError = ""
-	return summary
-}
-
-func probeBrainProvider(ctx context.Context, rt *runtime.Runtime, providerCfg config.ProviderConfig) error {
-	client := http.DefaultClient
-	if rt != nil && rt.HTTPClient != nil {
-		client = rt.HTTPClient.ClientWithTimeout(2 * time.Second)
-	}
-	probeURL, headers, err := brainProviderProbeRequest(providerCfg)
-	if err != nil {
-		return err
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, probeURL, nil)
-	if err != nil {
-		return err
-	}
-	for key, value := range headers {
-		if strings.TrimSpace(value) != "" {
-			req.Header.Set(key, value)
-		}
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("connection check failed: %w", err)
-	}
-	defer resp.Body.Close()
-	return nil
-}
-
-func brainProviderProbeRequest(providerCfg config.ProviderConfig) (string, map[string]string, error) {
-	api := strings.TrimSpace(strings.ToLower(providerCfg.API))
-	headers := map[string]string{
-		"accept": "application/json",
-	}
-	switch api {
-	case "", "openai-completions":
-		baseURL, err := backend.ResolveOpenAICompatBaseURL(providerCfg.BaseURL)
-		if err != nil {
-			return "", nil, err
-		}
-		if key := strings.TrimSpace(providerCfg.APIKey); key != "" {
-			headers["authorization"] = "Bearer " + key
-		}
-		return baseURL, headers, nil
-	case "anthropic-messages":
-		baseURL, err := backend.ResolveAnthropicCompatBaseURL(providerCfg.BaseURL)
-		if err != nil {
-			return "", nil, err
-		}
-		if key := strings.TrimSpace(providerCfg.APIKey); key != "" {
-			headers["x-api-key"] = key
-		}
-		headers["anthropic-version"] = "2023-06-01"
-		return baseURL, headers, nil
-	default:
-		baseURL := strings.TrimSpace(providerCfg.BaseURL)
-		if baseURL == "" {
-			return "", nil, fmt.Errorf("provider baseUrl is required")
-		}
-		if key := strings.TrimSpace(providerCfg.APIKey); key != "" {
-			headers["authorization"] = "Bearer " + key
-		}
-		return baseURL, headers, nil
-	}
-}
-
-func joinBrainProbeURL(baseURL string, suffix string) string {
-	parsed, err := url.Parse(strings.TrimSpace(baseURL))
-	if err != nil {
-		return strings.TrimRight(strings.TrimSpace(baseURL), "/") + suffix
-	}
-	rel, relErr := url.Parse(suffix)
-	if relErr != nil {
-		return strings.TrimRight(strings.TrimSpace(baseURL), "/") + suffix
-	}
-	return parsed.ResolveReference(rel).String()
 }
 
 // UpsertBrainModelRecord upserts a model record in config.
