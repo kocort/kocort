@@ -41,11 +41,6 @@ EMBED_DIR="$PROJECT_ROOT/api/static/dist"
 TOOL_BINS_DIR="$PROJECT_ROOT/bin/tools"
 TOOL_BINS_NAMES=(rg fd)
 
-# ---------- playwright browser driver ----------
-# Controls whether the Playwright driver (+ optionally Chromium) is bundled.
-# Set via --with-browser or --with-chromium flags, or KOCORT_WITH_BROWSER env.
-# Values: "" (skip), "driver" (driver only ~50MB), "chromium" (driver+chromium ~200MB)
-WITH_BROWSER="${KOCORT_WITH_BROWSER:-}"
 WEB_EMBED_READY=0
 DEBUG_BUILD="${KOCORT_DESKTOP_DEBUG:-0}"
 
@@ -196,114 +191,6 @@ build_web_embed() {
     cp -R "$WEB_DIR/out"/. "$EMBED_DIR"/
     WEB_EMBED_READY=1
     ok "Embedded web assets refreshed: $EMBED_DIR"
-}
-
-resolve_prebuilt_driver_dir() {
-    local platform_label="$1"
-    local candidates=(
-        "$DIST_DIR/$platform_label/playwright-driver"
-        "$DIST_DIR/playwright-driver"
-        "$PROJECT_ROOT/playwright-driver"
-    )
-    local candidate
-    for candidate in "${candidates[@]}"; do
-        local resolved=""
-        if resolved="$(resolve_existing_dir "$candidate")"; then
-            echo "$resolved"
-            return 0
-        fi
-    done
-    return 1
-}
-
-resolve_existing_dir() {
-    local raw="$1"
-    if [ -d "$raw" ]; then
-        echo "$raw"
-        return 0
-    fi
-    if command -v cygpath >/dev/null 2>&1; then
-        local alt=""
-        alt="$(cygpath -u "$raw" 2>/dev/null || true)"
-        if [ -n "$alt" ] && [ -d "$alt" ]; then
-            echo "$alt"
-            return 0
-        fi
-        alt="$(cygpath -m "$raw" 2>/dev/null || true)"
-        if [ -n "$alt" ] && [ -d "$alt" ]; then
-            echo "$alt"
-            return 0
-        fi
-    fi
-    return 1
-}
-
-bundle_playwright_driver() {
-    local platform_label="$1"
-    local dest_dir="$2"
-
-    if [ -z "$WITH_BROWSER" ]; then
-        info "Skipping Playwright driver bundling (use --with-browser or --with-chromium)"
-        return 0
-    fi
-
-    local pre_built=""
-    if pre_built="$(resolve_prebuilt_driver_dir "$platform_label")"; then
-        info "Using pre-built Playwright driver from: $pre_built"
-    else
-        local host_label
-        host_label="$(host_platform_label)"
-        if [ "$platform_label" = "windows_arm64" ] && [ "$host_label" = "windows_amd64" ]; then
-            if pre_built="$(resolve_prebuilt_driver_dir "$host_label")"; then
-                warn "Using Windows amd64 Playwright driver for windows_arm64 package. This relies on Windows x64 emulation."
-            fi
-        fi
-    fi
-
-    if [ -z "$pre_built" ]; then
-        local host_label
-        host_label="$(host_platform_label)"
-        if [ "$platform_label" != "$host_label" ]; then
-            warn "No pre-built Playwright driver found for $platform_label. Auto-download only works on matching host platform ($host_label)."
-            warn "Skipping Playwright driver for $platform_label."
-            return 0
-        fi
-
-        info "Downloading Playwright driver (mode: $WITH_BROWSER) for $platform_label..."
-        local bundle_flags=""
-        if [ "$WITH_BROWSER" = "chromium" ]; then
-            bundle_flags="--with-chromium"
-        fi
-        KOCORT_BROWSER_DIST="$DIST_DIR/$platform_label" "$SCRIPT_DIR/bundle-browser.sh" $bundle_flags
-
-        if ! pre_built="$(resolve_prebuilt_driver_dir "$platform_label")"; then
-            fail "Playwright driver not found after bundle-browser.sh for $platform_label"
-        fi
-    fi
-
-    local pre_built_abs dest_dir_abs
-    pre_built_abs="$(cd "$pre_built" && pwd)"
-    mkdir -p "$(dirname "$dest_dir")"
-    if [ -d "$dest_dir" ]; then
-        dest_dir_abs="$(cd "$dest_dir" && pwd)"
-    else
-        dest_dir_abs="$(cd "$(dirname "$dest_dir")" && pwd)/$(basename "$dest_dir")"
-    fi
-
-    if [ "$pre_built_abs" = "$dest_dir_abs" ]; then
-        local driver_size
-        driver_size=$(du -sh "$dest_dir" | awk '{print $1}')
-        ok "Playwright driver already prepared at destination: $dest_dir ($driver_size)"
-        return 0
-    fi
-
-    rm -rf "$dest_dir"
-    mkdir -p "$(dirname "$dest_dir")"
-    cp -R "$pre_built" "$dest_dir"
-
-    local driver_size
-    driver_size=$(du -sh "$dest_dir" | awk '{print $1}')
-    ok "Playwright driver bundled: $dest_dir ($driver_size)"
 }
 
 ensure_tray_icon_windows() {
@@ -481,7 +368,6 @@ build_windows() {
 
     # Embed external tool binaries (rg, fd)
     embed_tool_bins_windows "$out_dir" "$arch"
-    bundle_playwright_driver "$(target_platform_label windows "$arch")" "$out_dir/playwright-driver"
 
     ok "Windows build: $out_path"
     ls -lh "$out_path" >&2
@@ -525,7 +411,6 @@ build_linux() {
     fi
 
     embed_tool_bins_linux "$out_dir" "$arch"
-    bundle_playwright_driver "$(target_platform_label linux "$arch")" "$out_dir/playwright-driver"
 
     ok "Linux build: $out_path"
     ls -lh "$out_path" >&2
@@ -676,10 +561,7 @@ build_macos_app_bundle() {
     # 4. Embed external tool binaries (rg, fd)
     embed_tool_bins_macos
 
-    # 5. Embed Playwright driver (if requested)
-    embed_playwright_driver_macos "$arch"
-
-    # 6. Compile Asset Catalog and embed icons
+    # 5. Compile Asset Catalog and embed icons
     #    Modern macOS (Big Sur+) reads icons from Assets.car compiled by actool.
     #    This is the same process Xcode uses, and is required for App Store submission.
     local xcassets_dir="$DESKTOP_DIR/macos/KocortApp/Resources/Assets.xcassets"
@@ -736,21 +618,6 @@ build_macos_app_bundle() {
 
     echo ""
     info "To test: open $app_dir"
-}
-
-# ---------- embed Playwright driver into app bundle ----------
-embed_playwright_driver_macos() {
-    local app_dir="$DIST_DIR/Kocort.app"
-    local resources="$app_dir/Contents/Resources"
-    local arch="${1:-$(uname -m)}"
-    arch="$(normalize_macos_arch "$arch")"
-    local platform_label
-    if [ "$arch" = "universal" ]; then
-        platform_label="$(host_platform_label)"
-    else
-        platform_label="$(target_platform_label darwin "$arch")"
-    fi
-    bundle_playwright_driver "$platform_label" "$resources/playwright-driver"
 }
 
 # ---------- embed external tool binaries into app bundle ----------
@@ -873,23 +740,6 @@ codesign_app() {
         done
     fi
 
-    # Sign Playwright driver binaries (node, ffmpeg, chromium, etc.)
-    local pw_dir="$app_dir/Contents/Resources/playwright-driver"
-    if [ -d "$pw_dir" ]; then
-        info "Signing Playwright driver binaries..."
-        # Find all Mach-O executables and dylibs in the driver directory
-        find "$pw_dir" -type f \( -perm +111 -o -name '*.dylib' -o -name '*.so' \) | while read -r pw_bin; do
-            # Check if it's actually a Mach-O file
-            if file "$pw_bin" | grep -q 'Mach-O'; then
-                info "  Signing: ${pw_bin#$app_dir/}"
-                codesign --force --options runtime \
-                    --sign "$identity" \
-                    "$pw_bin" 2>/dev/null || warn "  Failed to sign: $(basename "$pw_bin")"
-            fi
-        done
-        ok "Playwright driver signing complete"
-    fi
-
     # Sign the embedded Go binary
     codesign --force --options runtime \
         --sign "$identity" \
@@ -1002,14 +852,11 @@ Options:
   --macos-dmg       Build macOS .dmg installer
   --macos-notarize  Build + sign + notarize macOS .dmg
   --no-sign         Skip code signing (produce unsigned .app for manual signing)
-  --with-browser    Also bundle Playwright driver (system Chrome/Edge required)
-  --with-chromium   Also bundle Playwright driver + Chromium (fully offline)
   --all             Build all platforms
   --help            Show this help
 
 Environment:
   KOCORT_VERSION              Version string (default: git describe)
-  KOCORT_WITH_BROWSER         Bundle browser driver: "driver" or "chromium"
     KOCORT_DESKTOP_DEBUG        Set to "1" to enable debug build behavior
   KOCORT_BUNDLE_ID            macOS bundle identifier (default: com.kocort.app)
   KOCORT_CODESIGN_IDENTITY    macOS signing identity (default: ad-hoc "-")
@@ -1039,12 +886,6 @@ Examples:
   KOCORT_NOTARY_PASSWORD="xxxx-xxxx-xxxx-xxxx" \\
   ./scripts/build-desktop.sh --macos-notarize
 
-  # Build macOS .app with bundled browser driver (uses system Chrome)
-  ./scripts/build-desktop.sh --macos --with-browser
-
-  # Build macOS .app with bundled Chromium (fully offline, ~200MB larger)
-  ./scripts/build-desktop.sh --macos --with-chromium
-
   # Build everything
   ./scripts/build-desktop.sh --all
 EOF
@@ -1069,8 +910,6 @@ main() {
             --macos-dmg)       action="macos-dmg";     shift ;;
             --macos-dmg-only)  action="macos-dmg-only"; shift ;;
             --macos-notarize)  action="macos-notarize"; shift ;;
-            --with-browser)    WITH_BROWSER="driver";  shift ;;
-            --with-chromium)   WITH_BROWSER="chromium"; shift ;;
             --no-sign)         SKIP_SIGN=1;             shift ;;
             --all)             action="all";           shift ;;
             --help|-h)         usage; exit 0 ;;

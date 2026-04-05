@@ -323,9 +323,7 @@ func TestResolveConfigPathsSandboxDirsStayAbsolute(t *testing.T) {
 		},
 		BrainLocal: BrainLocalConfig{ModelsDir: "models"},
 		Cerebellum: CerebellumConfig{ModelsDir: "models"},
-		Tools: ToolsConfig{
-			BrowserDriverDir: "playwright-driver",
-		},
+		Tools:      ToolsConfig{},
 	}
 	configDir := testAbsPath("home", "user", ".kocort")
 	ResolveConfigPaths(&cfg, configDir)
@@ -348,9 +346,6 @@ func TestResolveConfigPathsSandboxDirsStayAbsolute(t *testing.T) {
 	}
 	if cfg.Cerebellum.ModelsDir != filepath.Join(configDir, "models") {
 		t.Fatalf("Cerebellum.ModelsDir not resolved: %q", cfg.Cerebellum.ModelsDir)
-	}
-	if cfg.Tools.BrowserDriverDir != filepath.Join(configDir, "playwright-driver") {
-		t.Fatalf("BrowserDriverDir not resolved: %q", cfg.Tools.BrowserDriverDir)
 	}
 
 	// SandboxDirs must stay absolute — NOT resolved
@@ -390,7 +385,7 @@ func TestUnresolveConfigPathsRoundTrip(t *testing.T) {
 		},
 		BrainLocal: BrainLocalConfig{ModelsDir: "models"},
 		Cerebellum: CerebellumConfig{ModelsDir: "cerebellum-models"},
-		Tools:      ToolsConfig{BrowserDriverDir: "playwright-driver"},
+		Tools:      ToolsConfig{},
 		Data:       DataConfig{Entries: map[string]DataSourceConfig{"kb": {Path: "data/kb"}}},
 		Logging:    LoggingConfig{File: "logs/kocort.log"},
 	}
@@ -430,7 +425,6 @@ func TestUnresolveConfigPathsRoundTrip(t *testing.T) {
 	assertEqual("List[0].AgentDir", unresolved.Agents.List[0].AgentDir, filepath.Join("agents", "worker", "agent"))
 	assertEqual("BrainLocal.ModelsDir", unresolved.BrainLocal.ModelsDir, "models")
 	assertEqual("Cerebellum.ModelsDir", unresolved.Cerebellum.ModelsDir, "cerebellum-models")
-	assertEqual("BrowserDriverDir", unresolved.Tools.BrowserDriverDir, "playwright-driver")
 	assertEqual("Data.Entries[kb].Path", unresolved.Data.Entries["kb"].Path, filepath.Join("data", "kb"))
 	assertEqual("Logging.File", unresolved.Logging.File, filepath.Join("logs", "kocort.log"))
 
@@ -452,7 +446,7 @@ func TestUnresolveConfigPathsKeepsOutsidePathsAbsolute(t *testing.T) {
 		StateDir: testAbsPath("opt", "kocort", "state"), // outside configDir
 		Agents: AgentsConfig{
 			Defaults: &AgentDefaultsConfig{
-				Workspace: testAbsPath("var", "workspace"),        // outside configDir
+				Workspace: testAbsPath("var", "workspace"),         // outside configDir
 				AgentDir:  filepath.Join(configDir, "agents/main"), // inside configDir
 			},
 		},

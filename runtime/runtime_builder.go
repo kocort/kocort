@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/kocort/kocort/internal/backend"
-	browserpkg "github.com/kocort/kocort/internal/browser"
 	cerebellumpkg "github.com/kocort/kocort/internal/cerebellum"
 	"github.com/kocort/kocort/internal/channel"
 	"github.com/kocort/kocort/internal/config"
@@ -288,17 +287,7 @@ func (b *RuntimeBuilder) Build() (*Runtime, error) {
 	// ── Phase E: tools & plugins ─────────────────────────────────────
 	toolList := b.tools
 	if toolList == nil {
-		browserManager := browserpkg.NewManager(browserpkg.Options{
-			ArtifactDir:         filepath.Join(stateDir, "browser"),
-			DriverDir:           b.cfg.Tools.BrowserDriverDir,
-			AutoInstall:         b.cfg.Tools.BrowserAutoInstall,
-			Headless:            b.cfg.Tools.BrowserHeadless,
-			UseSystemBrowser:    b.cfg.Tools.BrowserUseSystem,
-			Channel:             b.cfg.Tools.BrowserChannel,
-			SkipInstallBrowsers: b.cfg.Tools.BrowserSkipInstall,
-			PersistSession:      b.cfg.Tools.BrowserPersistSession,
-			UserDataDir:         b.cfg.Tools.BrowserUserDataDir,
-		})
+		headless := b.cfg.Tools.BrowserHeadless
 		toolList = []tool.Tool{
 			tool.NewReadTool(),
 			tool.NewWriteTool(),
@@ -311,7 +300,11 @@ func (b *RuntimeBuilder) Build() (*Runtime, error) {
 			tool.NewExecTool(b.cfg.Tools.Exec),
 			tool.NewWebSearchTool(dynamicHTTPClient),
 			tool.NewWebFetchTool(dynamicHTTPClient),
-			tool.NewBrowserTool(browserManager),
+			tool.NewBrowserTool(tool.BrowserToolOptions{
+				Headless:    headless == nil || *headless,
+				ArtifactDir: filepath.Join(stateDir, "browser"),
+				Profile:     b.cfg.Tools.BrowserUserDataDir,
+			}),
 			tool.NewAgentsListTool(),
 			tool.NewGatewayTool(),
 			tool.NewImageTool(),

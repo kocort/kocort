@@ -96,9 +96,6 @@ func ResolveConfigPaths(cfg *AppConfig, configDir string) {
 		cfg.Tools.Sandbox.WorkspaceRoot = resolveRelPath(base, cfg.Tools.Sandbox.WorkspaceRoot)
 	}
 
-	// ── Browser driver dir ─────────────────────────────────────────
-	cfg.Tools.BrowserDriverDir = resolveRelPath(base, cfg.Tools.BrowserDriverDir)
-
 	// ── Browser user data dir ──────────────────────────────────────
 	cfg.Tools.BrowserUserDataDir = resolveRelPath(base, cfg.Tools.BrowserUserDataDir)
 
@@ -215,8 +212,8 @@ func UnresolveConfigPaths(cfg *AppConfig, configDir string) {
 		cfg.Tools.Sandbox.WorkspaceRoot = unresolveRelPath(base, cfg.Tools.Sandbox.WorkspaceRoot)
 	}
 
-	// ── Browser driver dir ─────────────────────────────────────────
-	cfg.Tools.BrowserDriverDir = unresolveRelPath(base, cfg.Tools.BrowserDriverDir)
+	// ── Browser user data dir ──────────────────────────────────────
+	cfg.Tools.BrowserUserDataDir = unresolveRelPath(base, cfg.Tools.BrowserUserDataDir)
 
 	// ── Memory QMD paths ─────────────────────────────────────────────
 	if cfg.Memory.QMD != nil {
