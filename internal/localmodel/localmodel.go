@@ -53,8 +53,8 @@ type ModelPresetDefaults struct {
 	Threads        int             `json:"threads,omitempty"`
 	ContextSize    int             `json:"contextSize,omitempty"`
 	GpuLayers      int             `json:"gpuLayers,omitempty"`
-	EnableThinking *bool           `json:"enableThinking,omitempty"`
 	Sampling       *SamplingParams `json:"sampling,omitempty"`
+	EnableThinking *bool           `json:"enableThinking,omitempty"`
 }
 
 // LocalizedText stores Chinese and English display text.
@@ -101,11 +101,11 @@ type Snapshot struct {
 	LastError        string
 	Catalog          []ModelPreset
 	DownloadProgress *DownloadProgress
-	EnableThinking   bool
 	Sampling         SamplingParams
 	Threads          int
 	ContextSize      int
 	GpuLayers        int
+	EnableThinking   bool
 }
 
 // Config holds the configuration for a local model manager instance.
@@ -217,6 +217,32 @@ func installedModelFiles(modelsDir, modelID string) []string {
 	return files
 }
 
+// findPresetDefaults returns the Defaults block for the preset whose ID
+// matches modelID, or nil if no match is found.
+func findPresetDefaults(catalog []ModelPreset, modelID string) *ModelPresetDefaults {
+	for _, p := range catalog {
+		if p.ID == modelID {
+			return p.Defaults
+		}
+	}
+	return nil
+}
+
+// ResolveEnableThinkingDefault determines the enableThinking setting using
+// the following priority:
+//  1. Explicit user configuration (*configured != nil).
+//  2. Catalog preset default for the given modelID.
+//  3. Fallback: true (thinking enabled by default).
+func ResolveEnableThinkingDefault(configured *bool, modelID, modelsDir string, catalog []ModelPreset) bool {
+	if configured != nil {
+		return *configured
+	}
+	if defaults := findPresetDefaults(catalog, modelID); defaults != nil && defaults.EnableThinking != nil {
+		return *defaults.EnableThinking
+	}
+	return true // default: thinking enabled
+}
+
 func resolveInstalledModelPath(modelsDir, modelID string) string {
 	if strings.TrimSpace(modelsDir) == "" || strings.TrimSpace(modelID) == "" {
 		return modelID
@@ -232,42 +258,6 @@ func resolveInstalledModelPath(modelsDir, modelID string) string {
 		}
 	}
 	return files[0]
-}
-
-func matchPresetModelID(preset ModelPreset) string {
-	if name := strings.TrimSpace(strings.TrimSuffix(preset.PrimaryFilename(), ".gguf")); name != "" {
-		return name
-	}
-	return strings.TrimSpace(preset.ID)
-}
-
-func findPresetDefaults(catalog []ModelPreset, modelID string) *ModelPresetDefaults {
-	modelID = strings.TrimSpace(modelID)
-	if modelID == "" {
-		return nil
-	}
-	for i := range catalog {
-		preset := &catalog[i]
-		if strings.EqualFold(strings.TrimSpace(preset.ID), modelID) || strings.EqualFold(matchPresetModelID(*preset), modelID) {
-			return preset.Defaults
-		}
-	}
-	return nil
-}
-
-func ResolveEnableThinkingDefault(configured *bool, modelID, modelsDir string, catalog []ModelPreset) bool {
-	if configured != nil {
-		return *configured
-	}
-	if defaults := findPresetDefaults(catalog, modelID); defaults != nil && defaults.EnableThinking != nil {
-		return *defaults.EnableThinking
-	}
-	if modelPath := resolveInstalledModelPath(modelsDir, modelID); strings.TrimSpace(modelPath) != "" {
-		if enabled, ok := detectModelThinkingDefault(modelPath); ok {
-			return enabled
-		}
-	}
-	return true
 }
 
 func (pw *progressWriter) Write(p []byte) (int, error) {
@@ -1046,11 +1036,11 @@ func (m *Manager) Snapshot() Snapshot {
 		LastError:        m.lastError,
 		Catalog:          catalog,
 		DownloadProgress: dlProg,
-		EnableThinking:   m.enableThinking,
 		Sampling:         m.sampling,
 		Threads:          m.threads,
 		ContextSize:      m.contextSize,
 		GpuLayers:        m.gpuLayers,
+		EnableThinking:   m.enableThinking,
 	}
 }
 

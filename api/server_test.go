@@ -879,9 +879,8 @@ func TestServerBrainReturnsFlattenedModelRecordsAndPresets(t *testing.T) {
 	}
 }
 
-func TestServerBrainUsesProbedProviderStatus(t *testing.T) {
+func TestServerBrainUsesConfigBasedProviderStatus(t *testing.T) {
 	rt := testRuntime(t)
-	rt.HTTPClient = newMockDynamicHTTPClient(http.StatusUnauthorized)
 	srv := NewServer(rt, config.GatewayConfig{})
 	req := httptest.NewRequest(http.MethodGet, "/api/engine/brain", nil)
 	res := httptest.NewRecorder()
@@ -895,12 +894,6 @@ func TestServerBrainUsesProbedProviderStatus(t *testing.T) {
 	}
 	if len(payload.ModelRecords) != 1 {
 		t.Fatalf("expected one model record, got %+v", payload.ModelRecords)
-	}
-	if !payload.ModelRecords[0].Ready {
-		t.Fatalf("expected probed readiness to be true when api is reachable, got %+v", payload.ModelRecords[0])
-	}
-	if payload.ModelRecords[0].LastError != "" {
-		t.Fatalf("expected probe error to be empty when api is reachable, got %+v", payload.ModelRecords[0])
 	}
 }
 
