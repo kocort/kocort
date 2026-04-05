@@ -174,6 +174,8 @@ export function BrainView() {
 
   // Download progress polling
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Status transition polling (starting/stopping → running/stopped/error)
+  const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const presets = state?.modelPresets || [];
   const records = useMemo(
@@ -256,9 +258,36 @@ export function BrainView() {
     }
   }, []);
 
+  const isTransitionalStatus = (status?: string) => status === 'starting' || status === 'stopping';
+
+  const startStatusPoll = useCallback(() => {
+    if (statusPollRef.current) return;
+    statusPollRef.current = setInterval(async () => {
+      try {
+        const next = await apiGet<BrainState>('/api/engine/brain');
+        setState(next);
+        if (!isTransitionalStatus(next.cerebellum?.status) && !isTransitionalStatus(next.brainLocal?.status)) {
+          if (statusPollRef.current) {
+            clearInterval(statusPollRef.current);
+            statusPollRef.current = null;
+          }
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 1000);
+  }, []);
+
+  const stopStatusPoll = useCallback(() => {
+    if (statusPollRef.current) {
+      clearInterval(statusPollRef.current);
+      statusPollRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
-    return () => stopProgressPoll();
-  }, [stopProgressPoll]);
+    return () => { stopProgressPoll(); stopStatusPoll(); };
+  }, [stopProgressPoll, stopStatusPoll]);
 
   useEffect(() => {
     void loadState();
@@ -272,6 +301,15 @@ export function BrainView() {
       stopProgressPoll();
     }
   }, [dlProgress?.active, brainLocalDlProgress?.active, startProgressPoll, stopProgressPoll]);
+
+  // Start polling when a lifecycle status is transitional
+  useEffect(() => {
+    if (isTransitionalStatus(cerebellum?.status) || isTransitionalStatus(brainLocal?.status)) {
+      startStatusPoll();
+    } else {
+      stopStatusPoll();
+    }
+  }, [cerebellum?.status, brainLocal?.status, startStatusPoll, stopStatusPoll]);
 
   const refresh = async () => {
     setLoading(true);
