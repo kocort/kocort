@@ -157,7 +157,7 @@ type LocalModelState struct {
 	LastError        string                      `json:"lastError,omitempty"`
 	DownloadProgress *CerebellumDownloadProgress `json:"downloadProgress,omitempty"`
 	AutoStart        bool                        `json:"autoStart,omitempty"`
-	EnableThinking   bool                        `json:"enableThinking,omitempty"`
+	EnableThinking   bool                        `json:"enableThinking"`
 	Sampling         *SamplingParams             `json:"sampling,omitempty"`
 	Threads          int                         `json:"threads"`
 	ContextSize      int                         `json:"contextSize"`

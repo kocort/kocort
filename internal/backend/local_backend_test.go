@@ -95,6 +95,7 @@ func newRunningManager(fi *fakeBackend) *localmodel.Manager {
 	if err := mgr.Start(); err != nil {
 		panic(fmt.Sprintf("newRunningManager: Start failed: %v", err))
 	}
+	mgr.WaitReady()
 	return mgr
 }
 

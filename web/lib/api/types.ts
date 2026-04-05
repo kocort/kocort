@@ -258,6 +258,7 @@ export type CerebellumState = {
         error?: string;
     };
     autoStart?: boolean;
+    enableThinking?: boolean;
     sampling?: SamplingParams;
     threads?: number;
     contextSize?: number;
