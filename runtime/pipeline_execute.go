@@ -156,6 +156,11 @@ func (p *AgentPipeline) modelCallLoop(ctx context.Context, state *PipelineState)
 			return core.AgentRunResult{}, ctx.Err()
 		}
 
+		// Build a one-time attachment path hint to append to the user message
+		// so the model knows where uploaded images are saved.  This is NOT
+		// persisted to the transcript — it only lives for this model call.
+		attachPathHint := infra.BuildAttachmentPathHint(req.Attachments)
+
 		fallbackResult, err := backend.RunWithModelFallback(state.runCtxBase, selection, func(
 			fctx context.Context,
 			provider, model string,
@@ -168,6 +173,8 @@ func (p *AgentPipeline) modelCallLoop(ctx context.Context, state *PipelineState)
 			attemptCtx.ModelSelection.ThinkLevel = thinkLevel
 			if isFallbackRetry {
 				attemptCtx.Request.Message = "Continue where you left off. The previous model attempt failed or timed out."
+			} else if attachPathHint != "" {
+				attemptCtx.Request.Message = strings.TrimSpace(attemptCtx.Request.Message + "\n\n" + attachPathHint)
 			}
 			resolvedBackend, _, resolveErr := backend.ResolveBackendForRun(r.Backends, r.Backend, attemptCtx.Identity, attemptCtx.ModelSelection)
 			if resolveErr != nil {

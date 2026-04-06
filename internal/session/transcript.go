@@ -22,7 +22,7 @@ import (
 // the message and all attachments are empty.
 // workspaceDir is used to persist image attachments as files so they survive
 // page refresh.  Pass an empty string to skip attachment persistence.
-func AppendIncomingUserTranscript(sessions *SessionStore, session core.SessionResolution, req core.AgentRunRequest, timestamp time.Time, workspaceDir string) error {
+func AppendIncomingUserTranscript(sessions *SessionStore, session core.SessionResolution, req *core.AgentRunRequest, timestamp time.Time, workspaceDir string) error {
 	if sessions == nil || req.IsHeartbeat || req.IsMaintenance {
 		return nil
 	}
@@ -34,15 +34,19 @@ func AppendIncomingUserTranscript(sessions *SessionStore, session core.SessionRe
 	if strings.TrimSpace(workspaceDir) != "" {
 		uploadsDir := filepath.Join(workspaceDir, ".uploads")
 		_ = os.MkdirAll(uploadsDir, 0o755)
-		for i, att := range req.Attachments {
-			if !attachmentIsImage(att) || len(att.Content) == 0 {
+		for i := range req.Attachments {
+			att := &req.Attachments[i]
+			if !attachmentIsImage(*att) || len(att.Content) == 0 {
 				continue
 			}
-			ext := resolveImageExt(att)
+			ext := resolveImageExt(*att)
 			fileName := fmt.Sprintf("%d_%d%s", timestamp.UnixMilli(), i, ext)
 			fullPath := filepath.Join(uploadsDir, fileName)
 			if err := os.WriteFile(fullPath, att.Content, 0o644); err == nil {
 				savedPaths = append(savedPaths, utils.FileURI(fullPath))
+				// Record workspace-relative path so downstream prompt builder
+				// can tell the model where to find the image.
+				att.SavedPath = ".uploads/" + fileName
 			}
 		}
 	}

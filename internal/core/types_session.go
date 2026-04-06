@@ -90,10 +90,11 @@ type DeliveryRecord struct {
 }
 
 type Attachment struct {
-	Type     string `json:"type,omitempty"`
-	Name     string
-	MIMEType string
-	Content  []byte
+	Type      string `json:"type,omitempty"`
+	Name      string
+	MIMEType  string
+	Content   []byte
+	SavedPath string // workspace-relative path after persistence (e.g. ".uploads/123_0.png")
 }
 
 type ReplyPayload struct {

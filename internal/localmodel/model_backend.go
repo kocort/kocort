@@ -25,6 +25,10 @@ type ModelBackend interface {
 	// llama.cpp support).
 	IsStub() bool
 
+	// HasVision returns true when a vision projector is loaded and the
+	// backend can process image inputs.
+	HasVision() bool
+
 	// ContextSize returns the effective context window size after loading.
 	// Returns 0 if no model is loaded.
 	ContextSize() int

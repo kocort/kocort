@@ -562,6 +562,10 @@ func (m *Manager) IsStub() bool { return m.isStub }
 // Deprecated: Use IsStub instead.
 func (m *Manager) IsStubInferencer() bool { return m.isStub }
 
+// HasVision returns true when the loaded model has a vision projector and can
+// process image inputs.  Safe to call from any goroutine.
+func (m *Manager) HasVision() bool { return m.backend.HasVision() }
+
 // ── Public API (channel-based) ──────────────────────────────────────────────
 
 // SetEnableThinking updates the thinking mode setting asynchronously.

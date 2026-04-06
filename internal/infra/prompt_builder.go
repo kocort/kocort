@@ -1018,6 +1018,9 @@ func BuildAttachmentPromptSection(attachments []core.Attachment) string {
 		} else {
 			lines = append(lines, fmt.Sprintf("- %s (%s, %d bytes)", label, summary, len(attachment.Content)))
 		}
+		if attachment.SavedPath != "" {
+			lines = append(lines, fmt.Sprintf("  saved at: %s", attachment.SavedPath))
+		}
 		if text, ok, truncated := AttachmentPromptText(attachment); ok && text != "" {
 			header := fmt.Sprintf("Attachment content: %s", label)
 			if truncated {
@@ -1027,6 +1030,29 @@ func BuildAttachmentPromptSection(attachments []core.Attachment) string {
 			lines = append(lines, text)
 		}
 	}
+	return strings.Join(lines, "\n")
+}
+
+// BuildAttachmentPathHint returns a short hint string listing the saved
+// workspace paths of image attachments.  It is designed to be appended to
+// the user message (not the system prompt) so the model knows where images
+// were persisted and can pass the path to the image tool.
+func BuildAttachmentPathHint(attachments []core.Attachment) string {
+	var paths []string
+	for _, att := range attachments {
+		if att.SavedPath != "" && AttachmentIsImage(att) {
+			paths = append(paths, att.SavedPath)
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(paths)+1)
+	lines = append(lines, "[Attached images saved at:")
+	for _, p := range paths {
+		lines = append(lines, "  "+p)
+	}
+	lines = append(lines, "]")
 	return strings.Join(lines, "\n")
 }
 

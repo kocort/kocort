@@ -92,6 +92,9 @@ func (e *Engine) EnableThinking() bool { return e.enableThinking }
 // SetEnableThinking sets the global thinking default.
 func (e *Engine) SetEnableThinking(v bool) { e.enableThinking = v }
 
+// HasVision reports whether a vision projector was loaded successfully.
+func (e *Engine) HasVision() bool { return e.image != nil }
+
 // ModelArch returns the GGUF general.architecture value.
 func (e *Engine) ModelArch() string { return e.modelArch }
 

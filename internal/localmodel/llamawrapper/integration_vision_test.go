@@ -555,7 +555,7 @@ func makeDummyTools(n int) []Tool {
 			Function: ToolDefFunc{
 				Name:        fmt.Sprintf("tool_%d", i),
 				Description: fmt.Sprintf("This is tool number %d. It performs an action on the workspace and returns a result. Use it when the user asks you to do something related to category %d.", i, i),
-				Parameters: json.RawMessage(fmt.Sprintf(`{"type":"object","properties":{"input":{"type":"string","description":"The input for tool %d"},"option":{"type":"string","enum":["a","b","c"]}},"required":["input"]}`, i)),
+				Parameters:  json.RawMessage(fmt.Sprintf(`{"type":"object","properties":{"input":{"type":"string","description":"The input for tool %d"},"option":{"type":"string","enum":["a","b","c"]}},"required":["input"]}`, i)),
 			},
 		}
 	}
@@ -720,12 +720,288 @@ func TestIntegration_TextOnlyWithTools(t *testing.T) {
 	}
 }
 
+// drainChatFull collects content, reasoning, and ALL tool calls from a
+// streaming ChatCompletion channel.  Tool calls are accumulated by index.
+func drainChatFull(t *testing.T, ch <-chan ChatCompletionChunk) (content string, toolCalls []ToolCall, finishReason string) {
+	t.Helper()
+	var cBuf strings.Builder
+	tcMap := map[int]*ToolCall{} // index → accumulated tool call
+	for c := range ch {
+		for _, choice := range c.Choices {
+			cBuf.WriteString(choice.Delta.Content)
+			for _, tc := range choice.Delta.ToolCalls {
+				existing, ok := tcMap[tc.Index]
+				if !ok {
+					clone := tc
+					tcMap[tc.Index] = &clone
+				} else {
+					// Accumulate streamed fragments.
+					if tc.ID != "" {
+						existing.ID = tc.ID
+					}
+					if tc.Type != "" {
+						existing.Type = tc.Type
+					}
+					if tc.Function.Name != "" {
+						existing.Function.Name = tc.Function.Name
+					}
+					existing.Function.Arguments += tc.Function.Arguments
+				}
+			}
+			if choice.FinishReason != nil {
+				finishReason = *choice.FinishReason
+			}
+		}
+	}
+	content = cBuf.String()
+	for i := 0; i < len(tcMap); i++ {
+		if tc, ok := tcMap[i]; ok {
+			toolCalls = append(toolCalls, *tc)
+		}
+	}
+	return content, toolCalls, finishReason
+}
+
+// TestIntegration_VisionImageToolE2E is a complete end-to-end integration
+// test that simulates the real webchat image analysis flow:
+//
+//  1. ROUND 1 — Main agent: system prompt + image tool + user image message.
+//     The model should decide to call the "image" tool.
+//  2. IMAGE ANALYSIS — Simulate analyzeImageLocal: send only the image +
+//     extracted prompt to the vision model (no tools, no system prompt).
+//  3. ROUND 2 — Continuation: feed the tool result back to the main agent.
+//     The model should produce a final answer describing the image.
+//
+// This validates the entire pipeline: prompt → tool call → vision → answer.
+func TestIntegration_VisionImageToolE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	engine := getVisionEngine(t)
+
+	// ── Generate a clear test image (top-half red, bottom-half blue) ────
+	imgBytes := makeTestPNG(t, 224, 224)
+	b64 := base64.StdEncoding.EncodeToString(imgBytes)
+	dataURL := "data:image/png;base64," + b64
+
+	// ── Tool definition: the real "image" tool schema ───────────────────
+	imageToolDef := Tool{
+		Type: "function",
+		Function: ToolDefFunc{
+			Name:        "image",
+			Description: "Analyze an image with the configured image model.",
+			Parameters: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"path":   {"type": "string", "description": "Optional workspace-relative image path. If omitted, use the first image attachment from the current request."},
+					"prompt": {"type": "string", "description": "Question or instruction for the image analysis."}
+				},
+				"additionalProperties": false
+			}`),
+		},
+	}
+
+	// A few other tools to make it realistic (the model has many tools).
+	otherTools := makeDummyTools(5)
+	allTools := append([]Tool{imageToolDef}, otherTools...)
+
+	// ── System prompt telling the agent about image capabilities ────────
+	systemPrompt := "You are Kocort, a personal AI assistant running locally.\n" +
+		"You can use tools to help the user with tasks.\n" +
+		"When the user sends an image and asks about it, use the `image` tool to analyze it.\n\n" +
+		"## Tool Usage\n" +
+		"When you need to use a tool, call it by name with the required arguments.\n\n" +
+		"## Runtime Info\n" +
+		"- Model: gemma-4-E2B-it-Q4_K_M\n" +
+		"- Provider: local\n" +
+		"- Thinking: off"
+
+	maxTokens := 256
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+
+	// ═══════════════════════════════════════════════════════════════════
+	// ROUND 1: Main agent with tools + image — expect tool_calls
+	// ═══════════════════════════════════════════════════════════════════
+	t.Log("── ROUND 1: sending image + tools to main agent ──")
+
+	ch1, err := engine.ChatCompletion(ctx, ChatCompletionRequest{
+		Model: "test",
+		Messages: []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{
+				Role: "user",
+				Content: []any{
+					map[string]any{"type": "image_url", "image_url": map[string]any{"url": dataURL}},
+					map[string]any{"type": "text", "text": "这张图片里有什么颜色？"},
+				},
+			},
+		},
+		Tools:       allTools,
+		MaxTokens:   &maxTokens,
+		Temperature: Float64Ptr(0.0),
+		Stream:      true,
+	})
+	if err != nil {
+		t.Fatalf("Round 1 ChatCompletion: %v", err)
+	}
+
+	content1, toolCalls, finishReason := drainChatFull(t, ch1)
+	t.Logf("Round 1: finishReason=%s  toolCalls=%d  content=%q",
+		finishReason, len(toolCalls), content1)
+
+	if finishReason != "tool_calls" || len(toolCalls) == 0 {
+		t.Fatalf("ROUND 1 FAILED: expected tool_calls, got finishReason=%q toolCalls=%d content=%q",
+			finishReason, len(toolCalls), content1)
+	}
+
+	// Find the "image" tool call.
+	var imageCall *ToolCall
+	for i := range toolCalls {
+		t.Logf("  tool_call[%d]: name=%q args=%s", i, toolCalls[i].Function.Name, toolCalls[i].Function.Arguments)
+		if toolCalls[i].Function.Name == "image" {
+			imageCall = &toolCalls[i]
+		}
+	}
+	if imageCall == nil {
+		t.Fatalf("ROUND 1 FAILED: model did not call the 'image' tool. Tool calls: %+v", toolCalls)
+	}
+
+	// Parse the prompt argument from the image tool call.
+	var imageArgs map[string]any
+	if err := json.Unmarshal([]byte(imageCall.Function.Arguments), &imageArgs); err != nil {
+		t.Fatalf("parse image tool args: %v (raw=%s)", err, imageCall.Function.Arguments)
+	}
+	imagePrompt, _ := imageArgs["prompt"].(string)
+	if imagePrompt == "" {
+		imagePrompt = "Describe the image."
+	}
+	t.Logf("Round 1: image tool called with prompt=%q", imagePrompt)
+
+	// ═══════════════════════════════════════════════════════════════════
+	// IMAGE ANALYSIS: simulate analyzeImageLocal — vision-only inference
+	// ═══════════════════════════════════════════════════════════════════
+	t.Log("── IMAGE ANALYSIS: calling vision model directly (no tools) ──")
+
+	visionMaxTokens := 512
+	ch2, err := engine.ChatCompletion(ctx, ChatCompletionRequest{
+		Model: "test",
+		Messages: []ChatMessage{
+			{
+				Role: "user",
+				Content: []any{
+					map[string]any{"type": "image_url", "image_url": map[string]any{"url": dataURL}},
+					map[string]any{"type": "text", "text": imagePrompt},
+				},
+			},
+		},
+		MaxTokens:   &visionMaxTokens,
+		Temperature: Float64Ptr(0.0),
+		Stream:      true,
+		// No tools — exactly what analyzeImageLocal does.
+	})
+	if err != nil {
+		t.Fatalf("Image analysis ChatCompletion: %v", err)
+	}
+
+	visionContent, _, _ := drainChat(t, ch2)
+	t.Logf("Vision analysis result (%d chars):\n%s", len(visionContent), visionContent)
+
+	if visionContent == "" {
+		t.Fatal("IMAGE ANALYSIS FAILED: empty vision response")
+	}
+
+	// Vision model should mention red/blue colors for the test PNG.
+	visionLower := strings.ToLower(visionContent)
+	hasColor := strings.Contains(visionLower, "red") || strings.Contains(visionLower, "blue") ||
+		strings.Contains(visionLower, "红") || strings.Contains(visionLower, "蓝")
+	if !hasColor {
+		t.Logf("WARNING: vision analysis did not mention red/blue colors")
+	}
+
+	// Build the tool result JSON (same format as tool_image.go's JSONResult).
+	toolResultJSON, _ := json.Marshal(map[string]any{
+		"status": "ok",
+		"reply":  visionContent,
+		"runId":  "test:image",
+	})
+
+	// ═══════════════════════════════════════════════════════════════════
+	// ROUND 2: Feed tool result back — expect final text answer
+	// The original user message still carries the image, but the model
+	// should rely on the tool result to formulate its answer.
+	// ═══════════════════════════════════════════════════════════════════
+	t.Log("── ROUND 2: feeding tool result back to main agent ──")
+
+	ch3, err := engine.ChatCompletion(ctx, ChatCompletionRequest{
+		Model: "test",
+		Messages: []ChatMessage{
+			{Role: "system", Content: systemPrompt},
+			{
+				Role: "user",
+				Content: []any{
+					map[string]any{"type": "image_url", "image_url": map[string]any{"url": dataURL}},
+					map[string]any{"type": "text", "text": "这张图片里有什么颜色？"},
+				},
+			},
+			{
+				Role:      "assistant",
+				ToolCalls: toolCalls,
+			},
+			{
+				Role:       "tool",
+				Name:       "image",
+				ToolCallID: imageCall.ID,
+				Content:    string(toolResultJSON),
+			},
+		},
+		Tools:       allTools,
+		MaxTokens:   &maxTokens,
+		Temperature: Float64Ptr(0.0),
+		Stream:      true,
+	})
+	if err != nil {
+		t.Fatalf("Round 2 ChatCompletion: %v", err)
+	}
+
+	finalContent, finalToolCalls, finalFinish := drainChatFull(t, ch3)
+	t.Logf("Round 2: finishReason=%s  toolCalls=%d", finalFinish, len(finalToolCalls))
+	t.Logf("Final answer:\n%s", finalContent)
+
+	if finalContent == "" {
+		t.Fatal("ROUND 2 FAILED: empty final response")
+	}
+
+	// The final answer should describe the image based on the tool result.
+	lower := strings.ToLower(finalContent)
+	noImagePhrases := []string{
+		"上传", "upload", "没有收到", "没有接收",
+		"no image", "provide an image", "not provided",
+		"无法看到", "cannot see", "can't see",
+	}
+	for _, phrase := range noImagePhrases {
+		if strings.Contains(lower, phrase) {
+			t.Errorf("final answer claims it cannot see image (phrase=%q):\n%s", phrase, finalContent)
+		}
+	}
+
+	// Final answer should mention the colors from the tool result.
+	finalHasColor := strings.Contains(lower, "red") || strings.Contains(lower, "blue") ||
+		strings.Contains(lower, "红") || strings.Contains(lower, "蓝")
+	if !finalHasColor {
+		t.Logf("WARNING: final answer did not explicitly mention red/blue (may have paraphrased tool result)")
+	}
+
+	t.Log("── E2E IMAGE TOOL TEST COMPLETE ──")
+}
+
 // TestIntegration_VisionWebchatFullPrompt reproduces the exact webchat scenario:
-// - Huge system prompt with tool availability, safety rules, recalled memory
-//   (recalled memory contains PREVIOUS failed image analysis attempts!)
-// - 25 tool definitions including an "image" tool
-// - Conversation history with 3 turns where model said "请上传实际的图片"
-// - Final user message with real image
+//   - Huge system prompt with tool availability, safety rules, recalled memory
+//     (recalled memory contains PREVIOUS failed image analysis attempts!)
+//   - 25 tool definitions including an "image" tool
+//   - Conversation history with 3 turns where model said "请上传实际的图片"
+//   - Final user message with real image
 //
 // This test checks whether the model can actually see the image despite
 // the poisoned context (recalled memory + history showing repeated failures).

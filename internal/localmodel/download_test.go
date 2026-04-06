@@ -23,6 +23,8 @@ func (b *downloadTestBackend) Stop() error { return nil }
 
 func (b *downloadTestBackend) IsStub() bool { return false }
 
+func (b *downloadTestBackend) HasVision() bool { return false }
+
 func (b *downloadTestBackend) ContextSize() int { return 0 }
 
 func (b *downloadTestBackend) SetSamplingParams(SamplingParams) {}

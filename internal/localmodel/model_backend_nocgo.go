@@ -32,6 +32,8 @@ func (sb *stubBackend) Stop() error {
 
 func (sb *stubBackend) IsStub() bool { return true }
 
+func (sb *stubBackend) HasVision() bool { return false }
+
 func (sb *stubBackend) ContextSize() int { return 0 }
 
 func (sb *stubBackend) SetSamplingParams(_ SamplingParams) {}

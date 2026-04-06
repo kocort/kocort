@@ -119,7 +119,7 @@ func (p *AgentPipeline) resolve(ctx context.Context, state *PipelineState) (*pip
 	if workspaceDir == "" {
 		workspaceDir = infra.ResolveDefaultAgentWorkspaceDirForState(r.Sessions.BaseDir(), identity.ID)
 	}
-	if err := sessionpkg.AppendIncomingUserTranscript(r.Sessions, sess, *req, time.Now().UTC(), workspaceDir); err != nil {
+	if err := sessionpkg.AppendIncomingUserTranscript(r.Sessions, sess, req, time.Now().UTC(), workspaceDir); err != nil {
 		return nil, err
 	}
 

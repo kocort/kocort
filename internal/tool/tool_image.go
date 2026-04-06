@@ -46,14 +46,16 @@ func (t *ImageTool) Execute(ctx context.Context, toolCtx ToolContext, args map[s
 	prompt, _ := ReadStringParam(args, "prompt", false)
 	pathArg, _ := ReadStringParam(args, "path", false)
 	request := core.AgentRunRequest{
-		RunID:      toolCtx.Run.Request.RunID + ":image",
-		SessionKey: toolCtx.Run.Session.SessionKey,
-		SessionID:  toolCtx.Run.Session.SessionID,
-		AgentID:    toolCtx.Run.Identity.ID,
-		Message:    strings.TrimSpace(prompt),
-		Deliver:    false,
-		Channel:    toolCtx.Run.Request.Channel,
-		To:         toolCtx.Run.Request.To,
+		RunID:                   toolCtx.Run.Request.RunID + ":image",
+		SessionKey:              toolCtx.Run.Session.SessionKey,
+		SessionID:               toolCtx.Run.Session.SessionID,
+		AgentID:                 toolCtx.Run.Identity.ID,
+		Message:                 strings.TrimSpace(prompt),
+		Deliver:                 false,
+		Channel:                 toolCtx.Run.Request.Channel,
+		To:                      toolCtx.Run.Request.To,
+		SessionProviderOverride: toolCtx.Run.Request.SessionProviderOverride,
+		SessionModelOverride:    toolCtx.Run.Request.SessionModelOverride,
 	}
 	if strings.TrimSpace(request.Message) == "" {
 		request.Message = "Describe the image."

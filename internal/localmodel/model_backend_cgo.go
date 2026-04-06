@@ -148,6 +148,16 @@ func (eb *engineBackend) Stop() error {
 // IsStub returns false — this is a real backend.
 func (eb *engineBackend) IsStub() bool { return false }
 
+// HasVision reports whether the loaded engine has a vision projector.
+func (eb *engineBackend) HasVision() bool {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	if eb.engine == nil {
+		return false
+	}
+	return eb.engine.HasVision()
+}
+
 // ContextSize returns the effective context window size.
 func (eb *engineBackend) ContextSize() int {
 	eb.mu.Lock()
