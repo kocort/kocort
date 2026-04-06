@@ -783,6 +783,7 @@ func (m *Manager) handleStart(cmd *cmdStart) {
 	cmd.reply <- nil // fast response: accepted
 
 	modelPath := m.resolveModelPath()
+	mmprojPath := m.resolveMmprojPath()
 	threads := m.threads
 	contextSize := m.contextSize
 	gpuLayers := m.gpuLayers
@@ -798,7 +799,7 @@ func (m *Manager) handleStart(cmd *cmdStart) {
 				ch <- &cmdLifecycleDone{err: fmt.Errorf("start panicked: %v", r), op: "start"}
 			}
 		}()
-		err := backend.Start(modelPath, threads, contextSize, gpuLayers, sampling, enableThinking)
+		err := backend.Start(modelPath, mmprojPath, threads, contextSize, gpuLayers, sampling, enableThinking)
 		cs := 0
 		if err == nil {
 			cs = backend.ContextSize()
@@ -856,6 +857,7 @@ func (m *Manager) handleRestart(cmd *cmdRestart) {
 	cmd.reply <- nil
 
 	modelPath := m.resolveModelPath()
+	mmprojPath := m.resolveMmprojPath()
 	threads := m.threads
 	contextSize := m.contextSize
 	gpuLayers := m.gpuLayers
@@ -879,7 +881,7 @@ func (m *Manager) handleRestart(cmd *cmdRestart) {
 		// Notify actor to update observable status to "starting".
 		ch <- &cmdStatusHint{status: StatusStarting}
 		// Phase 2: start
-		if err := backend.Start(modelPath, threads, contextSize, gpuLayers, sampling, enableThinking); err != nil {
+		if err := backend.Start(modelPath, mmprojPath, threads, contextSize, gpuLayers, sampling, enableThinking); err != nil {
 			ch <- &cmdLifecycleDone{err: fmt.Errorf("start during restart failed: %v", err), op: "restart"}
 			return
 		}
@@ -1447,6 +1449,89 @@ func (m *Manager) resolveModelPath() string {
 		return m.modelID
 	}
 	return resolveInstalledModelPath(m.modelsDir, m.modelID)
+}
+
+// resolveMmprojPath auto-detects a vision projector (mmproj) file in the
+// models directory that matches the current model. It looks for files
+// matching the pattern "mmproj-*<model-base>*.gguf" or "*<model-base>*mmproj*.gguf".
+// Returns an empty string if no mmproj file is found.
+func (m *Manager) resolveMmprojPath() string {
+	if m.modelsDir == "" || m.modelID == "" {
+		return ""
+	}
+	return findMmprojFile(m.modelsDir, m.modelID)
+}
+
+// findMmprojFile searches modelsDir for a vision projector GGUF file that
+// corresponds to the given model ID. It returns the full path or "".
+func findMmprojFile(modelsDir, modelID string) string {
+	entries, err := os.ReadDir(modelsDir)
+	if err != nil {
+		return ""
+	}
+
+	modelIDLower := strings.ToLower(modelID)
+
+	// Strategy 1: Look for "mmproj-<model-base>*.gguf" pattern.
+	// e.g. model "gemma-4-E2B-it-Q4_K_M" → "mmproj-gemma-4-E2B-it-*.gguf"
+	// Strip quantization suffix to get the base name.
+	baseName := stripQuantSuffix(modelIDLower)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		nameLower := strings.ToLower(name)
+		if !strings.HasSuffix(nameLower, ".gguf") {
+			continue
+		}
+		if !strings.Contains(nameLower, "mmproj") {
+			continue
+		}
+		// Check if the mmproj file relates to the same model family.
+		nameWithoutExt := strings.TrimSuffix(nameLower, ".gguf")
+		if baseName != "" && strings.Contains(nameWithoutExt, baseName) {
+			return filepath.Join(modelsDir, name)
+		}
+	}
+
+	// Strategy 2: Broader match — any mmproj file whose name shares a
+	// significant prefix with the model.
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		nameLower := strings.ToLower(name)
+		if !strings.HasSuffix(nameLower, ".gguf") {
+			continue
+		}
+		if !strings.Contains(nameLower, "mmproj") {
+			continue
+		}
+		// Extract model family from both filenames and compare.
+		mmprojBase := extractModelFamily(strings.TrimSuffix(nameLower, ".gguf"))
+		modelBase := extractModelFamily(modelIDLower)
+		if mmprojBase != "" && modelBase != "" && mmprojBase == modelBase {
+			return filepath.Join(modelsDir, name)
+		}
+	}
+
+	return ""
+}
+
+// stripQuantSuffix removes common quantization suffixes like "-Q4_K_M", "-Q6_K", "-Q8_0", "-BF16", "-F16".
+func stripQuantSuffix(name string) string {
+	quantPattern := regexp.MustCompile(`(?i)[-_](Q\d+_K(_[MSL])?|Q\d+_\d+|[BF](F?)\d+|GGUF)$`)
+	return quantPattern.ReplaceAllString(name, "")
+}
+
+// extractModelFamily extracts the model family name by stripping mmproj prefix
+// and quantization suffixes. e.g. "mmproj-gemma-4-e2b-it-bf16" → "gemma-4-e2b-it"
+func extractModelFamily(name string) string {
+	name = strings.TrimPrefix(name, "mmproj-")
+	return stripQuantSuffix(name)
 }
 
 // ── Utility functions ───────────────────────────────────────────────────────

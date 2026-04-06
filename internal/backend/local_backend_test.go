@@ -29,7 +29,7 @@ type fakeBackend struct {
 	contextSize  int
 }
 
-func (f *fakeBackend) Start(string, int, int, int, localmodel.SamplingParams, bool) error {
+func (f *fakeBackend) Start(string, string, int, int, int, localmodel.SamplingParams, bool) error {
 	return nil
 }
 func (f *fakeBackend) Stop() error  { return nil }

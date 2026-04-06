@@ -19,7 +19,7 @@ func newDefaultBackend() ModelBackend {
 	return &stubBackend{}
 }
 
-func (sb *stubBackend) Start(modelPath string, threads, contextSize, gpuLayers int,
+func (sb *stubBackend) Start(modelPath, mmprojPath string, threads, contextSize, gpuLayers int,
 	sampling SamplingParams, enableThinking bool) error {
 	sb.started = true
 	return nil

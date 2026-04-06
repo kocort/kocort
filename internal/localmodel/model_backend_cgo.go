@@ -37,7 +37,7 @@ func newDefaultBackend() ModelBackend {
 
 // Start loads the model via llamawrapper.Engine and starts the batch
 // inference loop in the background.
-func (eb *engineBackend) Start(modelPath string, threads, contextSize, gpuLayers int,
+func (eb *engineBackend) Start(modelPath, mmprojPath string, threads, contextSize, gpuLayers int,
 	sampling SamplingParams, enableThinking bool) error {
 
 	eb.mu.Lock()
@@ -51,6 +51,7 @@ func (eb *engineBackend) Start(modelPath string, threads, contextSize, gpuLayers
 
 	engine, err := llamawrapper.NewEngine(llamawrapper.EngineConfig{
 		ModelPath:      modelPath,
+		MmprojPath:     mmprojPath,
 		ContextSize:    contextSize,
 		BatchSize:      512,
 		Parallel:       1,

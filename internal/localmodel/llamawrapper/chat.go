@@ -204,7 +204,12 @@ func normalizeMessages(messages []ChatMessage) ([]renderMsg, []ImageData, error)
 				ToolCalls: msg.ToolCalls, Name: toolName, ToolCallID: msg.ToolCallID,
 			})
 		case []any:
-			start := len(out)
+			// Merge all text and image parts into a single renderMsg so that
+			// chat renderers emit them inside one turn (e.g. Gemma4 expects
+			// image placeholders and text content in the same user turn).
+			var merged renderMsg
+			merged.Role = msg.Role
+			var textParts []string
 			for _, part := range content {
 				data, ok := part.(map[string]any)
 				if !ok {
@@ -213,7 +218,7 @@ func normalizeMessages(messages []ChatMessage) ([]renderMsg, []ImageData, error)
 				switch data["type"] {
 				case "text":
 					text, _ := data["text"].(string)
-					out = append(out, renderMsg{Role: msg.Role, Content: text})
+					textParts = append(textParts, text)
 				case "image_url":
 					url, err := extractImageURL(data["image_url"])
 					if err != nil {
@@ -225,19 +230,17 @@ func normalizeMessages(messages []ChatMessage) ([]renderMsg, []ImageData, error)
 					}
 					img.ID = len(images)
 					images = append(images, img)
-					out = append(out, renderMsg{Role: msg.Role, Images: []ImageData{img}})
+					merged.Images = append(merged.Images, img)
 				default:
 					return nil, nil, errors.New("unsupported content part type")
 				}
 			}
-			if len(out) == start {
-				out = append(out, renderMsg{Role: msg.Role})
-			}
-			last := len(out) - 1
-			out[last].Reasoning = msg.Reasoning
-			out[last].ToolCalls = msg.ToolCalls
-			out[last].Name = toolName
-			out[last].ToolCallID = msg.ToolCallID
+			merged.Content = strings.Join(textParts, "\n")
+			merged.Reasoning = msg.Reasoning
+			merged.ToolCalls = msg.ToolCalls
+			merged.Name = toolName
+			merged.ToolCallID = msg.ToolCallID
+			out = append(out, merged)
 		default:
 			return nil, nil, errors.New("invalid message content type")
 		}

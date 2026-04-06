@@ -167,6 +167,18 @@ func (e *Engine) load() error {
 	}
 	e.cache = cache
 
+	// Load vision projector (mmproj) if configured.
+	if e.cfg.MmprojPath != "" {
+		mc, err := llama.NewMtmdContext(lc, e.cfg.MmprojPath)
+		if err != nil {
+			slog.Warn("[engine] failed to load vision projector, image input disabled",
+				"mmproj", e.cfg.MmprojPath, "error", err)
+		} else {
+			e.image = mc
+			slog.Info("[engine] vision projector loaded", "mmproj", e.cfg.MmprojPath)
+		}
+	}
+
 	// Initialize sequence management.
 	e.seqs = make([]*sequence, parallel)
 	e.seqsSem = semaphore.NewWeighted(int64(parallel))
@@ -181,7 +193,8 @@ func (e *Engine) load() error {
 		"batch", batchSize,
 		"parallel", parallel,
 		"threads", threads,
-		"gpu_layers", gpuLayers)
+		"gpu_layers", gpuLayers,
+		"vision", e.image != nil)
 
 	return nil
 }
@@ -380,6 +393,7 @@ func (e *Engine) tokenize(prompt string, images []ImageData) ([]input, error) {
 
 		if i < len(matches) {
 			n, _ := strconv.Atoi(matches[i][1])
+			slog.Info("[tokenize] processing image placeholder", "imgTag", matches[i][0], "imgID", n, "totalImages", len(images))
 			imgIdx := -1
 			for j := range images {
 				if images[j].ID == n {
@@ -519,8 +533,22 @@ func (e *Engine) processBatch(tokenBatch, embedBatch *llama.Batch) error {
 		return nil
 	}
 
+	// Gemma models require non-causal (bidirectional) attention when decoding
+	// image embeddings so that all image tokens can attend to each other.
+	useNonCausal := batch.IsEmbedding() && e.image != nil && e.image.DecodeUseNonCausal()
+	if useNonCausal {
+		slog.Info("[engine] disabling causal attention for embed batch", "numTokens", batch.NumTokens())
+		e.ctx.SetCausalAttn(false)
+	}
+
 	t := time.Now()
-	if err := e.ctx.Decode(batch); err != nil {
+	err := e.ctx.Decode(batch)
+
+	if useNonCausal {
+		e.ctx.SetCausalAttn(true)
+	}
+
+	if err != nil {
 		return fmt.Errorf("decode: %w", err)
 	}
 

@@ -135,7 +135,7 @@ func BuildSystemPrompt(params PromptBuildParams) string {
 	if workspaceFilesSection := BuildWorkspaceFilesInjectedPromptSection(params.ContextFiles, params.BootstrapWarnings); workspaceFilesSection != "" {
 		sections = append(sections, workspaceFilesSection)
 	}
-	if !isMinimal {
+	if !isMinimal && params.ModelSelection.Provider != "local" {
 		if silentReplies := BuildSilentRepliesSection(); silentReplies != "" {
 			sections = append(sections, silentReplies)
 		}

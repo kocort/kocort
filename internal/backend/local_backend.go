@@ -115,6 +115,35 @@ func (b *LocalModelBackend) Run(ctx context.Context, runCtx rtypes.AgentRunConte
 		BuildOpenAICompatToolDefinitions(runCtx.AvailableTools),
 	)
 
+	// Debug: log message structure so we can diagnose image delivery issues.
+	for i, msg := range messages {
+		switch c := msg.Content.(type) {
+		case string:
+			slog.Debug("[local-backend] message", "idx", i, "role", msg.Role, "type", "text", "len", len(c))
+		case []any:
+			for j, part := range c {
+				if m, ok := part.(map[string]any); ok {
+					ptype, _ := m["type"].(string)
+					if ptype == "image_url" {
+						if iu, ok := m["image_url"].(map[string]any); ok {
+							url, _ := iu["url"].(string)
+							slog.Info("[local-backend] message", "idx", i, "role", msg.Role, "part", j, "type", ptype, "urlPrefix", url[:min(len(url), 40)])
+						}
+					} else {
+						text, _ := m["text"].(string)
+						slog.Debug("[local-backend] message", "idx", i, "role", msg.Role, "part", j, "type", ptype, "len", len(text))
+					}
+				}
+			}
+		default:
+			slog.Debug("[local-backend] message", "idx", i, "role", msg.Role, "type", "nil")
+		}
+	}
+	slog.Info("[local-backend] attachments on request", "count", len(runCtx.Request.Attachments))
+	for i, att := range runCtx.Request.Attachments {
+		slog.Info("[local-backend] attachment", "idx", i, "name", att.Name, "mime", att.MIMEType, "contentLen", len(att.Content))
+	}
+
 	// Truncate conversation to fit within model context window.
 	// Reserve ~25% of the context for generation.
 	contextSize := b.Manager.ContextSize()
@@ -566,9 +595,33 @@ func convertOpenAIMessagesToLlama(msgs []openAIChatMessage) []llamawrapper.ChatM
 	for _, m := range msgs {
 		cm := llamawrapper.ChatMessage{
 			Role:       m.Role,
-			Content:    ExtractOpenAICompatContent(m.Content),
 			Name:       m.Name,
 			ToolCallID: m.ToolCallID,
+		}
+
+		// Convert content: preserve multipart (text + image) content as []any
+		// so the engine's normalizeMessages can decode base64 images.
+		if len(m.MultiContent) > 0 {
+			parts := make([]any, 0, len(m.MultiContent))
+			for _, p := range m.MultiContent {
+				switch p.Type {
+				case "text":
+					parts = append(parts, map[string]any{
+						"type": "text",
+						"text": p.Text,
+					})
+				case "image_url":
+					if p.ImageURL != nil {
+						parts = append(parts, map[string]any{
+							"type":      "image_url",
+							"image_url": map[string]any{"url": p.ImageURL.URL},
+						})
+					}
+				}
+			}
+			cm.Content = parts
+		} else {
+			cm.Content = ExtractOpenAICompatContent(m.Content)
 		}
 		for _, tc := range m.ToolCalls {
 			idx := 0
@@ -628,18 +681,24 @@ func sanitizeLlamaMessages(messages []llamawrapper.ChatMessage) []llamawrapper.C
 		role := strings.TrimSpace(strings.ToLower(msg.Role))
 		contentStr, _ := msg.Content.(string)
 		text := strings.TrimSpace(contentStr)
+		// Content may be []any (multipart with images) — treat as non-empty.
+		_, isMultipart := msg.Content.([]any)
 
 		switch role {
 		case "system", "user":
-			if text == "" {
+			if text == "" && !isMultipart {
 				continue
 			}
-			if role == "system" && len(sanitized) > 0 && sanitized[len(sanitized)-1].Role == role {
+			if role == "system" && !isMultipart && len(sanitized) > 0 && sanitized[len(sanitized)-1].Role == role {
 				prev, _ := sanitized[len(sanitized)-1].Content.(string)
 				sanitized[len(sanitized)-1].Content = strings.TrimSpace(prev + "\n\n" + text)
 				continue
 			}
-			sanitized = append(sanitized, llamawrapper.ChatMessage{Role: role, Content: text})
+			if isMultipart {
+				sanitized = append(sanitized, llamawrapper.ChatMessage{Role: role, Content: msg.Content})
+			} else {
+				sanitized = append(sanitized, llamawrapper.ChatMessage{Role: role, Content: text})
+			}
 
 		case "assistant":
 			validCalls, _ := validateLlamaToolCalls(msg.ToolCalls)

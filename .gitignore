@@ -26,3 +26,4 @@ desktop/macos/KocortApp/.swiftpm/
 cmd/kocort-desktop/kocort_windows_amd64.syso
 docs/promo
 full_test*
+lib

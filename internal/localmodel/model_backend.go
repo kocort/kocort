@@ -15,7 +15,7 @@ import (
 // NewManagerWithBackend.
 type ModelBackend interface {
 	// Start loads the model and begins the inference loop.
-	Start(modelPath string, threads, contextSize, gpuLayers int,
+	Start(modelPath, mmprojPath string, threads, contextSize, gpuLayers int,
 		sampling SamplingParams, enableThinking bool) error
 
 	// Stop releases all model resources and stops the inference loop.

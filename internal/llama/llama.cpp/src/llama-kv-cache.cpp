@@ -1627,7 +1627,8 @@ ggml_tensor *llama_kv_cache::build_rope_shift(
     ggml_tensor *shift,
     ggml_tensor *factors,
     float freq_base,
-    float freq_scale) const
+    float freq_scale,
+    int   n_rot_override) const
 {
     const auto &n_ctx_orig = cparams.n_ctx_orig_yarn;
 
@@ -1636,7 +1637,9 @@ ggml_tensor *llama_kv_cache::build_rope_shift(
     const auto &yarn_beta_slow = cparams.yarn_beta_slow;
     const auto &yarn_attn_factor = cparams.yarn_attn_factor;
 
-    const auto &n_rot = hparams.n_rot;
+    // Use per-layer n_rot when provided (needed for ISWA models where SWA layers
+    // have smaller head dimensions than global attention layers).
+    const uint32_t n_rot = n_rot_override > 0 ? (uint32_t)n_rot_override : hparams.n_rot;
     const auto &rope_type = hparams.rope_type == LLAMA_ROPE_TYPE_MROPE || hparams.rope_type == LLAMA_ROPE_TYPE_IMROPE
                                 // @ngxson : this is a workaround
                                 // for M-RoPE, we want to rotate the whole vector when doing KV shift
@@ -1728,7 +1731,11 @@ ggml_cgraph *llama_kv_cache::build_graph_shift(llm_graph_result *res, llama_cont
                          ggml_row_size(layer.k->type, n_embd_k_gqa),
                          0);
 
-        ggml_tensor *cur = build_rope_shift(cparams, ctx, k, inp->k_shift, rope_factors, freq_base_l, freq_scale_l);
+        // Use per-layer n_rot for ISWA: SWA layers have smaller head dims than global layers.
+        const int n_rot_l = (hparams.is_swa(il) && hparams.n_embd_head_k_swa > 0)
+                                ? (int)hparams.n_embd_head_k_swa : (int)hparams.n_rot;
+
+        ggml_tensor *cur = build_rope_shift(cparams, ctx, k, inp->k_shift, rope_factors, freq_base_l, freq_scale_l, n_rot_l);
 
         ggml_build_forward_expand(gf, cur);
     }

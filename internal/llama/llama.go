@@ -301,6 +301,13 @@ func (c *Context) KvCacheCanShift() bool {
 	return bool(C.llama_memory_can_shift(C.llama_get_memory(c.c)))
 }
 
+// SetCausalAttn enables or disables causal attention on the context.
+// Gemma models require non-causal (bidirectional) attention when decoding
+// image embeddings so that all image tokens can attend to each other.
+func (c *Context) SetCausalAttn(causal bool) {
+	C.llama_set_causal_attn(c.c, C.bool(causal))
+}
+
 // NCtx returns the actual context size of this context instance.
 // This may differ from the requested size if llama.cpp adjusted it.
 func (c *Context) NCtx() int {
@@ -667,6 +674,13 @@ func (c *MtmdContext) Free() {
 	C.mtmd_free(c.c)
 }
 
+// DecodeUseNonCausal returns true if image embeddings from this context
+// should be decoded with non-causal (bidirectional) attention in the text
+// model.  This is required for Gemma 3 and Gemma 4 vision models.
+func (c *MtmdContext) DecodeUseNonCausal() bool {
+	return bool(C.mtmd_decode_use_non_causal(c.c))
+}
+
 type MtmdChunk struct {
 	Embed  []float32
 	Tokens []int
@@ -726,6 +740,36 @@ func (c *MtmdContext) MultimodalTokenize(llamaContext *Context, data []byte) ([]
 			s := unsafe.Slice((*float32)(chunkEmbd), numTokens*numEmbed)
 			rows := make([]float32, len(s))
 			copy(rows, s)
+
+			// Debug: check embedding values
+			var allZero bool = true
+			var hasNaN bool = false
+			var minVal, maxVal float32
+			for idx, v := range rows {
+				if v != 0 {
+					allZero = false
+				}
+				if v != v { // NaN check
+					hasNaN = true
+				}
+				if idx == 0 || v < minVal {
+					minVal = v
+				}
+				if idx == 0 || v > maxVal {
+					maxVal = v
+				}
+			}
+			slog.Info("[mtmd] image embedding stats",
+				"numTokens", numTokens,
+				"numEmbed", numEmbed,
+				"totalFloats", len(rows),
+				"allZero", allZero,
+				"hasNaN", hasNaN,
+				"minVal", minVal,
+				"maxVal", maxVal,
+				"first5", rows[:min(5, len(rows))],
+			)
+
 			for i := range numTokens {
 				chunkEmbed[i] = rows[i*numEmbed : (i+1)*numEmbed]
 			}

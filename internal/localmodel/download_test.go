@@ -17,7 +17,7 @@ import (
 
 type downloadTestBackend struct{}
 
-func (b *downloadTestBackend) Start(string, int, int, int, SamplingParams, bool) error { return nil }
+func (b *downloadTestBackend) Start(string, string, int, int, int, SamplingParams, bool) error { return nil }
 
 func (b *downloadTestBackend) Stop() error { return nil }
 
