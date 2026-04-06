@@ -1628,7 +1628,7 @@ ggml_tensor *llama_kv_cache::build_rope_shift(
     ggml_tensor *factors,
     float freq_base,
     float freq_scale,
-    int   n_rot_override) const
+    int n_rot_override) const
 {
     const auto &n_ctx_orig = cparams.n_ctx_orig_yarn;
 
@@ -1733,7 +1733,8 @@ ggml_cgraph *llama_kv_cache::build_graph_shift(llm_graph_result *res, llama_cont
 
         // Use per-layer n_rot for ISWA: SWA layers have smaller head dims than global layers.
         const int n_rot_l = (hparams.is_swa(il) && hparams.n_embd_head_k_swa > 0)
-                                ? (int)hparams.n_embd_head_k_swa : (int)hparams.n_rot;
+                                ? (int)hparams.n_embd_head_k_swa
+                                : (int)hparams.n_rot;
 
         ggml_tensor *cur = build_rope_shift(cparams, ctx, k, inp->k_shift, rope_factors, freq_base_l, freq_scale_l, n_rot_l);
 
