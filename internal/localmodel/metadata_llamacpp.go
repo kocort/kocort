@@ -1,15 +1,18 @@
-//go:build llamacpp
-
 package localmodel
 
 import (
 	"strings"
 
-	"github.com/kocort/kocort/internal/llama"
+	"github.com/kocort/kocort/internal/llamadl"
 )
 
 func detectModelThinkingDefault(modelPath string) (bool, bool) {
-	arch, err := llama.GetModelArch(modelPath)
+	llamadl.BackendInit()
+	lib := llamadl.DefaultLibrary()
+	if lib == nil {
+		return false, false
+	}
+	arch, err := llamadl.GetModelArch(lib, modelPath)
 	if err != nil {
 		return false, false
 	}

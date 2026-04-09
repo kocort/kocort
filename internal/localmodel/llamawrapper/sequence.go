@@ -5,7 +5,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/kocort/kocort/internal/llama"
+	"github.com/kocort/kocort/internal/llamadl"
 )
 
 // sequence tracks one in-flight generation request through the engine's decode loop.
@@ -41,7 +41,7 @@ type sequence struct {
 	embedding chan []float32
 
 	// sampler is the token sampling context.
-	sampler *llama.SamplingContext
+	sampler *llamadl.SamplingContext
 
 	// numPredict is the max tokens to generate (<=0 means unlimited).
 	numPredict int
@@ -79,7 +79,7 @@ type seqParams struct {
 	NumPredict  int
 	Stop        []string
 	NumKeep     int
-	Sampling    *llama.SamplingParams
+	Sampling    *llamadl.SamplingParams
 	Embedding   bool
 	Shift       bool
 	Truncate    bool

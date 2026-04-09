@@ -3,28 +3,25 @@
     Cross-platform build script for kocort (Windows PowerShell)
 
 .DESCRIPTION
-    Builds the kocort binary with default llama.cpp CGo support.
+    Builds the kocort binary. No CGO or C/C++ compiler required.
+    llama.cpp shared libraries are loaded at runtime via purego.
     Mirrors the functionality of scripts/build.sh for Windows.
 
 .PARAMETER Target
     Build target(s). Comma-separated. Valid values:
-    build       - Build the default llama.cpp kocort binary
-    llamacpp    - Alias of the default build
-    all         - Alias of the default build plus extra tags from kocort_BUILD_TAGS
-      test        - Run tests (with llamacpp tag)
-      vet         - Run go vet
-      clean       - Clean build artifacts
-      cross       - Cross-compile for win-amd64 and win-arm64
+    build       - Build the default kocort binary (CGO_ENABLED=0)
+    all         - Build with extra tags from kocort_BUILD_TAGS
+    test        - Run tests
+    vet         - Run go vet
+    clean       - Clean build artifacts
+    cross       - Cross-compile for win-amd64 and win-arm64
 
 .EXAMPLE
-    # Default build with llama.cpp support
+    # Default build
     .\scripts\build.ps1
 
-    # Explicit llama.cpp build (same as default)
-    .\scripts\build.ps1 llamacpp
-
-    # Build with llamacpp + run tests
-    .\scripts\build.ps1 llamacpp,test
+    # Build + run tests
+    .\scripts\build.ps1 build,test
 
     # Cross-compile for Windows amd64 and arm64
     .\scripts\build.ps1 cross
@@ -80,26 +77,6 @@ function Get-GoArch {
         "x86"   { return "386" }
         default { return $arch.ToLower() }
     }
-}
-
-function Test-CgoCompiler {
-    $found = $false
-    foreach ($cc in @("gcc", "clang", "cc")) {
-        if (Get-Command $cc -ErrorAction SilentlyContinue) {
-            $found = $true
-            break
-        }
-    }
-    if (-not $found) {
-        Write-Fail "No C/C++ compiler found. Install MinGW-w64 (choco install mingw) or TDM-GCC."
-    }
-}
-
-function Set-CgoEnv {
-    $env:CGO_ENABLED = "1"
-    $optFlags = if ($env:kocort_CGO_OPTFLAGS) { $env:kocort_CGO_OPTFLAGS } else { "-O3" }
-    if (-not $env:CGO_CFLAGS)   { $env:CGO_CFLAGS   = $optFlags }
-    if (-not $env:CGO_CXXFLAGS) { $env:CGO_CXXFLAGS = $optFlags }
 }
 
 function Get-LdFlags {
@@ -164,14 +141,7 @@ function Invoke-Build {
         Write-Warn "Skipping web rebuild for cross target ${TargetOS}/${TargetArch}; using existing embedded assets"
     }
 
-    $cgoNeeded = $Tags -match "llamacpp"
-
-    if ($cgoNeeded) {
-        Test-CgoCompiler
-        Set-CgoEnv
-    } else {
-        $env:CGO_ENABLED = "0"
-    }
+    $env:CGO_ENABLED = "0"
 
     $outName = Get-OutputName -Tags $Tags -TargetOS $TargetOS
     $outDir  = if ($env:kocort_OUTPUT) {
@@ -206,7 +176,7 @@ function Invoke-Build {
 
     Write-Info "Building kocort"
     Write-Info "  GOOS=$TargetOS GOARCH=$TargetArch"
-    Write-Info "  CGO_ENABLED=$env:CGO_ENABLED"
+    Write-Info "  CGO_ENABLED=0 (llama.cpp loaded via purego at runtime)"
     Write-Info "  Tags: $(if ($Tags) { $Tags } else { '<none>' })"
     Write-Info "  Output: $outPath"
     Write-Host ""
@@ -225,32 +195,35 @@ function Invoke-Build {
     }
 
     Write-Ok "Build successful: $outPath"
-
-    if ($cgoNeeded) {
-        Write-Host ""
-        Write-Info "To use GPU backends at runtime, set:"
-        Write-Info '  $env:GGML_LIBRARY_PATH = "C:\path\to\gpu\libs"'
-    }
+    Write-Host ""
+    Write-Info "Runtime: set KOCORT_LLAMA_LIB_DIR to use a local llama.cpp library directory,"
+    Write-Info "         or libraries will be downloaded on first use."
 }
 
 # ---------- test ----------
 function Invoke-Test {
-    param([string]$Tags = "llamacpp")
+    param([string]$Tags = "")
 
-    Set-CgoEnv
-    Write-Info "Running tests (tags: $Tags)"
+    $env:CGO_ENABLED = "0"
+    Write-Info "Running tests$(if ($Tags) { " (tags: $Tags)" })"
     Push-Location $ProjectRoot
     try {
-        Write-Info "=== llama package tests ==="
-        & go test -tags $Tags -v -count=1 ./internal/llama/...
-        if ($LASTEXITCODE -ne 0) { Write-Fail "llama tests failed" }
+        Write-Info "=== llamadl package tests ==="
+        $testArgs = @("-v", "-count=1", "./internal/llamadl/...")
+        if ($Tags) { $testArgs = @("-tags", $Tags) + $testArgs }
+        & go test @testArgs
+        if ($LASTEXITCODE -ne 0) { Write-Fail "llamadl tests failed" }
 
         Write-Info "=== cerebellum package tests ==="
-        & go test -tags $Tags -v -count=1 ./internal/cerebellum/...
+        $testArgs = @("-v", "-count=1", "./internal/cerebellum/...")
+        if ($Tags) { $testArgs = @("-tags", $Tags) + $testArgs }
+        & go test @testArgs
         if ($LASTEXITCODE -ne 0) { Write-Fail "cerebellum tests failed" }
 
         Write-Info "=== all package tests ==="
-        & go test -tags $Tags -count=1 -timeout 120s ./...
+        $testArgs = @("-count=1", "-timeout", "120s", "./...")
+        if ($Tags) { $testArgs = @("-tags", $Tags) + $testArgs }
+        & go test @testArgs
         if ($LASTEXITCODE -ne 0) { Write-Fail "tests failed" }
     } finally {
         Pop-Location
@@ -260,13 +233,15 @@ function Invoke-Test {
 
 # ---------- vet ----------
 function Invoke-Vet {
-    param([string]$Tags = "llamacpp")
+    param([string]$Tags = "")
 
-    Set-CgoEnv
-    Write-Info "Running go vet (tags: $Tags)"
+    $env:CGO_ENABLED = "0"
+    Write-Info "Running go vet$(if ($Tags) { " (tags: $Tags)" })"
     Push-Location $ProjectRoot
     try {
-        & go vet -tags $Tags ./...
+        $vetArgs = @("./...")
+        if ($Tags) { $vetArgs = @("-tags", $Tags) + $vetArgs }
+        & go vet @vetArgs
         if ($LASTEXITCODE -ne 0) { Write-Fail "go vet failed" }
     } finally {
         Pop-Location
@@ -293,25 +268,14 @@ function Invoke-Clean {
 function Invoke-Cross {
     param([string]$Tags = "")
 
-    Write-Info "Cross-compiling for Windows targets..."
+    Write-Info "Cross-compiling for Windows targets (CGO_ENABLED=0, purego runtime loading)..."
     Write-Host ""
 
-    if ($Tags -match '(^|\s)llamacpp(\s|$)') {
-        $nativeArch = Get-GoArch
-        Write-Warn "llamacpp (CGo) builds only compiled for native arch: windows/$nativeArch"
-        Write-Warn "Use the target platform or GitHub Actions release workflows for full Windows artifacts."
-        Write-Host ""
-
-        Write-Info "--- windows/$nativeArch (llamacpp) ---"
+    foreach ($arch in @("amd64", "arm64")) {
+        Write-Info "--- windows/$arch ---"
         $env:kocort_OUTPUT = ""
-        Invoke-Build -Tags $Tags -TargetOS "windows" -TargetArch $nativeArch
-    } else {
-        foreach ($arch in @("amd64", "arm64")) {
-            Write-Info "--- windows/$arch ---"
-            $env:kocort_OUTPUT = ""
-            Invoke-Build -Tags $Tags -TargetOS "windows" -TargetArch $arch
-            Write-Host ""
-        }
+        Invoke-Build -Tags $Tags -TargetOS "windows" -TargetArch $arch
+        Write-Host ""
     }
 
     Write-Host ""
@@ -323,32 +287,28 @@ function Invoke-Cross {
 function Main {
     $targets = $Target -split ","
 
-    $wantLlamacpp = $true
-    $wantCross    = $false
-    $actions      = @()
+    $wantCross = $false
+    $actions   = @()
 
     foreach ($t in $targets) {
         switch ($t.Trim().ToLower()) {
-            "llamacpp" { $wantLlamacpp = $true }
-            "all"      { $wantLlamacpp = $true }
+            "all"      { } # uses kocort_BUILD_TAGS
             "test"     { $actions += "test" }
             "vet"      { $actions += "vet" }
             "clean"    { $actions += "clean" }
             "cross"    { $wantCross = $true }
             "build"    { } # default, no-op
-            default    { Write-Fail "Unknown target: $t. Valid: build, llamacpp, all, test, vet, clean, cross" }
+            default    { Write-Fail "Unknown target: $t. Valid: build, all, test, vet, clean, cross" }
         }
     }
 
     # Assemble tags
     $tags = $env:kocort_BUILD_TAGS
     if (-not $tags) { $tags = "" }
-    if ($wantLlamacpp) {
-        $tags = ("$tags llamacpp").Trim()
-    }
 
     Write-Info "kocort build - version $Version ($Commit) [$BuildDate]"
     Write-Info "Platform: windows/$(Get-GoArch) | Go: $(go version | ForEach-Object { ($_ -split ' ')[2] })"
+    Write-Info "CGO: disabled (llama.cpp loaded via purego at runtime)"
     Write-Host ""
 
     if ($actions -contains "clean") {

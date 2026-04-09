@@ -1,5 +1,3 @@
-//go:build llamacpp
-
 package localmodel
 
 import (

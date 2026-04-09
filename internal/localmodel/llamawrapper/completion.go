@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kocort/kocort/internal/llama"
+	"github.com/kocort/kocort/internal/llamadl"
 )
 
 // ChatCompletion creates a streaming or non-streaming chat completion.
@@ -83,7 +83,7 @@ number ::= "-"? [0-9]+ ("." [0-9]+)?
 ws     ::= [ \t\n]*`
 		case "json_schema":
 			if req.ResponseFormat.JSONSchema != nil {
-				g := llama.SchemaToGrammar(req.ResponseFormat.JSONSchema)
+				g := llamadl.SchemaToGrammar(req.ResponseFormat.JSONSchema)
 				if g != nil {
 					grammar = string(g)
 				}
@@ -102,7 +102,7 @@ ws     ::= [ \t\n]*`
 
 	logprobs := req.Logprobs != nil && *req.Logprobs
 
-	llamaSampling := &llama.SamplingParams{
+	llamaSampling := &llamadl.SamplingParams{
 		TopK:           samplingCfg.TopK,
 		TopP:           samplingCfg.TopP,
 		MinP:           samplingCfg.MinP,
@@ -322,7 +322,7 @@ func (e *Engine) TextCompletion(ctx context.Context, req TextCompletionRequest) 
 		numPredict = *req.MaxTokens
 	}
 
-	llamaSampling := &llama.SamplingParams{
+	llamaSampling := &llamadl.SamplingParams{
 		TopK:     cfg.TopK,
 		TopP:     cfg.TopP,
 		MinP:     cfg.MinP,

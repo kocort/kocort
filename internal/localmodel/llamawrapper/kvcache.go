@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/kocort/kocort/internal/llama"
+	"github.com/kocort/kocort/internal/llamadl"
 )
 
 // kvSlot tracks the KV cache state for a single inference sequence.
@@ -22,13 +22,13 @@ type kvSlot struct {
 // kvCache manages KV cache slots for multiple parallel sequences.
 // It selects the slot with the longest matching prefix to maximize cache reuse.
 type kvCache struct {
-	ctx    *llama.Context
+	ctx    *llamadl.Context
 	slots  []kvSlot
 	ctxLen int // per-slot context length
 }
 
 // newKVCache creates a new KV cache manager.
-func newKVCache(ctx *llama.Context, totalCtx int, parallel int) (*kvCache, error) {
+func newKVCache(ctx *llamadl.Context, totalCtx int, parallel int) (*kvCache, error) {
 	if parallel <= 0 {
 		return nil, errors.New("parallel must be > 0")
 	}

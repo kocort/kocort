@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kocort/kocort/internal/llama"
+	"github.com/kocort/kocort/internal/llamadl"
 )
 
 // ── Handler helpers ──────────────────────────────────────────────────────────
@@ -460,11 +460,11 @@ func (e *Engine) nativeCompletion(ctx context.Context, prompt string, images []I
 
 // ── Helper utilities ─────────────────────────────────────────────────────────
 
-func toLlamaSampling(cfg *SamplingConfig) *llama.SamplingParams {
+func toLlamaSampling(cfg *SamplingConfig) *llamadl.SamplingParams {
 	if cfg == nil {
 		return nil
 	}
-	return &llama.SamplingParams{
+	return &llamadl.SamplingParams{
 		TopK:           cfg.TopK,
 		TopP:           cfg.TopP,
 		MinP:           cfg.MinP,

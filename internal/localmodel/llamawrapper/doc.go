@@ -1,5 +1,5 @@
 // package llamawrapper is a standalone local LLM inference library built on top
-// of llama.cpp via the internal/llama CGo bindings.
+// of llama.cpp via the internal/llamadl pure-Go dynamic loading bindings.
 //
 // It provides:
 //   - GGUF model loading with GPU offloading and flash attention support

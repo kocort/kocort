@@ -16,7 +16,7 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
-	"github.com/kocort/kocort/internal/llama"
+	"github.com/kocort/kocort/internal/llamadl"
 )
 
 // Engine is the core inference engine that owns the llama.cpp model and context.
@@ -24,13 +24,16 @@ import (
 type Engine struct {
 	cfg EngineConfig
 
+	// purego library handle
+	lib *llamadl.Library
+
 	// model arch from GGUF metadata
 	modelArch string
 
 	// loaded model and context
-	model *llama.Model
-	ctx   *llama.Context
-	image *llama.MtmdContext
+	model *llamadl.Model
+	ctx   *llamadl.Context
+	image *llamadl.MtmdContext
 
 	// KV cache
 	cache *kvCache
@@ -55,10 +58,15 @@ type Engine struct {
 // It loads the model and creates the llama context. The decode loop is NOT
 // started — call Run(ctx) to begin processing.
 func NewEngine(cfg EngineConfig) (*Engine, error) {
-	llama.BackendInit()
+	llamadl.BackendInit()
+	lib := llamadl.DefaultLibrary()
+	if lib == nil {
+		return nil, fmt.Errorf("llamadl backend not available: %v", llamadl.LibraryError())
+	}
 
 	e := &Engine{
 		cfg:            cfg,
+		lib:            lib,
 		status:         StatusCreated,
 		enableThinking: cfg.EnableThinking,
 	}
@@ -122,21 +130,25 @@ func (e *Engine) load() error {
 	}
 
 	// Read model arch from GGUF.
-	if arch, err := llama.GetModelArch(e.cfg.ModelPath); err == nil {
+	if arch, err := llamadl.GetModelArch(e.lib, e.cfg.ModelPath); err == nil {
 		e.modelArch = arch
 	}
 
 	// Load model.
-	modelParams := llama.ModelParams{
+	mainGPU := e.cfg.MainGPU
+	if mainGPU == 0 {
+		mainGPU = -1 // default: let the library choose
+	}
+	modelParams := llamadl.ModelParams{
 		NumGpuLayers: gpuLayers,
-		MainGpu:      e.cfg.MainGPU,
+		MainGpu:      mainGPU,
 		UseMmap:      e.cfg.UseMmap,
 		Progress: func(p float32) {
 			e.progress = p
 		},
 	}
 
-	model, err := llama.LoadModelFromFile(e.cfg.ModelPath, modelParams)
+	model, err := llamadl.LoadModelFromFile(e.lib, e.cfg.ModelPath, modelParams)
 	if err != nil {
 		e.status = StatusCreated
 		return fmt.Errorf("load model: %w", err)
@@ -144,11 +156,11 @@ func (e *Engine) load() error {
 	e.model = model
 
 	// Create context.
-	fa := llama.FlashAttentionType(e.cfg.FlashAttention)
-	ctxParams := llama.NewContextParams(kvSize, batchSize, parallel, threads, fa, e.cfg.KVCacheType)
-	lc, err := llama.NewContextWithModel(model, ctxParams)
+	fa := llamadl.FlashAttentionType(e.cfg.FlashAttention)
+	ctxParams := llamadl.NewContextParams(e.lib, kvSize, batchSize, parallel, threads, fa, e.cfg.KVCacheType)
+	lc, err := llamadl.NewContextWithModel(e.lib, model, ctxParams)
 	if err != nil {
-		llama.FreeModel(model)
+		llamadl.FreeModel(model)
 		e.model = nil
 		e.status = StatusCreated
 		return fmt.Errorf("create context: %w", err)
@@ -159,7 +171,7 @@ func (e *Engine) load() error {
 	cache, err := newKVCache(lc, kvSize, parallel)
 	if err != nil {
 		lc.Free()
-		llama.FreeModel(model)
+		llamadl.FreeModel(model)
 		e.model = nil
 		e.ctx = nil
 		e.status = StatusCreated
@@ -201,16 +213,16 @@ func (e *Engine) Run(ctx context.Context) {
 		e.ctx.ResetAbort()
 	}
 
-	tokenBatch, err := llama.NewBatch(e.cfg.batchSize(), len(e.seqs), 0)
+	tokenBatch, err := llamadl.NewBatch(e.lib, e.cfg.batchSize(), len(e.seqs), 0)
 	if err != nil {
 		slog.Error("[engine] failed to create token batch", "error", err)
 		return
 	}
 	defer tokenBatch.Free()
 
-	var embedBatch *llama.Batch
+	var embedBatch *llamadl.Batch
 	if e.image != nil {
-		embedBatch, err = llama.NewBatch(e.cfg.batchSize(), len(e.seqs), e.ctx.Model().NEmbd())
+		embedBatch, err = llamadl.NewBatch(e.lib, e.cfg.batchSize(), len(e.seqs), e.ctx.Model().NEmbd())
 		if err != nil {
 			slog.Error("[engine] failed to create embed batch", "error", err)
 			return
@@ -218,7 +230,7 @@ func (e *Engine) Run(ctx context.Context) {
 		defer embedBatch.Free()
 	}
 	if embedBatch == nil {
-		embedBatch = &llama.Batch{}
+		embedBatch = &llamadl.Batch{}
 	}
 
 	for {
@@ -227,7 +239,7 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		default:
 			if err := e.processBatch(tokenBatch, embedBatch); err != nil {
-				if errors.Is(err, llama.ErrDecodeAborted) && ctx.Err() != nil {
+				if errors.Is(err, llamadl.ErrDecodeAborted) && ctx.Err() != nil {
 					return
 				}
 				slog.Error("[engine] processBatch error", "error", err)
@@ -272,7 +284,7 @@ func (e *Engine) Close() {
 		e.ctx = nil
 	}
 	if e.model != nil {
-		llama.FreeModel(e.model)
+		llamadl.FreeModel(e.model)
 		e.model = nil
 	}
 }
@@ -324,9 +336,9 @@ func (e *Engine) newSequence(prompt string, images []ImageData, params seqParams
 	}
 
 	// Create sampling context.
-	var sc *llama.SamplingContext
+	var sc *llamadl.SamplingContext
 	if params.Sampling != nil {
-		sc, err = llama.NewSamplingContext(e.model, *params.Sampling)
+		sc, err = llamadl.NewSamplingContext(e.lib, e.model, *params.Sampling)
 		if err != nil {
 			return nil, err
 		}
@@ -446,14 +458,14 @@ func (e *Engine) removeSeq(idx int, reason DoneReason) {
 }
 
 // processBatch is the heart of inference: collects inputs, decodes, samples, and dispatches.
-func (e *Engine) processBatch(tokenBatch, embedBatch *llama.Batch) error {
+func (e *Engine) processBatch(tokenBatch, embedBatch *llamadl.Batch) error {
 	e.mu.Lock()
 	for e.allNil() {
 		e.cond.Wait()
 	}
 	defer e.mu.Unlock()
 
-	var batch *llama.Batch
+	var batch *llamadl.Batch
 	var numOutputs int
 
 	seqIdx := e.nextSeq - 1
@@ -640,7 +652,7 @@ func (e *Engine) processBatch(tokenBatch, embedBatch *llama.Batch) error {
 // ── Logprob computation ──────────────────────────────────────────────────────
 
 // computeLogprobs computes log probabilities via numerically stable log-softmax.
-func computeLogprobs(logits []float32, selectedToken int, topK int, model *llama.Model) []LogprobEntry {
+func computeLogprobs(logits []float32, selectedToken int, topK int, model *llamadl.Model) []LogprobEntry {
 	if len(logits) == 0 {
 		return nil
 	}

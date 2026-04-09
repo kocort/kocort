@@ -1,4 +1,4 @@
-//go:build llamacpp
+//go:build integration
 
 package localmodel
 

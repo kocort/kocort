@@ -2,10 +2,9 @@
 # Cross-platform build script for kocort (macOS / Linux)
 #
 # Usage:
-#   ./scripts/build.sh                  # Build default llama.cpp binary for current platform
-#   ./scripts/build.sh --llamacpp       # Alias of the default build
-#   ./scripts/build.sh --all            # Alias of the default build plus extra tags from kocort_BUILD_TAGS
-#   ./scripts/build.sh --test           # Run tests (with llamacpp tag)
+#   ./scripts/build.sh                  # Build default binary for current platform
+#   ./scripts/build.sh --all            # Build with extra tags from kocort_BUILD_TAGS
+#   ./scripts/build.sh --test           # Run tests
 #   ./scripts/build.sh --vet            # Run go vet
 #   ./scripts/build.sh --clean          # Clean build cache
 #   ./scripts/build.sh --cross          # Cross-compile for all platforms
@@ -14,9 +13,13 @@
 #   kocort_VERSION        - Version string (default: git describe or "dev")
 #   kocort_BUILD_TAGS     - Extra build tags (space-separated)
 #   kocort_OUTPUT         - Output binary path (default: ./dist/<name>)
-#   kocort_CGO_OPTFLAGS   - C/C++ optimization flags (default: -O3)
 #   kocort_PARALLEL       - Build parallelism (default: num CPUs)
 #   kocort_SKIP_WEB       - Set to 1 to skip web build/embed refresh
+#
+# llama.cpp runtime libraries:
+#   llama.cpp shared libraries are loaded at runtime via purego (no CGO required).
+#   Set KOCORT_LLAMA_LIB_DIR to point to the directory containing the libraries,
+#   or they will be downloaded automatically on first use.
 #
 set -euo pipefail
 
@@ -55,7 +58,6 @@ esac
 GOARCH="${GOARCH:-$DEFAULT_GOARCH}"
 GOOS="${GOOS:-$DEFAULT_GOOS}"
 
-OPT_FLAGS="${kocort_CGO_OPTFLAGS:--O3}"
 PARALLEL="${kocort_PARALLEL:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 
 # ---------- colours ----------
@@ -66,29 +68,6 @@ warn()  { echo -e "${YELLOW}WARNING:${NC} $*"; }
 fail()  { echo -e "${RED}ERROR:${NC} $*" >&2; exit 1; }
 
 # ---------- helpers ----------
-require_cgo_compiler() {
-    if command -v gcc &>/dev/null; then
-        return 0
-    elif command -v clang &>/dev/null; then
-        return 0
-    elif command -v cc &>/dev/null; then
-        return 0
-    fi
-    fail "No C/C++ compiler found. Install gcc, clang, or Xcode CLI tools."
-}
-
-setup_cgo_env() {
-    export CGO_ENABLED=1
-    export CGO_CFLAGS="${CGO_CFLAGS:-$OPT_FLAGS}"
-    export CGO_CXXFLAGS="${CGO_CXXFLAGS:-$OPT_FLAGS}"
-
-    if [ "$GOOS" = "darwin" ]; then
-        local MIN_VER="14.0"
-        export CGO_CFLAGS="$CGO_CFLAGS -mmacosx-version-min=$MIN_VER"
-        export CGO_CXXFLAGS="$CGO_CXXFLAGS -mmacosx-version-min=$MIN_VER"
-        export CGO_LDFLAGS="${CGO_LDFLAGS:-} -mmacosx-version-min=$MIN_VER"
-    fi
-}
 
 build_ldflags() {
     echo "-s -w -X=kocort/version.Version=$VERSION -X=kocort/version.Commit=$COMMIT -X=kocort/version.BuildDate=$BUILD_DATE"
@@ -140,17 +119,7 @@ do_build() {
         warn "Skipping web rebuild for cross target $target_goos/$target_goarch; using existing embedded assets"
     fi
 
-    local cgo_needed=0
-    if echo "$tags" | grep -q "llamacpp"; then
-        cgo_needed=1
-    fi
-
-    if [ "$cgo_needed" -eq 1 ]; then
-        require_cgo_compiler
-        setup_cgo_env
-    else
-        export CGO_ENABLED=0
-    fi
+    export CGO_ENABLED=0
 
     local out_name
     out_name=$(output_name "$tags")
@@ -171,7 +140,7 @@ do_build() {
 
     info "Building kocort"
     info "  GOOS=$target_goos GOARCH=$target_goarch"
-    info "  CGO_ENABLED=$CGO_ENABLED"
+    info "  CGO_ENABLED=0 (llama.cpp loaded via purego at runtime)"
     info "  Tags: ${tags:-<none>}"
     info "  Output: $out_path"
     echo ""
@@ -181,38 +150,35 @@ do_build() {
         go build "${build_args[@]}" ./cmd/kocort
 
     ok "Build successful: $out_path"
-
-    if [ "$cgo_needed" -eq 1 ]; then
-        echo ""
-        info "To use GPU backends at runtime, set:"
-        info "  export GGML_LIBRARY_PATH=/path/to/gpu/libs"
-    fi
+    echo ""
+    info "Runtime: set KOCORT_LLAMA_LIB_DIR to use a local llama.cpp library directory,"
+    info "         or libraries will be downloaded on first use."
 }
 
 do_test() {
-    local tags="${1:-llamacpp}"
-    setup_cgo_env
-    info "Running tests (tags: $tags)"
+    local tags="${1:-}"
+    export CGO_ENABLED=0
+    info "Running tests${tags:+ (tags: $tags)}"
     cd "$PROJECT_ROOT"
 
-    info "=== llama package tests ==="
-    go test -tags "$tags" -v -count=1 ./internal/llama/...
+    info "=== llamadl package tests ==="
+    go test ${tags:+-tags "$tags"} -v -count=1 ./internal/llamadl/...
 
     info "=== cerebellum package tests ==="
-    go test -tags "$tags" -v -count=1 ./internal/cerebellum/...
+    go test ${tags:+-tags "$tags"} -v -count=1 ./internal/cerebellum/...
 
     info "=== all package tests ==="
-    go test -tags "$tags" -count=1 -timeout 120s ./...
+    go test ${tags:+-tags "$tags"} -count=1 -timeout 120s ./...
 
     ok "All tests passed"
 }
 
 do_vet() {
-    local tags="${1:-llamacpp}"
-    setup_cgo_env
-    info "Running go vet (tags: $tags)"
+    local tags="${1:-}"
+    export CGO_ENABLED=0
+    info "Running go vet${tags:+ (tags: $tags)}"
     cd "$PROJECT_ROOT"
-    go vet -tags "$tags" ./...
+    go vet ${tags:+-tags "$tags"} ./...
     ok "go vet passed"
 }
 
@@ -232,25 +198,17 @@ do_clean() {
 
 do_cross() {
     local tags="${1:-}"
-    info "Cross-compiling for all platforms..."
+    info "Cross-compiling for all platforms (CGO_ENABLED=0, purego runtime loading)..."
     echo ""
 
-    if echo "$tags" | grep -q "llamacpp"; then
-        warn "llamacpp (CGo) builds are only compiled for the native platform: $GOOS/$GOARCH"
-        warn "Use the target platform or GitHub Actions release workflows for six-platform artifacts."
+    local platforms=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64" "windows/arm64")
+    for platform in "${platforms[@]}"; do
+        local p_os="${platform%%/*}"
+        local p_arch="${platform##*/}"
+        info "--- $p_os/$p_arch ---"
+        CGO_ENABLED=0 kocort_OUTPUT="" do_build "$tags" "$p_os" "$p_arch"
         echo ""
-        info "--- $GOOS/$GOARCH (llamacpp) ---"
-        do_build "$tags" "$GOOS" "$GOARCH"
-    else
-        local platforms=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64" "windows/arm64")
-        for platform in "${platforms[@]}"; do
-            local p_os="${platform%%/*}"
-            local p_arch="${platform##*/}"
-            info "--- $p_os/$p_arch ---"
-            CGO_ENABLED=0 kocort_OUTPUT="" do_build "$tags" "$p_os" "$p_arch"
-            echo ""
-        done
-    fi
+    done
 
     echo ""
     ok "Cross-compilation complete. Output in $DIST_DIR/"
@@ -262,12 +220,12 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Build script for kocort — cross-platform Go build with default llama.cpp CGo support.
+Build script for kocort — pure Go build with purego runtime loading of llama.cpp.
+No CGO or C/C++ compiler required. llama.cpp shared libraries are loaded at runtime.
 
 Options:
-    (no flags)        Build default binary (llama.cpp enabled, CGO_ENABLED=1)
-    --llamacpp        Alias of the default build
-    --all             Alias of the default build plus extra tags from kocort_BUILD_TAGS
+  (no flags)        Build default binary (CGO_ENABLED=0)
+  --all             Build with extra tags from kocort_BUILD_TAGS
   --test            Run full test suite
   --vet             Run go vet
   --clean           Clean build artifacts and cache
@@ -278,24 +236,22 @@ Environment:
   kocort_VERSION        Override version string
   kocort_BUILD_TAGS     Extra build tags
   kocort_OUTPUT         Override output path
-  kocort_CGO_OPTFLAGS   C/C++ optimization flags (default: -O3)
   kocort_PARALLEL       Build parallelism
 
+Runtime environment (used when running the built binary):
+  KOCORT_LLAMA_LIB_DIR  Path to llama.cpp shared libraries (skip auto-download)
+  KOCORT_LLAMA_VERSION  llama.cpp version to download (default: b8720)
+  KOCORT_LLAMA_GPU      GPU type: cpu, vulkan, cuda-12.4, cuda-13.1, rocm-7.2
+
 Examples:
-    # Default build with llama.cpp local inference
+  # Default build
   ./scripts/build.sh
 
-    # Explicit llama.cpp build (same as default)
-  ./scripts/build.sh --llamacpp
-
-    # Cross-compile non-CGo variants for all platforms
+  # Cross-compile for all platforms
   ./scripts/build.sh --cross
 
-    # Build native llama.cpp artifact from cross mode
-  ./scripts/build.sh --cross --llamacpp
-
   # Build with custom version
-    kocort_VERSION=1.2.3 ./scripts/build.sh
+  kocort_VERSION=1.2.3 ./scripts/build.sh
 
   # Run tests
   ./scripts/build.sh --test
@@ -306,16 +262,11 @@ EOF
 main() {
     local action=""
     local tags="${kocort_BUILD_TAGS:-}"
-    local want_llamacpp=1
     local want_cross=0
 
     while [ $# -gt 0 ]; do
         case "$1" in
-            --llamacpp)
-                want_llamacpp=1
-                shift ;;
             --all)
-                want_llamacpp=1
                 shift ;;
             --test)
                 action="test"
@@ -337,16 +288,9 @@ main() {
         esac
     done
 
-    if [ "$want_llamacpp" -eq 1 ]; then
-        if [ -n "$tags" ]; then
-            tags="$tags llamacpp"
-        else
-            tags="llamacpp"
-        fi
-    fi
-
     info "kocort build — version $VERSION ($COMMIT) [$BUILD_DATE]"
     info "Platform: $GOOS/$GOARCH | Go: $(go version | awk '{print $3}')"
+    info "CGO: disabled (llama.cpp loaded via purego at runtime)"
     echo ""
 
     case "${action:-build}" in
