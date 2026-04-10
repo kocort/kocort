@@ -28,7 +28,6 @@ import (
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/infra"
 	"github.com/kocort/kocort/internal/localmodel"
-	"github.com/kocort/kocort/internal/localmodel/llamawrapper"
 )
 
 // Status constants — re-exported from localmodel for convenience.
@@ -640,7 +639,7 @@ func (m *Manager) inferSync(prompt string, maxTokens int) (string, error) {
 	defer cancel()
 
 	numPredict := maxTokens
-	req := llamawrapper.ChatCompletionRequest{
+	req := localmodel.ChatCompletionRequest{
 		Model:     "cerebellum",
 		Stream:    true,
 		MaxTokens: &numPredict,

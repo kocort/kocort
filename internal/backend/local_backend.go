@@ -23,7 +23,6 @@ import (
 	"github.com/kocort/kocort/internal/delivery"
 	"github.com/kocort/kocort/internal/event"
 	"github.com/kocort/kocort/internal/localmodel"
-	"github.com/kocort/kocort/internal/localmodel/llamawrapper"
 	"github.com/kocort/kocort/internal/rtypes"
 )
 
@@ -37,17 +36,17 @@ const (
 // using llamawrapper types throughout.
 type localStreamingRoundResult struct {
 	FinalText    string
-	ToolCalls    []llamawrapper.ToolCall
+	ToolCalls    []localmodel.ToolCall
 	FinishReason string
 	ResponseID   string
 	Usage        map[string]any
 }
 
 type localModelToolLoopState struct {
-	messages           []llamawrapper.ChatMessage
-	tools              []llamawrapper.Tool
-	rawToolCalls       []llamawrapper.ToolCall
-	validatedToolCalls []llamawrapper.ToolCall
+	messages           []localmodel.ChatMessage
+	tools              []localmodel.Tool
+	rawToolCalls       []localmodel.ToolCall
+	validatedToolCalls []localmodel.ToolCall
 }
 
 // LocalModelBackend implements rtypes.Backend by delegating to a
@@ -162,13 +161,13 @@ func (b *LocalModelBackend) Run(ctx context.Context, runCtx rtypes.AgentRunConte
 func (b *LocalModelBackend) runStreamingToolLoop(
 	ctx context.Context,
 	cancel context.CancelFunc,
-	messages []llamawrapper.ChatMessage,
-	tools []llamawrapper.Tool,
+	messages []localmodel.ChatMessage,
+	tools []localmodel.Tool,
 	runCtx rtypes.AgentRunContext,
 ) (core.AgentRunResult, error) {
 	return runStandardModelToolLoop(ctx, cancel, runCtx, StandardModelToolLoopConfig[localModelToolLoopState]{
 		InitialState: localModelToolLoopState{
-			messages: append([]llamawrapper.ChatMessage{}, messages...),
+			messages: append([]localmodel.ChatMessage{}, messages...),
 			tools:    tools,
 		},
 		MaxRounds:                      0,
@@ -207,7 +206,7 @@ func (b *LocalModelBackend) runStreamingToolLoop(
 			return calls, nil
 		},
 		AppendAssistantToolCalls: func(state *localModelToolLoopState, round StandardModelRoundResult) error {
-			state.messages = append(state.messages, llamawrapper.ChatMessage{
+			state.messages = append(state.messages, localmodel.ChatMessage{
 				Role:      "assistant",
 				Content:   strings.TrimSpace(round.FinalText),
 				ToolCalls: state.validatedToolCalls,
@@ -215,7 +214,7 @@ func (b *LocalModelBackend) runStreamingToolLoop(
 			return nil
 		},
 		AppendToolResult: func(state *localModelToolLoopState, call StandardModelToolCall, historyText string, _ bool) error {
-			state.messages = append(state.messages, llamawrapper.ChatMessage{
+			state.messages = append(state.messages, localmodel.ChatMessage{
 				Role:       "tool",
 				ToolCallID: call.ID,
 				Name:       call.Name,
@@ -262,21 +261,21 @@ func (b *LocalModelBackend) runStreamingToolLoop(
 func (b *LocalModelBackend) runStreamingRound(
 	ctx context.Context,
 	cancel context.CancelFunc,
-	messages []llamawrapper.ChatMessage,
-	tools []llamawrapper.Tool,
+	messages []localmodel.ChatMessage,
+	tools []localmodel.Tool,
 	runCtx rtypes.AgentRunContext,
 	events *agentEventBuilder,
 ) (localStreamingRoundResult, error) {
 	enableThinking := b.Manager.EnableThinking()
 	numPredict := -1 // unlimited by default
 
-	completionReq := llamawrapper.ChatCompletionRequest{
+	completionReq := localmodel.ChatCompletionRequest{
 		Model:          b.Manager.ModelID(),
 		Messages:       messages,
 		Tools:          tools,
 		MaxTokens:      &numPredict,
 		Stream:         true,
-		EnableThinking: llamawrapper.BoolPtr(enableThinking),
+		EnableThinking: localmodel.BoolPtr(enableThinking),
 	}
 
 	ch, err := b.Manager.CreateChatCompletionStream(ctx, completionReq)
@@ -315,7 +314,7 @@ func (b *LocalModelBackend) runStreamingRound(
 		responseID    string
 		finish        string
 		usage         map[string]any
-		streamTC      []llamawrapper.ToolCall // tool calls extracted by the engine's stream parser
+		streamTC      []localmodel.ToolCall // tool calls extracted by the engine's stream parser
 		hadReasoning  bool
 		reasoningDone bool
 	)
@@ -412,7 +411,7 @@ recvLoop:
 	// understands Qwen3 <tool_call> JSON, Qwen3.5 XML, etc.).
 	// Fall back to regex extraction from raw text for legacy/unknown models.
 	finalText := strings.TrimSpace(fullText.String())
-	var toolCalls []llamawrapper.ToolCall
+	var toolCalls []localmodel.ToolCall
 
 	if len(streamTC) > 0 {
 		toolCalls = streamTC
@@ -497,7 +496,7 @@ func (b *LocalModelBackend) resolveBlockSendTimeout() time.Duration {
 
 // estimateLlamaMessagesTokens gives a rough token count for a set of
 // llamawrapper messages + tool definitions. The heuristic is ~4 chars/token.
-func estimateLlamaMessagesTokens(messages []llamawrapper.ChatMessage, tools []llamawrapper.Tool) int {
+func estimateLlamaMessagesTokens(messages []localmodel.ChatMessage, tools []localmodel.Tool) int {
 	chars := 0
 	for _, m := range messages {
 		content := ""
@@ -522,10 +521,10 @@ func estimateLlamaMessagesTokens(messages []llamawrapper.ChatMessage, tools []ll
 // (keeping the system prompt at [0] and the user message at [len-1]) until
 // the estimated prompt token count fits within budget.
 func truncateLlamaMessagesToFit(
-	messages []llamawrapper.ChatMessage,
-	tools []llamawrapper.Tool,
+	messages []localmodel.ChatMessage,
+	tools []localmodel.Tool,
 	budget int,
-) []llamawrapper.ChatMessage {
+) []localmodel.ChatMessage {
 	if budget <= 0 || len(messages) <= 2 {
 		return messages
 	}
@@ -561,10 +560,10 @@ func truncateLlamaMessagesToFit(
 // convertOpenAIMessagesToLlama converts OpenAI chat messages to llamawrapper
 // ChatMessage format so that the engine's model-specific renderer handles
 // prompt construction.
-func convertOpenAIMessagesToLlama(msgs []openAIChatMessage) []llamawrapper.ChatMessage {
-	out := make([]llamawrapper.ChatMessage, 0, len(msgs))
+func convertOpenAIMessagesToLlama(msgs []openAIChatMessage) []localmodel.ChatMessage {
+	out := make([]localmodel.ChatMessage, 0, len(msgs))
 	for _, m := range msgs {
-		cm := llamawrapper.ChatMessage{
+		cm := localmodel.ChatMessage{
 			Role:       m.Role,
 			Content:    ExtractOpenAICompatContent(m.Content),
 			Name:       m.Name,
@@ -575,11 +574,11 @@ func convertOpenAIMessagesToLlama(msgs []openAIChatMessage) []llamawrapper.ChatM
 			if tc.Index != nil {
 				idx = *tc.Index
 			}
-			cm.ToolCalls = append(cm.ToolCalls, llamawrapper.ToolCall{
+			cm.ToolCalls = append(cm.ToolCalls, localmodel.ToolCall{
 				ID:    tc.ID,
 				Index: idx,
 				Type:  string(tc.Type),
-				Function: llamawrapper.ToolFunction{
+				Function: localmodel.ToolFunction{
 					Name:      tc.Function.Name,
 					Arguments: tc.Function.Arguments,
 				},
@@ -592,16 +591,16 @@ func convertOpenAIMessagesToLlama(msgs []openAIChatMessage) []llamawrapper.ChatM
 
 // convertOpenAIToolsToLlama converts OpenAI tool definitions to llamawrapper
 // Tool format for the engine's model-specific tool formatting.
-func convertOpenAIToolsToLlama(tools []openAIToolDefinition) []llamawrapper.Tool {
-	out := make([]llamawrapper.Tool, 0, len(tools))
+func convertOpenAIToolsToLlama(tools []openAIToolDefinition) []localmodel.Tool {
+	out := make([]localmodel.Tool, 0, len(tools))
 	for _, t := range tools {
 		if t.Function == nil {
 			continue
 		}
 		params, _ := json.Marshal(t.Function.Parameters)
-		out = append(out, llamawrapper.Tool{
+		out = append(out, localmodel.Tool{
 			Type: string(t.Type),
-			Function: llamawrapper.ToolDefFunc{
+			Function: localmodel.ToolDefFunc{
 				Name:        t.Function.Name,
 				Description: t.Function.Description,
 				Parameters:  json.RawMessage(params),
@@ -618,11 +617,11 @@ func convertOpenAIToolsToLlama(tools []openAIToolDefinition) []llamawrapper.Tool
 // sanitizeLlamaMessages cleans and validates a slice of llamawrapper messages,
 // dropping empty messages, merging adjacent system messages, and ensuring
 // assistant tool-call messages have matching tool-result messages.
-func sanitizeLlamaMessages(messages []llamawrapper.ChatMessage) []llamawrapper.ChatMessage {
+func sanitizeLlamaMessages(messages []localmodel.ChatMessage) []localmodel.ChatMessage {
 	if len(messages) == 0 {
 		return nil
 	}
-	var sanitized []llamawrapper.ChatMessage
+	var sanitized []localmodel.ChatMessage
 	for i := 0; i < len(messages); i++ {
 		msg := messages[i]
 		role := strings.TrimSpace(strings.ToLower(msg.Role))
@@ -639,7 +638,7 @@ func sanitizeLlamaMessages(messages []llamawrapper.ChatMessage) []llamawrapper.C
 				sanitized[len(sanitized)-1].Content = strings.TrimSpace(prev + "\n\n" + text)
 				continue
 			}
-			sanitized = append(sanitized, llamawrapper.ChatMessage{Role: role, Content: text})
+			sanitized = append(sanitized, localmodel.ChatMessage{Role: role, Content: text})
 
 		case "assistant":
 			validCalls, _ := validateLlamaToolCalls(msg.ToolCalls)
@@ -647,10 +646,10 @@ func sanitizeLlamaMessages(messages []llamawrapper.ChatMessage) []llamawrapper.C
 				if text == "" {
 					continue
 				}
-				sanitized = append(sanitized, llamawrapper.ChatMessage{Role: "assistant", Content: text})
+				sanitized = append(sanitized, localmodel.ChatMessage{Role: "assistant", Content: text})
 				continue
 			}
-			responded := map[string]llamawrapper.ChatMessage{}
+			responded := map[string]localmodel.ChatMessage{}
 			j := i + 1
 			for ; j < len(messages); j++ {
 				next := messages[j]
@@ -664,7 +663,7 @@ func sanitizeLlamaMessages(messages []llamawrapper.ChatMessage) []llamawrapper.C
 				for _, call := range validCalls {
 					if call.ID == toolCallID {
 						nextContent, _ := next.Content.(string)
-						responded[toolCallID] = llamawrapper.ChatMessage{
+						responded[toolCallID] = localmodel.ChatMessage{
 							Role:       "tool",
 							ToolCallID: toolCallID,
 							Name:       strings.TrimSpace(next.Name),
@@ -674,7 +673,7 @@ func sanitizeLlamaMessages(messages []llamawrapper.ChatMessage) []llamawrapper.C
 					}
 				}
 			}
-			filteredCalls := make([]llamawrapper.ToolCall, 0, len(validCalls))
+			filteredCalls := make([]localmodel.ToolCall, 0, len(validCalls))
 			for _, call := range validCalls {
 				if _, ok := responded[call.ID]; ok {
 					filteredCalls = append(filteredCalls, call)
@@ -685,11 +684,11 @@ func sanitizeLlamaMessages(messages []llamawrapper.ChatMessage) []llamawrapper.C
 					i = j - 1
 					continue
 				}
-				sanitized = append(sanitized, llamawrapper.ChatMessage{Role: "assistant", Content: text})
+				sanitized = append(sanitized, localmodel.ChatMessage{Role: "assistant", Content: text})
 				i = j - 1
 				continue
 			}
-			sanitized = append(sanitized, llamawrapper.ChatMessage{
+			sanitized = append(sanitized, localmodel.ChatMessage{
 				Role:      "assistant",
 				Content:   text,
 				ToolCalls: filteredCalls,
@@ -708,8 +707,8 @@ func sanitizeLlamaMessages(messages []llamawrapper.ChatMessage) []llamawrapper.C
 
 // validateLlamaToolCalls checks that each tool call has a non-empty ID and
 // function name, defaulting Type to "function" if empty.
-func validateLlamaToolCalls(calls []llamawrapper.ToolCall) ([]llamawrapper.ToolCall, error) {
-	validated := make([]llamawrapper.ToolCall, 0, len(calls))
+func validateLlamaToolCalls(calls []localmodel.ToolCall) ([]localmodel.ToolCall, error) {
+	validated := make([]localmodel.ToolCall, 0, len(calls))
 	for _, call := range calls {
 		callID := strings.TrimSpace(call.ID)
 		if callID == "" {
@@ -736,13 +735,13 @@ func validateLlamaToolCalls(calls []llamawrapper.ToolCall) ([]llamawrapper.ToolC
 // ---------------------------------------------------------------------------
 
 // extractLocalToolCalls scans model output text for ```tool_call``` blocks
-// and returns structured llamawrapper.ToolCall values plus the remaining
+// and returns structured localmodel.ToolCall values plus the remaining
 // clean text. If no tool calls are found, returns nil and the original text.
-func extractLocalToolCalls(text string) ([]llamawrapper.ToolCall, string) {
+func extractLocalToolCalls(text string) ([]localmodel.ToolCall, string) {
 	const startMarker = "```tool_call"
 	const endMarker = "```"
 
-	var toolCalls []llamawrapper.ToolCall
+	var toolCalls []localmodel.ToolCall
 	remaining := text
 	callIdx := 0
 
@@ -780,11 +779,11 @@ func extractLocalToolCalls(text string) ([]llamawrapper.ToolCall, string) {
 		}
 
 		callID := fmt.Sprintf("local_%d", time.Now().UnixNano())
-		toolCalls = append(toolCalls, llamawrapper.ToolCall{
+		toolCalls = append(toolCalls, localmodel.ToolCall{
 			Index: callIdx,
 			ID:    callID,
 			Type:  "function",
-			Function: llamawrapper.ToolFunction{
+			Function: localmodel.ToolFunction{
 				Name:      strings.TrimSpace(parsed.Name),
 				Arguments: rawArgs,
 			},
