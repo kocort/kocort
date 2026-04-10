@@ -72,17 +72,27 @@ npm run dev
 go test ./...
 ```
 
-### 4.2 llama / cerebellum 相关测试
+### 4.2 llamadl / cerebellum 相关测试
 
-脚本里已有针对带 tag 的测试流程：
+脚本里已有针对测试流程：
 
 ```bash
 ./scripts/build.sh --test
 ```
 
+集成测试（需要真实的 llama.cpp 库和模型）使用 `integration` build tag：
+
+```bash
+# 先设置库路径
+export KOCORT_LLAMA_LIB_DIR=/path/to/llama-libs
+
+# 运行集成测试
+go test -tags integration -v ./internal/localmodel/...
+```
+
 ### 4.3 仓库自带快速运行示例
 
-`runtest.sh` 当前保存了一条带 `llamacpp` tag 的本地网关启动命令，可作为临时调试参考。
+`runtest.sh` 当前保存了一条本地网关启动命令，可作为临时调试参考。
 
 ## 5. 推荐的代码阅读顺序
 

@@ -1,6 +1,3 @@
 # GitHub Linguist overrides
-# Mark vendored C/C++ dependencies so GitHub correctly identifies this as a Go project
-internal/llama/llama.cpp/** linguist-vendored
-CMakeLists.txt linguist-vendored
-CMakePresets.json linguist-vendored
+# Mark vendored dependencies so GitHub correctly identifies this as a Go project
 web/** linguist-vendored

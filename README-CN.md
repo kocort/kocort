@@ -225,7 +225,7 @@ Kocort 实现了多层纵深防御：
 
 - Go 1.23+
 - Node.js 20+ 与 npm（用于构建内嵌 `web/` 前端）
-- （可选）CGO 环境（启用本地模型推理）
+- （可选）llama.cpp 共享库用于本地模型推理（首次使用时自动下载，或设置 `KOCORT_LLAMA_LIB_DIR`）
 
 ### 编译
 
@@ -409,7 +409,7 @@ kocort/
 | **语言** | Go 1.23 |
 | **HTTP 框架** | Gin |
 | **LLM SDK** | go-openai, anthropic-sdk-go |
-| **本地推理** | llama.cpp (CGO), GGUF 格式 |
+| **本地推理** | llama.cpp (purego 动态加载), GGUF 格式 |
 | **WebSocket** | gorilla/websocket |
 | **前端** | Next.js |
 | **任务调度** | robfig/cron |

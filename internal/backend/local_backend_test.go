@@ -13,7 +13,6 @@ import (
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/delivery"
 	"github.com/kocort/kocort/internal/localmodel"
-	"github.com/kocort/kocort/internal/localmodel/llamawrapper"
 	"github.com/kocort/kocort/internal/rtypes"
 )
 
@@ -25,7 +24,7 @@ import (
 type fakeBackend struct {
 	// createStream is called by CreateChatCompletionStream. Tests configure
 	// this to control what the stream produces.
-	createStream func(ctx context.Context, req llamawrapper.ChatCompletionRequest, enableThinking bool) (<-chan llamawrapper.ChatCompletionChunk, error)
+	createStream func(ctx context.Context, req localmodel.ChatCompletionRequest, enableThinking bool) (<-chan localmodel.ChatCompletionChunk, error)
 	contextSize  int
 }
 
@@ -41,12 +40,12 @@ func (f *fakeBackend) ContextSize() int {
 	return 4096
 }
 func (f *fakeBackend) SetSamplingParams(_ localmodel.SamplingParams) {}
-func (f *fakeBackend) CreateChatCompletionStream(ctx context.Context, req llamawrapper.ChatCompletionRequest, enableThinking bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+func (f *fakeBackend) CreateChatCompletionStream(ctx context.Context, req localmodel.ChatCompletionRequest, enableThinking bool) (<-chan localmodel.ChatCompletionChunk, error) {
 	if f.createStream != nil {
 		return f.createStream(ctx, req, enableThinking)
 	}
 	// Default: single stop chunk
-	ch := make(chan llamawrapper.ChatCompletionChunk, 1)
+	ch := make(chan localmodel.ChatCompletionChunk, 1)
 	ch <- finishChunk("stop")
 	close(ch)
 	return ch, nil
@@ -139,8 +138,8 @@ func newTestRunCtx(tools ...rtypes.Tool) rtypes.AgentRunContext {
 }
 
 // streamFromChunks creates a ChatCompletionChunk channel from a list of chunks.
-func streamFromChunks(chunks ...llamawrapper.ChatCompletionChunk) <-chan llamawrapper.ChatCompletionChunk {
-	ch := make(chan llamawrapper.ChatCompletionChunk, len(chunks))
+func streamFromChunks(chunks ...localmodel.ChatCompletionChunk) <-chan localmodel.ChatCompletionChunk {
+	ch := make(chan localmodel.ChatCompletionChunk, len(chunks))
 	for _, c := range chunks {
 		ch <- c
 	}
@@ -152,27 +151,27 @@ func streamFromChunks(chunks ...llamawrapper.ChatCompletionChunk) <-chan llamawr
 func strPtr(s string) *string { return &s }
 
 // textChunk builds a ChatCompletionChunk with text content.
-func textChunk(s string) llamawrapper.ChatCompletionChunk {
-	return llamawrapper.ChatCompletionChunk{
-		Choices: []llamawrapper.ChunkChoice{{
-			Delta: llamawrapper.ChunkDelta{Content: s},
+func textChunk(s string) localmodel.ChatCompletionChunk {
+	return localmodel.ChatCompletionChunk{
+		Choices: []localmodel.ChunkChoice{{
+			Delta: localmodel.ChunkDelta{Content: s},
 		}},
 	}
 }
 
 // reasoningChunk builds a ChatCompletionChunk with reasoning content.
-func reasoningChunk(s string) llamawrapper.ChatCompletionChunk {
-	return llamawrapper.ChatCompletionChunk{
-		Choices: []llamawrapper.ChunkChoice{{
-			Delta: llamawrapper.ChunkDelta{Reasoning: s},
+func reasoningChunk(s string) localmodel.ChatCompletionChunk {
+	return localmodel.ChatCompletionChunk{
+		Choices: []localmodel.ChunkChoice{{
+			Delta: localmodel.ChunkDelta{Reasoning: s},
 		}},
 	}
 }
 
 // finishChunk builds a ChatCompletionChunk with only a finish reason.
-func finishChunk(reason string) llamawrapper.ChatCompletionChunk {
-	return llamawrapper.ChatCompletionChunk{
-		Choices: []llamawrapper.ChunkChoice{{
+func finishChunk(reason string) localmodel.ChatCompletionChunk {
+	return localmodel.ChatCompletionChunk{
+		Choices: []localmodel.ChunkChoice{{
 			FinishReason: strPtr(reason),
 		}},
 	}
@@ -180,30 +179,30 @@ func finishChunk(reason string) llamawrapper.ChatCompletionChunk {
 
 // toolCallFinishChunk builds a ChatCompletionChunk with tool calls and
 // "tool_calls" finish reason.
-func toolCallFinishChunk(calls ...llamawrapper.ToolCall) llamawrapper.ChatCompletionChunk {
-	return llamawrapper.ChatCompletionChunk{
-		Choices: []llamawrapper.ChunkChoice{{
-			Delta:        llamawrapper.ChunkDelta{ToolCalls: calls},
+func toolCallFinishChunk(calls ...localmodel.ToolCall) localmodel.ChatCompletionChunk {
+	return localmodel.ChatCompletionChunk{
+		Choices: []localmodel.ChunkChoice{{
+			Delta:        localmodel.ChunkDelta{ToolCalls: calls},
 			FinishReason: strPtr("tool_calls"),
 		}},
 	}
 }
 
 // textAndReasoningChunk builds a chunk carrying both text and reasoning.
-func textAndReasoningChunk(text, reasoning string) llamawrapper.ChatCompletionChunk {
-	return llamawrapper.ChatCompletionChunk{
-		Choices: []llamawrapper.ChunkChoice{{
-			Delta: llamawrapper.ChunkDelta{Content: text, Reasoning: reasoning},
+func textAndReasoningChunk(text, reasoning string) localmodel.ChatCompletionChunk {
+	return localmodel.ChatCompletionChunk{
+		Choices: []localmodel.ChunkChoice{{
+			Delta: localmodel.ChunkDelta{Content: text, Reasoning: reasoning},
 		}},
 	}
 }
 
-// makeToolCall is a shorthand for creating a llamawrapper.ToolCall.
-func makeToolCall(id, name, args string) llamawrapper.ToolCall {
-	return llamawrapper.ToolCall{
+// makeToolCall is a shorthand for creating a localmodel.ToolCall.
+func makeToolCall(id, name, args string) localmodel.ToolCall {
+	return localmodel.ToolCall{
 		ID:   id,
 		Type: "function",
-		Function: llamawrapper.ToolFunction{
+		Function: localmodel.ToolFunction{
 			Name:      name,
 			Arguments: args,
 		},
@@ -277,7 +276,7 @@ func TestLocalBackend_Run_StubInferencer(t *testing.T) {
 
 func TestLocalBackend_Run_SimpleTextResponse(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				textChunk("Hello "),
 				textChunk("World!"),
@@ -310,7 +309,7 @@ func TestLocalBackend_Run_SimpleTextResponse(t *testing.T) {
 
 func TestLocalBackend_Run_EmptyResponse(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				finishChunk("stop"),
 			), nil
@@ -328,7 +327,7 @@ func TestLocalBackend_Run_EmptyResponse(t *testing.T) {
 func TestLocalBackend_Run_FallsBackToToolResultWhenFinalIsEmpty(t *testing.T) {
 	callCount := 0
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			if callCount == 1 {
 				return streamFromChunks(
@@ -369,7 +368,7 @@ func TestLocalBackend_Run_FallsBackToToolResultWhenFinalIsEmpty(t *testing.T) {
 
 func TestLocalBackend_Run_StreamOpenFailure(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return nil, fmt.Errorf("model busy")
 		},
 	}
@@ -391,7 +390,7 @@ func TestLocalBackend_Run_StreamOpenFailure(t *testing.T) {
 
 func TestLocalBackend_Run_StreamClosesPremature(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			// Channel closes after partial text, no finish chunk
 			return streamFromChunks(
 				textChunk("partial "),
@@ -419,7 +418,7 @@ func TestLocalBackend_Run_StreamClosesPremature(t *testing.T) {
 
 func TestLocalBackend_Run_ReasoningContent(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				reasoningChunk("Let me think..."),
 				textChunk("The answer is 42."),
@@ -460,7 +459,7 @@ func TestLocalBackend_Run_SingleToolCall(t *testing.T) {
 	callCount := 0
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, req llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, req localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			if callCount == 1 {
 				// First round: model requests a tool call
@@ -510,7 +509,7 @@ func TestLocalBackend_Run_ToolExecutionFailure(t *testing.T) {
 	callCount := 0
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			if callCount == 1 {
 				return streamFromChunks(
@@ -560,7 +559,7 @@ func TestLocalBackend_Run_ToolExecutionFailure(t *testing.T) {
 
 func TestLocalBackend_Run_ToolFatalError(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				toolCallFinishChunk(makeToolCall("call_fatal", "fatal_tool", `{}`)),
 			), nil
@@ -594,9 +593,9 @@ func TestLocalBackend_Run_ToolFatalError(t *testing.T) {
 
 func TestLocalBackend_Run_ToolCallsWithNoCalls(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
-			return streamFromChunks(llamawrapper.ChatCompletionChunk{
-				Choices: []llamawrapper.ChunkChoice{{
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
+			return streamFromChunks(localmodel.ChatCompletionChunk{
+				Choices: []localmodel.ChunkChoice{{
 					FinishReason: strPtr("tool_calls"),
 					// No tool calls despite finish reason
 				}},
@@ -623,7 +622,7 @@ func TestLocalBackend_Run_MultipleToolRounds(t *testing.T) {
 	callCount := 0
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			switch callCount {
 			case 1:
@@ -671,9 +670,9 @@ func TestLocalBackend_Run_MultipleToolRounds(t *testing.T) {
 
 func TestLocalBackend_Run_ContextCancelled(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(ctx context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(ctx context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			// Create a stream that blocks until context is cancelled
-			ch := make(chan llamawrapper.ChatCompletionChunk)
+			ch := make(chan localmodel.ChatCompletionChunk)
 			go func() {
 				<-ctx.Done()
 				close(ch)
@@ -711,8 +710,8 @@ func TestLocalBackend_Run_ContextCancelled(t *testing.T) {
 
 func TestLocalBackend_Run_RequestTimeout(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(ctx context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
-			ch := make(chan llamawrapper.ChatCompletionChunk)
+		createStream: func(ctx context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
+			ch := make(chan localmodel.ChatCompletionChunk)
 			go func() {
 				<-ctx.Done()
 				close(ch)
@@ -738,7 +737,7 @@ func TestLocalBackend_Run_RequestTimeout(t *testing.T) {
 
 func TestLocalBackend_Run_UsageAndResponseID(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, req llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, req localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				textChunk("Response text."),
 				finishChunk("stop"),
@@ -769,7 +768,7 @@ func TestLocalBackend_Run_UsageAndResponseID(t *testing.T) {
 
 func TestLocalBackend_Run_EventsRecorded(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				textChunk("Hello"),
 				finishChunk("stop"),
@@ -817,7 +816,7 @@ func TestLocalBackend_Run_ToolWithMediaURL(t *testing.T) {
 	callCount := 0
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			if callCount == 1 {
 				return streamFromChunks(
@@ -867,12 +866,12 @@ func TestLocalBackend_Run_ToolWithMediaURL(t *testing.T) {
 
 func TestLocalBackend_Run_ToolInvalidArguments(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
-				toolCallFinishChunk(llamawrapper.ToolCall{
+				toolCallFinishChunk(localmodel.ToolCall{
 					ID:   "call_bad_json",
 					Type: "function",
-					Function: llamawrapper.ToolFunction{
+					Function: localmodel.ToolFunction{
 						Name:      "some_tool",
 						Arguments: `{invalid json`,
 					},
@@ -903,7 +902,7 @@ func TestLocalBackend_Run_ToolWithMultipleMediaURLs(t *testing.T) {
 	callCount := 0
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			if callCount == 1 {
 				return streamFromChunks(
@@ -1029,7 +1028,7 @@ func TestResolveBlockSendTimeout_Configured(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestEstimateLlamaMessagesTokens(t *testing.T) {
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{Role: "system", Content: "You are helpful."},
 		{Role: "user", Content: "Hello"},
 	}
@@ -1040,13 +1039,13 @@ func TestEstimateLlamaMessagesTokens(t *testing.T) {
 }
 
 func TestEstimateLlamaMessagesTokens_WithTools(t *testing.T) {
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{Role: "user", Content: "Hello"},
 	}
-	tools := []llamawrapper.Tool{
+	tools := []localmodel.Tool{
 		{
 			Type: "function",
-			Function: llamawrapper.ToolDefFunc{
+			Function: localmodel.ToolDefFunc{
 				Name:        "read_file",
 				Description: "Read a file from disk",
 			},
@@ -1059,14 +1058,14 @@ func TestEstimateLlamaMessagesTokens_WithTools(t *testing.T) {
 }
 
 func TestEstimateLlamaMessagesTokens_WithToolCalls(t *testing.T) {
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{
 			Role: "assistant",
-			ToolCalls: []llamawrapper.ToolCall{
+			ToolCalls: []localmodel.ToolCall{
 				{
 					ID:       "call_1",
 					Type:     "function",
-					Function: llamawrapper.ToolFunction{Name: "foo", Arguments: `{"bar":"baz"}`},
+					Function: localmodel.ToolFunction{Name: "foo", Arguments: `{"bar":"baz"}`},
 				},
 			},
 		},
@@ -1082,7 +1081,7 @@ func TestEstimateLlamaMessagesTokens_WithToolCalls(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTruncateLlamaMessagesToFit_WithinBudget(t *testing.T) {
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{Role: "system", Content: "sys"},
 		{Role: "user", Content: "hi"},
 	}
@@ -1093,7 +1092,7 @@ func TestTruncateLlamaMessagesToFit_WithinBudget(t *testing.T) {
 }
 
 func TestTruncateLlamaMessagesToFit_ExceedsBudget(t *testing.T) {
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{Role: "system", Content: "You are a helpful assistant."},
 		{Role: "user", Content: strings.Repeat("A very long message. ", 100)},
 		{Role: "assistant", Content: strings.Repeat("A verbose response. ", 100)},
@@ -1118,7 +1117,7 @@ func TestTruncateLlamaMessagesToFit_ExceedsBudget(t *testing.T) {
 }
 
 func TestTruncateLlamaMessagesToFit_ZeroBudget(t *testing.T) {
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{Role: "system", Content: "sys"},
 		{Role: "user", Content: "hi"},
 	}
@@ -1130,7 +1129,7 @@ func TestTruncateLlamaMessagesToFit_ZeroBudget(t *testing.T) {
 }
 
 func TestTruncateLlamaMessagesToFit_TwoMessages(t *testing.T) {
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{Role: "system", Content: "sys"},
 		{Role: "user", Content: "hi"},
 	}
@@ -1146,10 +1145,10 @@ func TestTruncateLlamaMessagesToFit_TwoMessages(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLocalBackend_Run_RequestStructure(t *testing.T) {
-	var capturedReq llamawrapper.ChatCompletionRequest
+	var capturedReq localmodel.ChatCompletionRequest
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, req llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, req localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			capturedReq = req
 			return streamFromChunks(
 				textChunk("ok"),
@@ -1188,10 +1187,10 @@ func TestLocalBackend_Run_RequestStructure(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLocalBackend_Run_NoSystemPrompt(t *testing.T) {
-	var capturedReq llamawrapper.ChatCompletionRequest
+	var capturedReq localmodel.ChatCompletionRequest
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, req llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, req localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			capturedReq = req
 			return streamFromChunks(
 				textChunk("ok"),
@@ -1224,7 +1223,7 @@ func TestLocalBackend_Run_NoSystemPrompt(t *testing.T) {
 func TestLocalBackend_Run_StreamingRoundFailure(t *testing.T) {
 	callCount := 0
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			if callCount == 1 {
 				return streamFromChunks(
@@ -1257,7 +1256,7 @@ func TestLocalBackend_Run_StreamingRoundFailure(t *testing.T) {
 func TestLocalBackend_Run_ToolEmptyArguments(t *testing.T) {
 	callCount := 0
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			if callCount == 1 {
 				return streamFromChunks(
@@ -1291,7 +1290,7 @@ func TestLocalBackend_Run_ToolEmptyArguments(t *testing.T) {
 
 func TestLocalBackend_Run_FinishReasonNonToolCalls(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				textChunk("partial output"),
 				finishChunk("length"),
@@ -1320,7 +1319,7 @@ func TestLocalBackend_Run_FinishReasonNonToolCalls(t *testing.T) {
 
 func TestLocalBackend_Run_ExistingDeadline(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				textChunk("ok"),
 				finishChunk("stop"),
@@ -1353,7 +1352,7 @@ func TestLocalBackend_Run_PromptTruncation(t *testing.T) {
 
 	fi := &fakeBackend{
 		contextSize: 512, // Very small context to force truncation
-		createStream: func(_ context.Context, req llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, req localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			capturedMsgCount = len(req.Messages)
 			return streamFromChunks(
 				textChunk("ok"),
@@ -1416,9 +1415,9 @@ func (r *toolExecutingRuntime) ExecuteTool(ctx context.Context, runCtx rtypes.Ag
 
 func TestLocalBackend_Run_WatchdogTimeout(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			// Stream that never produces output, causing watchdog timeout
-			ch := make(chan llamawrapper.ChatCompletionChunk)
+			ch := make(chan localmodel.ChatCompletionChunk)
 			// Don't close — let watchdog trigger
 			go func() {
 				time.Sleep(5 * time.Second)
@@ -1454,7 +1453,7 @@ func TestLocalBackend_Run_WatchdogTimeout(t *testing.T) {
 
 func TestLocalBackend_Run_TextAccumulation(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(
 				textChunk("A"),
 				textChunk("B"),
@@ -1485,7 +1484,7 @@ func TestLocalBackend_Run_StreamedToolCallDelta(t *testing.T) {
 	callCount := 0
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			callCount++
 			if callCount == 1 {
 				return streamFromChunks(
@@ -1525,10 +1524,10 @@ func TestLocalBackend_Run_StreamedToolCallDelta(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLocalBackend_Run_WithAvailableTools(t *testing.T) {
-	var capturedReq llamawrapper.ChatCompletionRequest
+	var capturedReq localmodel.ChatCompletionRequest
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, req llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, req localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			capturedReq = req
 			return streamFromChunks(
 				textChunk("ok"),
@@ -1651,11 +1650,11 @@ func TestConvertOpenAIToolsToLlama(t *testing.T) {
 // using a fake backend that produces chunks from the given arguments.
 // Returns the round result, the event builder (for inspecting recorded
 // events), and any error.
-func runRoundWithChunks(t *testing.T, chunks ...llamawrapper.ChatCompletionChunk) (localStreamingRoundResult, *agentEventBuilder, error) {
+func runRoundWithChunks(t *testing.T, chunks ...localmodel.ChatCompletionChunk) (localStreamingRoundResult, *agentEventBuilder, error) {
 	t.Helper()
 
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return streamFromChunks(chunks...), nil
 		},
 	}
@@ -1667,7 +1666,7 @@ func runRoundWithChunks(t *testing.T, chunks ...llamawrapper.ChatCompletionChunk
 	runCtx := newTestRunCtx()
 	events := newAgentEventBuilder(runCtx)
 
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{Role: "user", Content: "test"},
 	}
 
@@ -2082,7 +2081,7 @@ func TestRunStreamingRound_Delta_TextTrimmed(t *testing.T) {
 
 func TestRunStreamingRound_StreamOpenFailure(t *testing.T) {
 	fi := &fakeBackend{
-		createStream: func(_ context.Context, _ llamawrapper.ChatCompletionRequest, _ bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
+		createStream: func(_ context.Context, _ localmodel.ChatCompletionRequest, _ bool) (<-chan localmodel.ChatCompletionChunk, error) {
 			return nil, fmt.Errorf("GPU not available")
 		},
 	}
@@ -2093,7 +2092,7 @@ func TestRunStreamingRound_StreamOpenFailure(t *testing.T) {
 	runCtx := newTestRunCtx()
 	events := newAgentEventBuilder(runCtx)
 
-	messages := []llamawrapper.ChatMessage{
+	messages := []localmodel.ChatMessage{
 		{Role: "user", Content: "test"},
 	}
 

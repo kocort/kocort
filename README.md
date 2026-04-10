@@ -225,7 +225,7 @@ Kocort implements defense-in-depth with multiple layers:
 
 - Go 1.23+
 - Node.js 20+ and npm (required to build the embedded `web/` frontend)
-- (Optional) CGO environment (for local model inference)
+- (Optional) llama.cpp shared libraries for local model inference (downloaded automatically or set `KOCORT_LLAMA_LIB_DIR`)
 
 ### Build
 
@@ -410,7 +410,7 @@ kocort/
 | **Language** | Go 1.23 |
 | **HTTP Framework** | Gin |
 | **LLM SDK** | go-openai, anthropic-sdk-go |
-| **Local Inference** | llama.cpp (CGO), GGUF format |
+| **Local Inference** | llama.cpp (purego dynamic loading), GGUF format |
 | **WebSocket** | gorilla/websocket |
 | **Frontend** | Next.js |
 | **Task Scheduling** | robfig/cron |

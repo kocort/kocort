@@ -10,7 +10,6 @@ import (
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/delivery"
 	"github.com/kocort/kocort/internal/localmodel"
-	"github.com/kocort/kocort/internal/localmodel/llamawrapper"
 	"github.com/kocort/kocort/runtime"
 )
 
@@ -40,8 +39,8 @@ func (b *brainLocalTestBackend) ContextSize() int {
 
 func (b *brainLocalTestBackend) SetSamplingParams(localmodel.SamplingParams) {}
 
-func (b *brainLocalTestBackend) CreateChatCompletionStream(context.Context, llamawrapper.ChatCompletionRequest, bool) (<-chan llamawrapper.ChatCompletionChunk, error) {
-	ch := make(chan llamawrapper.ChatCompletionChunk)
+func (b *brainLocalTestBackend) CreateChatCompletionStream(context.Context, localmodel.ChatCompletionRequest, bool) (<-chan localmodel.ChatCompletionChunk, error) {
+	ch := make(chan localmodel.ChatCompletionChunk)
 	close(ch)
 	return ch, nil
 }
