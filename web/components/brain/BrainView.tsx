@@ -28,7 +28,7 @@ import {
 import { useI18n } from '@/lib/i18n/I18nContext';
 import { resolveLocalizedText } from '@/lib/i18n/localizedText';
 import { ErrorAlert, Modal, PageHeader, Select, ConfirmDialog } from '@/components/ui';
-import { apiGet, apiPost, type BrainModelPreset, type BrainModelRecord, type BrainState, type CerebellumState, type LocalModelState, type NetworkState, type SamplingParams, type OAuthDeviceCodeStartResponse, type OAuthDeviceCodePollResponse, type OAuthStatusResponse } from '@/lib/api';
+import { apiGet, apiPost, type BrainModelPreset, type BrainModelRecord, type BrainState, type CerebellumState, type LocalModelState, type ModelCapabilities, type NetworkState, type SamplingParams, type OAuthDeviceCodeStartResponse, type OAuthDeviceCodePollResponse, type OAuthStatusResponse } from '@/lib/api';
 
 type ModelForm = {
   mode: 'preset' | 'custom';
@@ -117,6 +117,33 @@ function formatBytes(bytes: number): string {
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / Math.pow(1024, i);
   return `${value.toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
+}
+
+function getPresetModelId(preset: { modelId?: string; filename?: string; id: string }): string {
+  return preset.modelId || preset.filename?.replace(/\.gguf$/i, '') || preset.id;
+}
+
+function capabilityBadgeItems(t: (key: string) => string, capabilities?: ModelCapabilities) {
+  const items: Array<{ key: string; label: string; className: string }> = [];
+  if (capabilities?.vision) {
+    items.push({ key: 'vision', label: t('brain.vision'), className: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400' });
+  }
+  if (capabilities?.audio) {
+    items.push({ key: 'audio', label: t('brain.audio'), className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' });
+  }
+  if (capabilities?.video) {
+    items.push({ key: 'video', label: t('brain.video'), className: 'bg-violet-500/10 text-violet-600 dark:text-violet-400' });
+  }
+  if (capabilities?.tools) {
+    items.push({ key: 'tools', label: t('chat.capabilityTools'), className: 'bg-sky-500/10 text-sky-600 dark:text-sky-400' });
+  }
+  if (capabilities?.reasoning) {
+    items.push({ key: 'reasoning', label: t('brain.reasoning'), className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' });
+  }
+  if (capabilities?.coding) {
+    items.push({ key: 'coding', label: t('brain.coding'), className: 'bg-rose-500/10 text-rose-600 dark:text-rose-400' });
+  }
+  return items;
 }
 
 const API_KIND_OPTIONS = [
@@ -215,6 +242,8 @@ export function BrainView() {
   const brainLocal = state?.brainLocal;
   const dlProgress = cerebellum?.downloadProgress;
   const brainLocalDlProgress = brainLocal?.downloadProgress;
+  const libDlProgress = cerebellum?.libDownloadProgress;
+  const brainLocalLibDlProgress = brainLocal?.libDownloadProgress;
 
   const loadState = useCallback(async () => {
     setError('');
@@ -239,7 +268,9 @@ export function BrainView() {
         setState(next);
         const cerebellumActive = next.cerebellum?.downloadProgress?.active;
         const brainLocalActive = next.brainLocal?.downloadProgress?.active;
-        if (!cerebellumActive && !brainLocalActive) {
+        const cerebellumLibActive = next.cerebellum?.libDownloadProgress?.active;
+        const brainLocalLibActive = next.brainLocal?.libDownloadProgress?.active;
+        if (!cerebellumActive && !brainLocalActive && !cerebellumLibActive && !brainLocalLibActive) {
           if (pollRef.current) {
             clearInterval(pollRef.current);
             pollRef.current = null;
@@ -295,12 +326,12 @@ export function BrainView() {
 
   // Start polling when a download is detected as active
   useEffect(() => {
-    if (dlProgress?.active || brainLocalDlProgress?.active) {
+    if (dlProgress?.active || brainLocalDlProgress?.active || libDlProgress?.active || brainLocalLibDlProgress?.active) {
       startProgressPoll();
     } else {
       stopProgressPoll();
     }
-  }, [dlProgress?.active, brainLocalDlProgress?.active, startProgressPoll, stopProgressPoll]);
+  }, [dlProgress?.active, brainLocalDlProgress?.active, libDlProgress?.active, brainLocalLibDlProgress?.active, startProgressPoll, stopProgressPoll]);
 
   // Start polling when a lifecycle status is transitional
   useEffect(() => {
@@ -575,6 +606,16 @@ export function BrainView() {
     }
   };
 
+  const cerebellumCancelLibDownload = async () => {
+    setError('');
+    try {
+      const next = await apiPost<BrainState>('/api/engine/brain/cerebellum/download/cancel-lib', {});
+      setState(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('brain.downloadCancelError'));
+    }
+  };
+
   const cerebellumClearModel = async () => {
     setCerebellumOperating(true);
     setError('');
@@ -694,6 +735,16 @@ export function BrainView() {
     }
   };
 
+  const brainLocalCancelLibDownload = async () => {
+    setError('');
+    try {
+      const next = await apiPost<BrainState>('/api/engine/brain/local/download/cancel-lib', {});
+      setState(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('brain.downloadCancelError'));
+    }
+  };
+
   const brainLocalClearModel = async () => {
     setBrainLocalOperating(true);
     setError('');
@@ -758,7 +809,7 @@ export function BrainView() {
     const catalogList = src?.catalog || [];
     const selectedModelId = src?.modelId || '';
     const matchedPreset = catalogList.find((p) => {
-      const presetModelId = p.filename?.replace(/\.gguf$/i, '') || p.id;
+      const presetModelId = getPresetModelId(p);
       return presetModelId === selectedModelId || p.id === selectedModelId;
     });
     const dfl = matchedPreset?.defaults;
@@ -1150,6 +1201,7 @@ export function BrainView() {
                   <div className="space-y-2">
                     {(brainLocal?.models || []).map((model) => {
                       const isDefault = brainLocal?.modelId === model.id;
+                      const badges = capabilityBadgeItems(t, model.capabilities);
                       return (
                         <div
                           key={model.id}
@@ -1168,6 +1220,15 @@ export function BrainView() {
                               <span className="font-mono">{model.id}</span>
                               {model.size ? <span>· {model.size}</span> : null}
                             </div>
+                            {badges.length > 0 ? (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {badges.map((badge) => (
+                                  <span key={badge.key} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>
+                                    {badge.label}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                             {isDefault ? (
@@ -1217,9 +1278,10 @@ export function BrainView() {
                 <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('brain.catalogTitle')}</h4>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {brainLocalCatalog.map((preset) => {
-                    const alreadyDownloaded = brainLocalModelIds.has(preset.filename?.replace(/\.gguf$/i, '') || preset.id);
+                    const alreadyDownloaded = brainLocalModelIds.has(getPresetModelId(preset));
                     const isThisDownloading = brainLocalDlProgress?.active && brainLocalDlProgress.presetId === preset.id;
                     const presetDescription = resolveLocalizedText(preset.description, language);
+                    const badges = capabilityBadgeItems(t, preset.capabilities);
                     const pct =
                       isThisDownloading && brainLocalDlProgress.totalBytes > 0
                         ? Math.min(100, Math.round((brainLocalDlProgress.downloadedBytes / brainLocalDlProgress.totalBytes) * 100))
@@ -1237,34 +1299,82 @@ export function BrainView() {
                         {presetDescription ? (
                           <p className="text-xs text-zinc-500 dark:text-zinc-400">{presetDescription}</p>
                         ) : null}
+                        {badges.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {badges.map((badge) => (
+                              <span key={badge.key} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
 
                         {isThisDownloading ? (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-                              <span className="flex items-center gap-1">
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                {t('brain.catalogDownloading')}
-                              </span>
-                              <span>
-                                {brainLocalDlProgress.totalBytes > 0
-                                  ? `${formatBytes(brainLocalDlProgress.downloadedBytes)} / ${formatBytes(brainLocalDlProgress.totalBytes)} (${pct}%)`
-                                  : formatBytes(brainLocalDlProgress.downloadedBytes)}
-                              </span>
-                            </div>
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-                              <div
-                                className="h-full rounded-full bg-indigo-500 transition-all duration-300"
-                                style={{ width: brainLocalDlProgress.totalBytes > 0 ? `${pct}%` : '100%' }}
-                              />
-                            </div>
-                            <div className="flex justify-end">
-                              <button
-                                onClick={() => void brainLocalCancelDownload()}
-                                className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-                              >
-                                <Square className="h-3 w-3" />
-                                {t('common.cancel')}
-                              </button>
+                          <div className="space-y-2">
+                            {/* Library download progress (parallel) */}
+                            {brainLocalLibDlProgress?.active ? (() => {
+                              const libPct = brainLocalLibDlProgress.totalBytes > 0
+                                ? Math.min(100, Math.round((brainLocalLibDlProgress.downloadedBytes / brainLocalLibDlProgress.totalBytes) * 100))
+                                : 0;
+                              return (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+                                    <span className="flex items-center gap-1">
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      {t('brain.downloadingLibrary')}
+                                    </span>
+                                    <span>
+                                      {brainLocalLibDlProgress.totalBytes > 0
+                                        ? `${formatBytes(brainLocalLibDlProgress.downloadedBytes)} / ${formatBytes(brainLocalLibDlProgress.totalBytes)} (${libPct}%)`
+                                        : formatBytes(brainLocalLibDlProgress.downloadedBytes)}
+                                    </span>
+                                  </div>
+                                  <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                                    <div
+                                      className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                                      style={{ width: brainLocalLibDlProgress.totalBytes > 0 ? `${libPct}%` : '100%' }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-end">
+                                    <button
+                                      onClick={() => void brainLocalCancelLibDownload()}
+                                      className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                                    >
+                                      <Square className="h-3 w-3" />
+                                      {t('common.cancel')}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })() : null}
+                            {/* Model download progress */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+                                <span className="flex items-center gap-1">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  {t('brain.catalogDownloading')}
+                                </span>
+                                <span>
+                                  {brainLocalDlProgress.totalBytes > 0
+                                    ? `${formatBytes(brainLocalDlProgress.downloadedBytes)} / ${formatBytes(brainLocalDlProgress.totalBytes)} (${pct}%)`
+                                    : formatBytes(brainLocalDlProgress.downloadedBytes)}
+                                </span>
+                              </div>
+                              <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                                <div
+                                  className="h-full rounded-full bg-indigo-500 transition-all duration-300"
+                                  style={{ width: brainLocalDlProgress.totalBytes > 0 ? `${pct}%` : '100%' }}
+                                />
+                              </div>
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={() => void brainLocalCancelDownload()}
+                                  className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                                >
+                                  <Square className="h-3 w-3" />
+                                  {t('common.cancel')}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ) : (
@@ -1447,6 +1557,7 @@ export function BrainView() {
                   <div className="space-y-2">
                     {(cerebellum?.models || []).map((model) => {
                       const isDefault = cerebellum?.modelId === model.id;
+                      const badges = capabilityBadgeItems(t, model.capabilities);
                       return (
                         <div
                           key={model.id}
@@ -1465,6 +1576,15 @@ export function BrainView() {
                               <span className="font-mono">{model.id}</span>
                               {model.size ? <span>· {model.size}</span> : null}
                             </div>
+                            {badges.length > 0 ? (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {badges.map((badge) => (
+                                  <span key={badge.key} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>
+                                    {badge.label}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                             {isDefault ? (
@@ -1514,9 +1634,10 @@ export function BrainView() {
                 <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('brain.catalogTitle')}</h4>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {catalog.map((preset) => {
-                    const alreadyDownloaded = localModelIds.has(preset.filename?.replace(/\.gguf$/i, '') || preset.id);
+                    const alreadyDownloaded = localModelIds.has(getPresetModelId(preset));
                     const isThisDownloading = dlProgress?.active && dlProgress.presetId === preset.id;
                     const presetDescription = resolveLocalizedText(preset.description, language);
+                    const badges = capabilityBadgeItems(t, preset.capabilities);
                     const pct =
                       isThisDownloading && dlProgress.totalBytes > 0
                         ? Math.min(100, Math.round((dlProgress.downloadedBytes / dlProgress.totalBytes) * 100))
@@ -1534,35 +1655,83 @@ export function BrainView() {
                         {presetDescription ? (
                           <p className="text-xs text-zinc-500 dark:text-zinc-400">{presetDescription}</p>
                         ) : null}
+                        {badges.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {badges.map((badge) => (
+                              <span key={badge.key} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
 
                         {/* Download progress bar */}
                         {isThisDownloading ? (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-                              <span className="flex items-center gap-1">
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                {t('brain.catalogDownloading')}
-                              </span>
-                              <span>
-                                {dlProgress.totalBytes > 0
-                                  ? `${formatBytes(dlProgress.downloadedBytes)} / ${formatBytes(dlProgress.totalBytes)} (${pct}%)`
-                                  : formatBytes(dlProgress.downloadedBytes)}
-                              </span>
-                            </div>
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-                              <div
-                                className="h-full rounded-full bg-indigo-500 transition-all duration-300"
-                                style={{ width: dlProgress.totalBytes > 0 ? `${pct}%` : '100%' }}
-                              />
-                            </div>
-                            <div className="flex justify-end">
-                              <button
-                                onClick={() => void cerebellumCancelDownload()}
-                                className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-                              >
-                                <Square className="h-3 w-3" />
-                                {t('common.cancel')}
-                              </button>
+                          <div className="space-y-2">
+                            {/* Library download progress (parallel) */}
+                            {libDlProgress?.active ? (() => {
+                              const libPct = libDlProgress.totalBytes > 0
+                                ? Math.min(100, Math.round((libDlProgress.downloadedBytes / libDlProgress.totalBytes) * 100))
+                                : 0;
+                              return (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+                                    <span className="flex items-center gap-1">
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      {t('brain.downloadingLibrary')}
+                                    </span>
+                                    <span>
+                                      {libDlProgress.totalBytes > 0
+                                        ? `${formatBytes(libDlProgress.downloadedBytes)} / ${formatBytes(libDlProgress.totalBytes)} (${libPct}%)`
+                                        : formatBytes(libDlProgress.downloadedBytes)}
+                                    </span>
+                                  </div>
+                                  <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                                    <div
+                                      className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                                      style={{ width: libDlProgress.totalBytes > 0 ? `${libPct}%` : '100%' }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-end">
+                                    <button
+                                      onClick={() => void cerebellumCancelLibDownload()}
+                                      className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                                    >
+                                      <Square className="h-3 w-3" />
+                                      {t('common.cancel')}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })() : null}
+                            {/* Model download progress */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+                                <span className="flex items-center gap-1">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  {t('brain.catalogDownloading')}
+                                </span>
+                                <span>
+                                  {dlProgress.totalBytes > 0
+                                    ? `${formatBytes(dlProgress.downloadedBytes)} / ${formatBytes(dlProgress.totalBytes)} (${pct}%)`
+                                    : formatBytes(dlProgress.downloadedBytes)}
+                                </span>
+                              </div>
+                              <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+                                <div
+                                  className="h-full rounded-full bg-indigo-500 transition-all duration-300"
+                                  style={{ width: dlProgress.totalBytes > 0 ? `${pct}%` : '100%' }}
+                                />
+                              </div>
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={() => void cerebellumCancelDownload()}
+                                  className="flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                                >
+                                  <Square className="h-3 w-3" />
+                                  {t('common.cancel')}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ) : (

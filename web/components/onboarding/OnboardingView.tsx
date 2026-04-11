@@ -26,6 +26,7 @@ import {
   type CerebellumState,
   type ChannelsState,
   type LocalizedText,
+  type ModelCapabilities,
   type OAuthDeviceCodeStartResponse,
   type OAuthDeviceCodePollResponse,
   type OAuthStatusResponse,
@@ -43,6 +44,33 @@ function formatBytes(bytes: number): string {
     unitIndex += 1;
   }
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function getPresetModelId(preset: { modelId?: string; filename?: string; id: string }): string {
+  return preset.modelId || preset.filename?.replace(/\.gguf$/i, '') || preset.id;
+}
+
+function capabilityBadgeItems(t: (key: string) => string, capabilities?: ModelCapabilities) {
+  const items: Array<{ key: string; label: string; className: string }> = [];
+  if (capabilities?.vision) {
+    items.push({ key: 'vision', label: t('brain.vision'), className: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400' });
+  }
+  if (capabilities?.audio) {
+    items.push({ key: 'audio', label: t('brain.audio'), className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' });
+  }
+  if (capabilities?.video) {
+    items.push({ key: 'video', label: t('brain.video'), className: 'bg-violet-500/10 text-violet-600 dark:text-violet-400' });
+  }
+  if (capabilities?.tools) {
+    items.push({ key: 'tools', label: t('chat.capabilityTools'), className: 'bg-sky-500/10 text-sky-600 dark:text-sky-400' });
+  }
+  if (capabilities?.reasoning) {
+    items.push({ key: 'reasoning', label: t('brain.reasoning'), className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' });
+  }
+  if (capabilities?.coding) {
+    items.push({ key: 'coding', label: t('brain.coding'), className: 'bg-rose-500/10 text-rose-600 dark:text-rose-400' });
+  }
+  return items;
 }
 
 interface OnboardingViewProps {
@@ -77,7 +105,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
   // ─── Step 2: Cerebellum State ───
   const [enableCerebellum, setEnableCerebellum] = useState(false);
   const [cerebellumCatalog, setCerebellumCatalog] = useState<Array<{
-    id: string; name: string; description?: LocalizedText; size?: string; filename?: string;
+    id: string; modelId?: string; name: string; description?: LocalizedText; size?: string; filename?: string; capabilities?: ModelCapabilities;
   }>>([]);
   const [selectedCerebellumModel, setSelectedCerebellumModel] = useState('');
   const [cerebellumState, setCerebellumState] = useState<CerebellumState | null>(null);
@@ -223,7 +251,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
   const ensureCerebellumDefaultModel = useCallback(async () => {
     if (!enableCerebellum || !selectedCerebellumModel) return;
     const selectedCatalogEntry = cerebellumCatalog.find((entry) => entry.id === selectedCerebellumModel);
-    const targetModelId = selectedCatalogEntry?.filename?.replace(/\.gguf$/i, '') || selectedCerebellumModel;
+    const targetModelId = selectedCatalogEntry ? getPresetModelId(selectedCatalogEntry) : selectedCerebellumModel;
     if (!targetModelId || cerebellumState?.modelId === targetModelId) return;
     const next = await apiPost<BrainState>('/api/engine/brain/cerebellum/model', { modelId: targetModelId });
     setCerebellumState(next.cerebellum || null);
@@ -298,7 +326,7 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
     setError('');
 
     const selectedCatalogEntry = cerebellumCatalog.find((entry) => entry.id === selectedCerebellumModel);
-    const selectedModelFileId = selectedCatalogEntry?.filename?.replace(/\.gguf$/i, '') || selectedCerebellumModel;
+    const selectedModelFileId = selectedCatalogEntry ? getPresetModelId(selectedCatalogEntry) : selectedCerebellumModel;
     const alreadyDownloaded = (cerebellumState?.models || []).some((model) => model.id === selectedModelFileId);
     const activeDownload = cerebellumState?.downloadProgress;
 
@@ -360,7 +388,8 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
 
   const selectedCerebellumEntry = cerebellumCatalog.find(c => c.id === selectedCerebellumModel);
   const cerebellumDownloadProgress = cerebellumState?.downloadProgress;
-  const selectedCerebellumModelId = selectedCerebellumEntry?.filename?.replace(/\.gguf$/i, '') || selectedCerebellumModel;
+  const cerebellumLibDlProgress = cerebellumState?.libDownloadProgress;
+  const selectedCerebellumModelId = selectedCerebellumEntry ? getPresetModelId(selectedCerebellumEntry) : selectedCerebellumModel;
   const selectedCerebellumDownloaded = (cerebellumState?.models || []).some((model) => model.id === selectedCerebellumModelId);
   const isSelectedCerebellumDownloading = cerebellumDownloadProgress?.active && cerebellumDownloadProgress.presetId === selectedCerebellumModel;
   const cerebellumDownloadPct =
@@ -708,10 +737,21 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
                             value: c.id,
                             label: c.name,
                             labelNode: (
-                              <div className="flex items-center justify-between w-full">
-                                <span>{c.name}</span>
+                              <div className="flex w-full items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate">{c.name}</div>
+                                  {capabilityBadgeItems(t, c.capabilities).length > 0 ? (
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {capabilityBadgeItems(t, c.capabilities).map((badge) => (
+                                        <span key={badge.key} className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
+                                          {badge.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
                                 {c.size && (
-                                  <span className="ml-2 text-xs text-zinc-400 dark:text-zinc-500">{c.size}</span>
+                                  <span className="ml-2 shrink-0 text-xs text-zinc-400 dark:text-zinc-500">{c.size}</span>
                                 )}
                               </div>
                             ),
@@ -729,8 +769,46 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
                         </div>
                       )}
 
+                      {selectedCerebellumEntry && capabilityBadgeItems(t, selectedCerebellumEntry.capabilities).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {capabilityBadgeItems(t, selectedCerebellumEntry.capabilities).map((badge) => (
+                            <span key={badge.key} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}>
+                              {badge.label}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
                       {isSelectedCerebellumDownloading && cerebellumDownloadProgress ? (
                         <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
+                          {/* Library download progress (parallel) */}
+                          {cerebellumLibDlProgress?.active ? (() => {
+                            const libPct = cerebellumLibDlProgress.totalBytes > 0
+                              ? Math.min(100, Math.round((cerebellumLibDlProgress.downloadedBytes / cerebellumLibDlProgress.totalBytes) * 100))
+                              : 0;
+                            return (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-sm text-zinc-600 dark:text-zinc-300">
+                                  <span className="flex items-center gap-2 font-medium">
+                                    <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                                    {t('brain.downloadingLibrary')}
+                                  </span>
+                                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                    {cerebellumLibDlProgress.totalBytes > 0
+                                      ? `${formatBytes(cerebellumLibDlProgress.downloadedBytes)} / ${formatBytes(cerebellumLibDlProgress.totalBytes)} (${libPct}%)`
+                                      : formatBytes(cerebellumLibDlProgress.downloadedBytes)}
+                                  </span>
+                                </div>
+                                <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                                  <div
+                                    className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                                    style={{ width: cerebellumLibDlProgress.totalBytes > 0 ? `${libPct}%` : '100%' }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })() : null}
+                          {/* Model download progress */}
                           <div className="flex items-center justify-between text-sm text-zinc-600 dark:text-zinc-300">
                             <span className="flex items-center gap-2 font-medium">
                               <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />

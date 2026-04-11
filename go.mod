@@ -10,7 +10,7 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gin-gonic/gin v1.10.1
 	github.com/gorilla/websocket v1.5.0
-	github.com/kocort/purego v0.10.0
+	github.com/kocort/purego v0.0.0-20260409111859-e0b5bd611496
 	github.com/larksuite/oapi-sdk-go/v3 v3.5.3
 	github.com/libi/ko-browser v0.1.1
 	github.com/robfig/cron/v3 v3.0.1

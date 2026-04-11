@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/kocort/kocort/internal/localmodel/download"
+	"github.com/kocort/kocort/internal/localmodel/ffi"
 )
 
 // ── Command handlers (download) ─────────────────────────────────────────────
@@ -63,13 +64,29 @@ func (m *Manager) handleDownloadModel(cmd *cmdDownloadModel) {
 		return
 	}
 
-	dlCtx, cancel := context.WithCancel(context.Background())
+	// Trigger library download via the global tracker (if needed).
+	cfgVer, cfgGPU, _, _ := ffi.LibraryStatus()
+	if !ffi.CheckLibrariesExist(ffi.DownloadConfig{Version: cfgVer, GPUType: cfgGPU}) {
+		var httpClient *http.Client
+		if m.dc != nil {
+			httpClient = m.dc.ClientWithTimeout(0)
+		}
+		// Best-effort start; ErrLibDLActive means another caller already started it.
+		_ = ffi.StartLibDownload(ffi.DownloadConfig{
+			Version:    cfgVer,
+			GPUType:    cfgGPU,
+			HTTPClient: httpClient,
+		})
+	}
+
+	// Set up model download.
+	modelCtx, modelCancel := context.WithCancel(context.Background())
 	m.dlProgress = DownloadProgress{
 		PresetID: cmd.presetID,
 		Filename: preset.PrimaryFilename(),
 		Active:   true,
 	}
-	m.dlCancel = cancel
+	m.dlCancel = modelCancel
 	m.dlReporter = &download.AtomicProgress{}
 	m.dlReporter.SetFilename(preset.PrimaryFilename())
 
@@ -78,6 +95,7 @@ func (m *Manager) handleDownloadModel(cmd *cmdDownloadModel) {
 	reporter := m.dlReporter
 	cmd.reply <- nil // accepted
 
+	// Start model download goroutine (runs in parallel with lib download).
 	go func() {
 		var client *http.Client
 		if dc != nil {
@@ -85,7 +103,7 @@ func (m *Manager) handleDownloadModel(cmd *cmdDownloadModel) {
 		} else {
 			client = &http.Client{}
 		}
-		err := download.Do(dlCtx, files, preset.ID, modelsDir, client, reporter)
+		err := download.Do(modelCtx, files, preset.ID, modelsDir, client, reporter)
 		canceled := errors.Is(err, context.Canceled)
 		ch <- &cmdDLDone{err: err, canceled: canceled}
 	}()
@@ -93,7 +111,7 @@ func (m *Manager) handleDownloadModel(cmd *cmdDownloadModel) {
 
 func (m *Manager) handleCancelDownload(cmd *cmdCancelDownload) {
 	if !m.dlProgress.Active || m.dlCancel == nil {
-		cmd.reply <- fmt.Errorf("no download is in progress")
+		cmd.reply <- fmt.Errorf("no model download is in progress")
 		return
 	}
 	m.dlCancel()

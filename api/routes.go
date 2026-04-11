@@ -48,6 +48,7 @@ func (s *Server) registerRoutes(engine *gin.Engine) {
 	engine.POST("/api/engine/brain/cerebellum/model/delete", engineHandler.CerebellumDeleteModel)
 	engine.POST("/api/engine/brain/cerebellum/download", engineHandler.CerebellumDownloadModel)
 	engine.POST("/api/engine/brain/cerebellum/download/cancel", engineHandler.CerebellumCancelDownload)
+	engine.POST("/api/engine/brain/cerebellum/download/cancel-lib", engineHandler.CerebellumCancelLibDownload)
 	engine.POST("/api/engine/brain/cerebellum/help", engineHandler.CerebellumHelp)
 	engine.POST("/api/engine/brain/mode", engineHandler.BrainModeSwitch)
 	engine.POST("/api/engine/brain/local/start", engineHandler.BrainLocalStart)
@@ -58,6 +59,7 @@ func (s *Server) registerRoutes(engine *gin.Engine) {
 	engine.POST("/api/engine/brain/local/model/delete", engineHandler.BrainLocalDeleteModel)
 	engine.POST("/api/engine/brain/local/download", engineHandler.BrainLocalDownloadModel)
 	engine.POST("/api/engine/brain/local/download/cancel", engineHandler.BrainLocalCancelDownload)
+	engine.POST("/api/engine/brain/local/download/cancel-lib", engineHandler.BrainLocalCancelLibDownload)
 	engine.POST("/api/engine/brain/local/params", engineHandler.BrainLocalUpdateParams)
 	engine.POST("/api/engine/brain/cerebellum/params", engineHandler.CerebellumUpdateParams)
 	engine.POST("/api/engine/brain/oauth/start", engineHandler.OAuthDeviceCodeStart)
@@ -92,6 +94,10 @@ func (s *Server) registerRoutes(engine *gin.Engine) {
 	engine.POST("/api/system/environment/reload", system.EnvironmentReload)
 	engine.GET("/api/system/network", system.Network)
 	engine.POST("/api/system/network/save", system.NetworkSave)
+	engine.GET("/api/system/llamacpp", system.LlamaCpp)
+	engine.POST("/api/system/llamacpp/save", system.LlamaCppSave)
+	engine.POST("/api/system/llamacpp/download", system.LlamaCppDownload)
+	engine.POST("/api/system/llamacpp/download/cancel", system.LlamaCppDownloadCancel)
 
 	// setup / onboarding routes
 	engine.GET("/api/setup/status", engineHandler.SetupStatus)

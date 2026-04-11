@@ -45,9 +45,10 @@ const (
 
 // ModelInfo describes an available local model file.
 type ModelInfo struct {
-	ID   string
-	Name string
-	Size string
+	ID           string
+	Name         string
+	Size         string
+	Capabilities catalog.Capabilities
 }
 
 // DownloadProgress tracks the state of an ongoing model download.

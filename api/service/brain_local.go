@@ -15,6 +15,7 @@ import (
 	"github.com/kocort/kocort/internal/core"
 	"github.com/kocort/kocort/internal/event"
 	"github.com/kocort/kocort/internal/localmodel"
+	"github.com/kocort/kocort/internal/localmodel/ffi"
 	"github.com/kocort/kocort/runtime"
 	"github.com/kocort/kocort/utils"
 )
@@ -48,23 +49,41 @@ func BuildBrainLocalState(rt *runtime.Runtime) *types.LocalModelState {
 			ID:   m.ID,
 			Name: m.Name,
 			Size: m.Size,
+			Capabilities: types.ModelCapabilities{
+				Vision:    m.Capabilities.Vision,
+				Audio:     m.Capabilities.Audio,
+				Video:     m.Capabilities.Video,
+				Tools:     m.Capabilities.Tools,
+				Reasoning: m.Capabilities.Reasoning,
+				Coding:    m.Capabilities.Coding,
+			},
 		}
 	}
 	catalog := make([]types.CerebellumModelPreset, len(snap.Catalog))
 	for i, p := range snap.Catalog {
+		caps := p.CapabilitiesResolved()
 		catalog[i] = types.CerebellumModelPreset{
 			ID:          p.ID,
+			ModelID:     p.ModelID(),
 			Name:        p.Name,
 			Description: cloneLocalizedText(p.Description),
 			Size:        p.Size,
 			DownloadURL: p.DownloadURL,
 			Filename:    p.Filename,
+			Capabilities: types.ModelCapabilities{
+				Vision:    caps.Vision,
+				Audio:     caps.Audio,
+				Video:     caps.Video,
+				Tools:     caps.Tools,
+				Reasoning: caps.Reasoning,
+				Coding:    caps.Coding,
+			},
 		}
 		if p.Defaults != nil {
 			catalog[i].Defaults = &types.ModelPresetDefaults{
-				Threads:     p.Defaults.Threads,
-				ContextSize: p.Defaults.ContextSize,
-				GpuLayers:   p.Defaults.GpuLayers,
+				Threads:        p.Defaults.Threads,
+				ContextSize:    p.Defaults.ContextSize,
+				GpuLayers:      p.Defaults.GpuLayers,
 				EnableThinking: p.Defaults.EnableThinking,
 			}
 			if p.Defaults.Sampling != nil {
@@ -94,17 +113,29 @@ func BuildBrainLocalState(rt *runtime.Runtime) *types.LocalModelState {
 			Error:           snap.DownloadProgress.Error,
 		}
 	}
+	var libProgress *types.LibDownloadProgress
+	libProg := ffi.GlobalLibDownloadTracker().Progress()
+	if libProg.Active || libProg.Canceled || libProg.Error != "" {
+		libProgress = &types.LibDownloadProgress{
+			DownloadedBytes: libProg.DownloadedBytes,
+			TotalBytes:      libProg.TotalBytes,
+			Active:          libProg.Active,
+			Canceled:        libProg.Canceled,
+			Error:           libProg.Error,
+		}
+	}
 	autoStart := brainLocalAutoStartEnabled(rt)
 	sp := snap.Sampling
 	return &types.LocalModelState{
-		Enabled:          enabled,
-		Status:           snap.Status,
-		ModelID:          snap.ModelID,
-		ModelsDir:        rt.Config.BrainLocal.ModelsDir,
-		Models:           models,
-		Catalog:          catalog,
-		LastError:        snap.LastError,
-		DownloadProgress: dlProgress,
+		Enabled:             enabled,
+		Status:              snap.Status,
+		ModelID:             snap.ModelID,
+		ModelsDir:           rt.Config.BrainLocal.ModelsDir,
+		Models:              models,
+		Catalog:             catalog,
+		LastError:           snap.LastError,
+		DownloadProgress:    dlProgress,
+		LibDownloadProgress: libProgress,
 		AutoStart:        autoStart,
 		EnableThinking:   snap.EnableThinking,
 		Sampling: &types.SamplingParams{
@@ -342,6 +373,15 @@ func BrainLocalCancelDownload(rt *runtime.Runtime) error {
 
 	recordBrainLocalEvent(rt, "brain_local_download_cancel_requested", "info",
 		"brain local model download cancel requested", nil)
+	return nil
+}
+
+// BrainLocalCancelLibDownload cancels the global library download.
+func BrainLocalCancelLibDownload(rt *runtime.Runtime) error {
+	if rt == nil || rt.BrainLocal == nil {
+		return errNoBrainLocal
+	}
+	ffi.GlobalLibDownloadTracker().Cancel()
 	return nil
 }
 

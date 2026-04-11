@@ -27,6 +27,7 @@ import (
 	hookspkg "github.com/kocort/kocort/internal/hooks"
 	"github.com/kocort/kocort/internal/infra"
 	"github.com/kocort/kocort/internal/localmodel"
+	"github.com/kocort/kocort/internal/localmodel/ffi"
 	memorypkg "github.com/kocort/kocort/internal/memory"
 	"github.com/kocort/kocort/internal/session"
 	"github.com/kocort/kocort/internal/task"
@@ -327,6 +328,15 @@ func (b *RuntimeBuilder) Build() (*Runtime, error) {
 	}
 
 	// ── Phase E2: cerebellum ────────────────────────────────────────
+	// Configure llama.cpp library version/GPU from persisted config.
+	// Use configDir/lib as the library cache so downloads land alongside config.
+	configDir := strings.TrimSpace(b.params.ConfigLoad.ConfigDir)
+	libCacheDir := ""
+	if configDir != "" {
+		libCacheDir = filepath.Join(configDir, "lib")
+	}
+	ffi.SetLibraryConfig(b.cfg.LlamaCpp.Version, b.cfg.LlamaCpp.GPUType, libCacheDir, dynamicHTTPClient.Client())
+
 	cerebellum := cerebellumpkg.NewManager(b.cfg.Cerebellum)
 	cerebellum.SetDynamicHTTPClient(dynamicHTTPClient)
 

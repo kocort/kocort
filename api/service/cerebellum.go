@@ -13,6 +13,7 @@ import (
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/event"
 	"github.com/kocort/kocort/internal/localmodel"
+	"github.com/kocort/kocort/internal/localmodel/ffi"
 	"github.com/kocort/kocort/runtime"
 	"github.com/kocort/kocort/utils"
 )
@@ -44,17 +45,35 @@ func BuildCerebellumState(rt *runtime.Runtime) *types.CerebellumState {
 			ID:   m.ID,
 			Name: m.Name,
 			Size: m.Size,
+			Capabilities: types.ModelCapabilities{
+				Vision:    m.Capabilities.Vision,
+				Audio:     m.Capabilities.Audio,
+				Video:     m.Capabilities.Video,
+				Tools:     m.Capabilities.Tools,
+				Reasoning: m.Capabilities.Reasoning,
+				Coding:    m.Capabilities.Coding,
+			},
 		}
 	}
 	catalog := make([]types.CerebellumModelPreset, len(snap.Catalog))
 	for i, p := range snap.Catalog {
+		caps := p.CapabilitiesResolved()
 		catalog[i] = types.CerebellumModelPreset{
 			ID:          p.ID,
+			ModelID:     p.ModelID(),
 			Name:        p.Name,
 			Description: cloneLocalizedText(p.Description),
 			Size:        p.Size,
 			DownloadURL: p.DownloadURL,
 			Filename:    p.Filename,
+			Capabilities: types.ModelCapabilities{
+				Vision:    caps.Vision,
+				Audio:     caps.Audio,
+				Video:     caps.Video,
+				Tools:     caps.Tools,
+				Reasoning: caps.Reasoning,
+				Coding:    caps.Coding,
+			},
 		}
 		if p.Defaults != nil {
 			catalog[i].Defaults = &types.ModelPresetDefaults{
@@ -89,6 +108,17 @@ func BuildCerebellumState(rt *runtime.Runtime) *types.CerebellumState {
 			Error:           snap.DownloadProgress.Error,
 		}
 	}
+	var libProgress *types.LibDownloadProgress
+	libProg := ffi.GlobalLibDownloadTracker().Progress()
+	if libProg.Active || libProg.Canceled || libProg.Error != "" {
+		libProgress = &types.LibDownloadProgress{
+			DownloadedBytes: libProg.DownloadedBytes,
+			TotalBytes:      libProg.TotalBytes,
+			Active:          libProg.Active,
+			Canceled:        libProg.Canceled,
+			Error:           libProg.Error,
+		}
+	}
 	autoStart := cerebellumAutoStartEnabled(rt)
 	return &types.CerebellumState{
 		Enabled:          snap.Enabled,
@@ -99,6 +129,7 @@ func BuildCerebellumState(rt *runtime.Runtime) *types.CerebellumState {
 		Catalog:          catalog,
 		LastError:        snap.LastError,
 		DownloadProgress: dlProgress,
+		LibDownloadProgress: libProgress,
 		AutoStart:        autoStart,
 		Sampling: &types.SamplingParams{
 			Temp:           snap.Sampling.Temp,
@@ -296,6 +327,15 @@ func CerebellumCancelDownload(rt *runtime.Runtime) error {
 	event.RecordCerebellumEvent(context.Background(), rt.Audit, rt.Logger,
 		"cerebellum_download_cancel_requested", "info",
 		"cerebellum model download cancel requested", nil)
+	return nil
+}
+
+// CerebellumCancelLibDownload cancels the global library download.
+func CerebellumCancelLibDownload(rt *runtime.Runtime) error {
+	if rt == nil || rt.Cerebellum == nil {
+		return errNoCerebellum
+	}
+	ffi.GlobalLibDownloadTracker().Cancel()
 	return nil
 }
 

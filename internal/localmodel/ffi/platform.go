@@ -42,10 +42,19 @@ func defaultLibSearchPaths() []string {
 		paths = append(paths, p)
 	}
 
+	// Configured cache directory (from runtime config / configDir)
+	if cacheDir := DefaultCacheDir(); cacheDir != "" {
+		paths = append(paths, cacheDir)
+	}
+
 	home, _ := os.UserHomeDir()
 	if home != "" {
-		// Default download cache location
-		paths = append(paths, filepath.Join(home, ".kocort", "lib"))
+		// Also search the home-based default as fallback
+		homeCacheDir := filepath.Join(home, ".kocort", "lib")
+		// Avoid duplicate if DefaultCacheDir already returned the home-based path
+		if len(paths) == 0 || paths[len(paths)-1] != homeCacheDir {
+			paths = append(paths, homeCacheDir)
+		}
 	}
 
 	// System library paths
@@ -142,6 +151,9 @@ func findLibDir() string {
 }
 
 // requiredLibNames returns the library filenames required on the current platform.
+// On Windows, ggml-cpu is not included because the release ships architecture-specific
+// variants (e.g. ggml-cpu-haswell.dll, ggml-cpu-skylakex.dll). Use hasCPUBackend()
+// to verify that at least one CPU backend exists.
 func requiredLibNames() []string {
 	switch runtime.GOOS {
 	case "darwin":
@@ -149,17 +161,31 @@ func requiredLibNames() []string {
 	case "linux":
 		return []string{"libllama.so", "libggml.so", "libggml-base.so", "libggml-cpu.so"}
 	case "windows":
-		return []string{"llama.dll", "ggml.dll", "ggml-base.dll", "ggml-cpu.dll"}
+		// No single ggml-cpu.dll on Windows; arch-specific variants are loaded by
+		// ggml_backend_load_all_from_path at runtime.
+		return []string{"llama.dll", "ggml.dll", "ggml-base.dll"}
 	}
 	return nil
 }
 
 // checkLibsExist verifies that all given library files exist in dir.
+// On Windows it additionally checks that at least one ggml-cpu-*.dll is present.
 func checkLibsExist(dir string, names []string) bool {
 	for _, name := range names {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			return false
 		}
 	}
+	if runtime.GOOS == "windows" {
+		return hasCPUBackend(dir)
+	}
 	return true
+}
+
+// hasCPUBackend checks whether at least one architecture-specific ggml-cpu backend
+// exists in dir (e.g. ggml-cpu-haswell.dll, ggml-cpu-skylakex.dll).
+func hasCPUBackend(dir string) bool {
+	pattern := filepath.Join(dir, "ggml-cpu-*.dll")
+	matches, _ := filepath.Glob(pattern)
+	return len(matches) > 0
 }

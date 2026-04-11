@@ -35,6 +35,7 @@ type AppConfig struct {
 	Cerebellum     CerebellumConfig  `json:"cerebellum,omitempty"`
 	Hooks          HooksConfig       `json:"hooks,omitempty"`
 	Network        NetworkConfig     `json:"network,omitempty"`
+	LlamaCpp       LlamaCppConfig    `json:"llamaCpp,omitempty"`
 	SetupCompleted bool              `json:"setupCompleted,omitempty"`
 }
 
@@ -43,6 +44,12 @@ type NetworkConfig struct {
 	UseSystemProxy *bool  `json:"useSystemProxy,omitempty"`
 	ProxyURL       string `json:"proxyUrl,omitempty"`
 	Language       string `json:"language,omitempty"`
+}
+
+// LlamaCppConfig configures the llama.cpp dynamic library version and GPU backend.
+type LlamaCppConfig struct {
+	Version string `json:"version,omitempty"` // llama.cpp release version (e.g. "b8720")
+	GPUType string `json:"gpuType,omitempty"` // "cpu", "vulkan", "cuda-12.4", "cuda-13.1", "rocm-7.2", "hip"
 }
 
 func (c NetworkConfig) UseSystemProxyEnabled() bool {

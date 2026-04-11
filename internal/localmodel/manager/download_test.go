@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
 )
 
 type downloadTestBackend struct{}
@@ -205,7 +204,7 @@ func TestManagerDownloadSplitModel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	mgr := NewManagerWithBackend(Config{ModelsDir: modelsDir}, &downloadTestBackend{}, []ModelPreset{ {
+	mgr := NewManagerWithBackend(Config{ModelsDir: modelsDir}, &downloadTestBackend{}, []ModelPreset{{
 		ID:   "split-demo",
 		Name: "Split Demo",
 		Size: "~17 B",
@@ -263,7 +262,7 @@ func TestScanModelsGroupsSplitShards(t *testing.T) {
 	files := map[string]string{
 		"alpha-00001-of-00002.gguf": "abc",
 		"alpha-00002-of-00002.gguf": "defg",
-		"beta.gguf":                "xyz",
+		"beta.gguf":                 "xyz",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(modelsDir, name), []byte(content), 0o644); err != nil {
@@ -283,5 +282,55 @@ func TestScanModelsGroupsSplitShards(t *testing.T) {
 	}
 	if models[0].Size != FormatBytes(int64(len("abc")+len("defg"))) {
 		t.Fatalf("expected grouped size %q, got %q", FormatBytes(int64(len("abc")+len("defg"))), models[0].Size)
+	}
+}
+
+func TestScanModelsGroupsMMProjWithPrimaryModel(t *testing.T) {
+	modelsDir := t.TempDir()
+	files := map[string]string{
+		"vision-demo.gguf":        "primary",
+		"vision-demo-mmproj.gguf": "mmproj",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(modelsDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %q: %v", name, err)
+		}
+	}
+
+	models := scanModels(modelsDir)
+	if len(models) != 1 {
+		t.Fatalf("expected 1 grouped model, got %d", len(models))
+	}
+	if models[0].ID != "vision-demo" {
+		t.Fatalf("expected grouped model ID %q, got %q", "vision-demo", models[0].ID)
+	}
+	if !models[0].Capabilities.Vision {
+		t.Fatal("expected grouped model to expose vision capability")
+	}
+	if models[0].Size != FormatBytes(int64(len("primary")+len("mmproj"))) {
+		t.Fatalf("expected grouped size %q, got %q", FormatBytes(int64(len("primary")+len("mmproj"))), models[0].Size)
+	}
+}
+
+func TestManagerDeleteModelRemovesMMProjCompanion(t *testing.T) {
+	modelsDir := t.TempDir()
+	for name, content := range map[string]string{
+		"vision-demo.gguf":        "primary",
+		"vision-demo-mmproj.gguf": "mmproj",
+	} {
+		if err := os.WriteFile(filepath.Join(modelsDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %q: %v", name, err)
+		}
+	}
+
+	mgr := NewManagerWithBackend(Config{ModelsDir: modelsDir, ModelID: "vision-demo"}, &downloadTestBackend{}, nil)
+	if err := mgr.DeleteModel("vision-demo"); err != nil {
+		t.Fatalf("DeleteModel: %v", err)
+	}
+
+	for _, name := range []string{"vision-demo.gguf", "vision-demo-mmproj.gguf"} {
+		if _, err := os.Stat(filepath.Join(modelsDir, name)); !os.IsNotExist(err) {
+			t.Fatalf("expected %q removed, got err=%v", name, err)
+		}
 	}
 }

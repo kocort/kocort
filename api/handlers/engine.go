@@ -844,6 +844,15 @@ func (h *Engine) CerebellumCancelDownload(c *gin.Context) {
 	c.JSON(http.StatusOK, service.BuildBrainState(c.Request.Context(), h.Runtime))
 }
 
+// CerebellumCancelLibDownload handles POST /api/engine/brain/cerebellum/download/cancel-lib.
+func (h *Engine) CerebellumCancelLibDownload(c *gin.Context) {
+	if err := service.CerebellumCancelLibDownload(h.Runtime); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, service.BuildBrainState(c.Request.Context(), h.Runtime))
+}
+
 // CerebellumHelp handles POST /api/engine/brain/cerebellum/help.
 func (h *Engine) CerebellumHelp(c *gin.Context) {
 	var req types.CerebellumHelpRequest
@@ -961,6 +970,15 @@ func (h *Engine) BrainLocalDownloadModel(c *gin.Context) {
 // BrainLocalCancelDownload handles POST /api/engine/brain/local/download/cancel.
 func (h *Engine) BrainLocalCancelDownload(c *gin.Context) {
 	if err := service.BrainLocalCancelDownload(h.Runtime); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, service.BuildBrainState(c.Request.Context(), h.Runtime))
+}
+
+// BrainLocalCancelLibDownload handles POST /api/engine/brain/local/download/cancel-lib.
+func (h *Engine) BrainLocalCancelLibDownload(c *gin.Context) {
+	if err := service.BrainLocalCancelLibDownload(h.Runtime); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

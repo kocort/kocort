@@ -152,15 +152,27 @@ type cGgufInitParams struct {
 }
 
 // ── ggml_backend_dev_props ──────────────────────────────────────────────────
-// Simplified — we only need name/description/id/library fields.
+// Mirrors the C struct ggml_backend_dev_props (b8720):
+//
+//	struct ggml_backend_dev_props {
+//	    const char * name;
+//	    const char * description;
+//	    size_t       memory_free;
+//	    size_t       memory_total;
+//	    enum ggml_backend_dev_type type;  // int32
+//	    const char * device_id;           // may be NULL
+//	    struct ggml_backend_dev_caps caps; // 4 bools
+//	};
 type cBackendDevProps struct {
-	Name    [128]byte
-	Desc    [256]byte
-	ID      [128]byte
-	Library [128]byte
-	// Remaining fields omitted — we only read the above via pointer.
-	// If we need more, extend with the full struct.
-	_rest [256]byte // reserved for additional fields
+	Name     uintptr // const char *
+	Desc     uintptr // const char *
+	MemFree  uint64  // size_t
+	MemTotal uint64  // size_t
+	Type     int32   // enum
+	_pad0    [4]byte // align next pointer
+	DeviceID uintptr // const char * (may be 0/NULL)
+	Caps     [4]bool // ggml_backend_dev_caps {async, host_buffer, buffer_from_host_ptr, events}
+	_pad1    [4]byte // pad to 8-byte boundary
 }
 
 // ── mtmd_context_params ─────────────────────────────────────────────────────

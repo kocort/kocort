@@ -1,19 +1,21 @@
 package ffi
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"compress/gzip"
+	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/kocort/kocort/internal/localmodel/download"
 )
+
+// LibProgressFunc is a callback for library download progress.
+// downloaded and total are in bytes; total may be -1 if unknown.
+type LibProgressFunc func(downloaded, total int64)
 
 const (
 	// LlamaCppVersion is the pinned compatible llama.cpp release version.
@@ -25,15 +27,146 @@ const (
 
 // DownloadConfig configures library download behavior.
 type DownloadConfig struct {
-	Version  string // llama.cpp version (default: LlamaCppVersion)
-	CacheDir string // local cache directory (default: ~/.kocort/lib/)
-	GPUType  string // "cpu", "vulkan", "cuda-12.4", "cuda-13.1", "rocm-7.2", "hip"
-	ProxyURL string // HTTP proxy URL
+	Version    string       // llama.cpp version (default: LlamaCppVersion)
+	CacheDir   string       // local cache directory (default: ~/.kocort/lib/)
+	GPUType    string       // "cpu", "vulkan", "cuda-12.4", "cuda-13.1", "rocm-7.2", "hip"
+	HTTPClient *http.Client // HTTP client (with proxy support); nil uses http.DefaultClient
+}
+
+// LibVariant describes a downloaded library variant (version + GPU type).
+type LibVariant struct {
+	Version string `json:"version"`
+	GPUType string `json:"gpuType"`
+}
+
+// variantDirName returns the cache directory name for a version+GPU combination.
+// Format: "llama-{version}-{gpu}" (e.g. "llama-b8720-cpu", "llama-b8720-cuda-12.4").
+func variantDirName(version, gpuType string) string {
+	gpu := gpuType
+	if gpu == "" {
+		gpu = "cpu"
+	}
+	return fmt.Sprintf("llama-%s-%s", version, gpu)
+}
+
+// DefaultCacheDir returns the library cache directory.
+// It uses the configured cache dir (set via SetLibraryConfig) if available,
+// otherwise falls back to ~/.kocort/lib/.
+func DefaultCacheDir() string {
+	_, _, cacheDir, _ := getLibraryConfig()
+	if cacheDir != "" {
+		return cacheDir
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".kocort", "lib")
+}
+
+// CheckLibrariesExist checks whether the required shared libraries are present
+// locally for the given version and GPU type. Returns true if found, false otherwise.
+func CheckLibrariesExist(cfg DownloadConfig) bool {
+	if cfg.Version == "" {
+		cfg.Version = LlamaCppVersion
+	}
+	if cfg.CacheDir == "" {
+		cfg.CacheDir = DefaultCacheDir()
+	}
+	cfg.GPUType = ResolveGPUType(cfg.GPUType)
+
+	dir := filepath.Join(cfg.CacheDir, variantDirName(cfg.Version, cfg.GPUType))
+	required := requiredLibNames()
+	if checkLibsExist(filepath.Join(dir, "build", "bin"), required) || checkLibsExist(dir, required) {
+		return true
+	}
+	// Also check the default search paths
+	if findLibDir() != "" {
+		return true
+	}
+	return false
+}
+
+// ListDownloadedVariants returns the list of llama.cpp version+GPU variants
+// that have been downloaded locally (in the cache directory).
+func ListDownloadedVariants(cacheDir string) []LibVariant {
+	if cacheDir == "" {
+		cacheDir = DefaultCacheDir()
+	}
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return nil
+	}
+	required := requiredLibNames()
+	var variants []LibVariant
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "llama-") {
+			continue
+		}
+		rest := strings.TrimPrefix(name, "llama-")
+		subDir := filepath.Join(cacheDir, name)
+		binDir := filepath.Join(subDir, "build", "bin")
+		if !checkLibsExist(binDir, required) && !checkLibsExist(subDir, required) {
+			continue
+		}
+		// Parse version and GPU type from directory name.
+		// New format: llama-{version}-{gpu} e.g. "llama-b8720-cpu", "llama-b8720-cuda-12.4"
+		// Legacy format: llama-{version} e.g. "llama-b8720"
+		version, gpuType := parseVariantDir(rest)
+		variants = append(variants, LibVariant{Version: version, GPUType: gpuType})
+	}
+	return variants
+}
+
+// parseVariantDir splits a directory suffix (after "llama-") into version and GPU type.
+// Format: "b8720-cpu", "b8720-cuda-12.4", etc.
+func parseVariantDir(rest string) (version, gpuType string) {
+	// Known GPU suffixes to check (longest first to avoid partial matches)
+	knownGPU := []string{"cuda-12.4", "cuda-13.1", "rocm-7.2", "vulkan", "cpu", "hip"}
+	for _, g := range knownGPU {
+		suffix := "-" + g
+		if strings.HasSuffix(rest, suffix) {
+			return strings.TrimSuffix(rest, suffix), g
+		}
+	}
+	// Unknown suffix – treat entire rest as version, GPU unknown
+	return rest, ""
+}
+
+// AvailableGPUTypes returns the list of valid GPU type options for the current platform.
+func AvailableGPUTypes() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{"auto", "cpu"}
+	case "linux":
+		switch runtime.GOARCH {
+		case "amd64":
+			return []string{"auto", "cpu", "vulkan", "rocm-7.2"}
+		case "arm64":
+			return []string{"auto", "cpu", "vulkan"}
+		default:
+			return []string{"auto", "cpu"}
+		}
+	case "windows":
+		if runtime.GOARCH == "amd64" {
+			return []string{"auto", "cpu", "vulkan", "cuda-12.4", "cuda-13.1", "hip"}
+		}
+		return []string{"auto", "cpu"}
+	default:
+		return []string{"auto", "cpu"}
+	}
 }
 
 // EnsureLibraries ensures the required shared libraries are present locally.
 // Downloads from GitHub Releases if not found. Returns the library directory path.
 func EnsureLibraries(cfg DownloadConfig) (string, error) {
+	return EnsureLibrariesWithContext(context.Background(), cfg, nil)
+}
+
+// EnsureLibrariesWithContext is like EnsureLibraries but supports cancellation
+// via context and reports download progress through the optional callback.
+func EnsureLibrariesWithContext(ctx context.Context, cfg DownloadConfig, progress LibProgressFunc) (string, error) {
 	if cfg.Version == "" {
 		cfg.Version = LlamaCppVersion
 	}
@@ -41,8 +174,9 @@ func EnsureLibraries(cfg DownloadConfig) (string, error) {
 		home, _ := os.UserHomeDir()
 		cfg.CacheDir = filepath.Join(home, ".kocort", "lib")
 	}
+	cfg.GPUType = ResolveGPUType(cfg.GPUType)
 
-	targetDir := filepath.Join(cfg.CacheDir, "llama-"+cfg.Version)
+	targetDir := filepath.Join(cfg.CacheDir, variantDirName(cfg.Version, cfg.GPUType))
 	binDir := filepath.Join(targetDir, "build", "bin")
 
 	// Check if already downloaded (try both targetDir and binDir)
@@ -61,8 +195,21 @@ func EnsureLibraries(cfg DownloadConfig) (string, error) {
 		"target", targetDir)
 
 	// Download and extract
-	if err := downloadAndExtract(downloadURL, targetDir, cfg.ProxyURL); err != nil {
+	client := cfg.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	if err := download.DownloadAndExtract(ctx, downloadURL, targetDir, client, download.ProgressCallback(progress)); err != nil {
 		return "", fmt.Errorf("download llama.cpp libraries: %w", err)
+	}
+
+	// Download CUDA runtime DLLs if needed (Windows + CUDA only)
+	if cudartURL := buildCUDARTDownloadURL(cfg.Version, cfg.GPUType); cudartURL != "" {
+		slog.Info("[ffi] downloading CUDA runtime DLLs", "url", cudartURL)
+		if err := download.DownloadAndExtract(ctx, cudartURL, targetDir, client, nil); err != nil {
+			slog.Warn("[ffi] CUDA runtime DLLs download failed (may already be installed)", "error", err)
+		}
 	}
 
 	// Find the actual lib directory (may be in build/bin/)
@@ -143,143 +290,26 @@ func buildDownloadURL(version, gpuType string) string {
 		GithubReleaseBase, version, version, suffix, ext)
 }
 
-// downloadAndExtract downloads an archive from url and extracts it to targetDir.
-func downloadAndExtract(archiveURL, targetDir, proxyURL string) error {
-	// Create target directory
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
+// buildCUDARTDownloadURL returns the URL for the CUDA runtime DLLs archive
+// that must be downloaded alongside CUDA-based builds on Windows.
+// Returns "" if no CUDA runtime download is needed.
+func buildCUDARTDownloadURL(version, gpuType string) string {
+	if runtime.GOOS != "windows" {
+		return ""
 	}
-
-	// Build HTTP client with optional proxy
-	client := &http.Client{}
-	if proxyURL != "" {
-		proxyParsed, err := url.Parse(proxyURL)
-		if err == nil {
-			client.Transport = &http.Transport{Proxy: http.ProxyURL(proxyParsed)}
-		}
+	var cudaVer string
+	switch gpuType {
+	case "cuda-12.4":
+		cudaVer = "12.4"
+	case "cuda-13.1":
+		cudaVer = "13.1"
+	default:
+		return ""
 	}
-
-	resp, err := client.Get(archiveURL)
-	if err != nil {
-		return fmt.Errorf("http get: %w", err)
+	arch := "x64"
+	if runtime.GOARCH == "arm64" {
+		arch = "arm64"
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %d from %s", resp.StatusCode, archiveURL)
-	}
-
-	if strings.HasSuffix(archiveURL, ".zip") {
-		return extractZip(resp.Body, targetDir)
-	}
-	return extractTarGz(resp.Body, targetDir)
-}
-
-// extractTarGz extracts a .tar.gz archive to targetDir.
-func extractTarGz(r io.Reader, targetDir string) error {
-	gz, err := gzip.NewReader(r)
-	if err != nil {
-		return fmt.Errorf("gzip: %w", err)
-	}
-	defer gz.Close()
-
-	tr := tar.NewReader(gz)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("tar read: %w", err)
-		}
-
-		target := filepath.Join(targetDir, header.Name)
-
-		// Security: prevent path traversal
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(targetDir)) {
-			continue
-		}
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return err
-			}
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
-				return err
-			}
-			f.Close()
-		}
-	}
-	return nil
-}
-
-// extractZip extracts a .zip archive to targetDir.
-// Since zip requires seeking, we first save to a temp file.
-func extractZip(r io.Reader, targetDir string) error {
-	// Save to temp file for seeking
-	tmpFile, err := os.CreateTemp("", "kocort-llama-*.zip")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
-
-	if _, err := io.Copy(tmpFile, r); err != nil {
-		return err
-	}
-
-	stat, err := tmpFile.Stat()
-	if err != nil {
-		return err
-	}
-
-	zr, err := zip.NewReader(tmpFile, stat.Size())
-	if err != nil {
-		return err
-	}
-
-	for _, f := range zr.File {
-		target := filepath.Join(targetDir, f.Name)
-
-		// Security: prevent path traversal
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(targetDir)) {
-			continue
-		}
-
-		if f.FileInfo().IsDir() {
-			os.MkdirAll(target, 0o755)
-			continue
-		}
-
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return err
-		}
-
-		rc, err := f.Open()
-		if err != nil {
-			return err
-		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
-		if err != nil {
-			rc.Close()
-			return err
-		}
-		_, err = io.Copy(out, rc)
-		rc.Close()
-		out.Close()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	return fmt.Sprintf("%s/%s/cudart-llama-bin-win-cuda-%s-%s.zip",
+		GithubReleaseBase, version, cudaVer, arch)
 }

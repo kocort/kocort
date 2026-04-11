@@ -175,8 +175,11 @@ func Open(libDir string) (*Library, error) {
 	}
 
 	// 2. libggml-cpu
+	//    On Windows the release ships arch-specific ggml-cpu-*.dll variants
+	//    (e.g. ggml-cpu-haswell.dll) instead of a single ggml-cpu.dll.
+	//    These are loaded dynamically by ggml_backend_load_all_from_path (step 5).
 	l.hGgmlCPU, err = dlopenLib(libDir, "ggml-cpu")
-	if err != nil {
+	if err != nil && runtime.GOOS != "windows" {
 		l.Close()
 		return nil, fmt.Errorf("open libggml-cpu: %w", err)
 	}
@@ -210,10 +213,15 @@ func Open(libDir string) (*Library, error) {
 	}
 
 	// 5. Load GPU backends from the same directory
+	//    On Windows, GPU backend DLLs (e.g. ggml-cuda.dll) depend on runtime
+	//    libraries (cublas64_13.dll, cudart64_13.dll) that live next to them.
+	//    SetDllDirectoryW ensures the DLL loader can find these dependencies.
+	setDllSearchDir(libDir)
 	pathPtr, pathBuf := cstr(libDir)
 	_ = pathBuf // prevent GC
 	l.fnGgmlBackendLoadAllFromPath(pathPtr)
 	runtime.KeepAlive(pathBuf)
+	setDllSearchDir("") // restore default
 
 	// 6. Try to load libmtmd (optional)
 	l.hMtmd, err = dlopenLib(libDir, "mtmd")
@@ -233,23 +241,23 @@ func (l *Library) Close() {
 	defer l.mu.Unlock()
 
 	if l.hMtmd != 0 {
-		purego.Dlclose(l.hMtmd)
+		closeLib(l.hMtmd)
 		l.hMtmd = 0
 	}
 	if l.hLlama != 0 {
-		purego.Dlclose(l.hLlama)
+		closeLib(l.hLlama)
 		l.hLlama = 0
 	}
 	if l.hGgml != 0 {
-		purego.Dlclose(l.hGgml)
+		closeLib(l.hGgml)
 		l.hGgml = 0
 	}
 	if l.hGgmlCPU != 0 {
-		purego.Dlclose(l.hGgmlCPU)
+		closeLib(l.hGgmlCPU)
 		l.hGgmlCPU = 0
 	}
 	if l.hGgmlBase != 0 {
-		purego.Dlclose(l.hGgmlBase)
+		closeLib(l.hGgmlBase)
 		l.hGgmlBase = 0
 	}
 }
@@ -268,7 +276,7 @@ func (l *Library) LibDir() string {
 
 func dlopenLib(dir, baseName string) (uintptr, error) {
 	path := filepath.Join(dir, LibName(baseName))
-	h, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_GLOBAL)
+	h, err := openLib(path)
 	if err != nil {
 		return 0, fmt.Errorf("dlopen %s: %w", path, err)
 	}
@@ -301,19 +309,14 @@ func (l *Library) registerLlamaFuncs() error {
 	purego.RegisterLibFunc(&l.fnLlamaBackendInit, h, "llama_backend_init")
 	purego.RegisterLibFunc(&l.fnLlamaLogSet, h, "llama_log_set")
 
-	// Model
-	purego.RegisterLibFunc(&l.fnLlamaModelDefaultParams, h, "llama_model_default_params")
-	purego.RegisterLibFunc(&l.fnLlamaModelLoadFromFile, h, "llama_model_load_from_file")
+	// Model (non-struct functions only; struct-passing ones are in registerStructPassingLlamaFuncs)
 	purego.RegisterLibFunc(&l.fnLlamaModelFree, h, "llama_model_free")
 	purego.RegisterLibFunc(&l.fnLlamaModelNEmbd, h, "llama_model_n_embd")
 	purego.RegisterLibFunc(&l.fnLlamaModelNCtxTrain, h, "llama_model_n_ctx_train")
 	purego.RegisterLibFunc(&l.fnLlamaModelGetVocab, h, "llama_model_get_vocab")
 
-	// Context
-	purego.RegisterLibFunc(&l.fnLlamaContextDefaultParams, h, "llama_context_default_params")
-	purego.RegisterLibFunc(&l.fnLlamaInitFromModel, h, "llama_init_from_model")
+	// Context (non-struct functions only)
 	purego.RegisterLibFunc(&l.fnLlamaFree, h, "llama_free")
-	purego.RegisterLibFunc(&l.fnLlamaDecode, h, "llama_decode")
 	purego.RegisterLibFunc(&l.fnLlamaSynchronize, h, "llama_synchronize")
 	purego.RegisterLibFunc(&l.fnLlamaNCtx, h, "llama_n_ctx")
 	purego.RegisterLibFunc(&l.fnLlamaGetModel, h, "llama_get_model")
@@ -341,16 +344,13 @@ func (l *Library) registerLlamaFuncs() error {
 	purego.RegisterLibFunc(&l.fnLlamaVocabIsEog, h, "llama_vocab_is_eog")
 	purego.RegisterLibFunc(&l.fnLlamaVocabGetAddBos, h, "llama_vocab_get_add_bos")
 
-	// Batch
-	purego.RegisterLibFunc(&l.fnLlamaBatchInit, h, "llama_batch_init")
-	purego.RegisterLibFunc(&l.fnLlamaBatchFree, h, "llama_batch_free")
+	// Batch — struct-passing functions are in registerStructPassingLlamaFuncs
 
 	// LoRA
 	purego.RegisterLibFunc(&l.fnLlamaAdapterLoraInit, h, "llama_adapter_lora_init")
 	purego.RegisterLibFunc(&l.fnLlamaSetAdaptersLora, h, "llama_set_adapters_lora")
 
-	// Sampler chain
-	purego.RegisterLibFunc(&l.fnLlamaSamplerChainDefaultParams, h, "llama_sampler_chain_default_params")
+	// Sampler chain (default params is struct-returning, handled in registerStructPassingLlamaFuncs)
 	purego.RegisterLibFunc(&l.fnLlamaSamplerChainInit, h, "llama_sampler_chain_init")
 	purego.RegisterLibFunc(&l.fnLlamaSamplerChainAdd, h, "llama_sampler_chain_add")
 	purego.RegisterLibFunc(&l.fnLlamaSamplerSample, h, "llama_sampler_sample")
@@ -390,13 +390,21 @@ func (l *Library) registerLlamaFuncs() error {
 	purego.RegisterLibFunc(&l.fnLlamaMemorySeqPosMin, h, "llama_memory_seq_pos_min")
 	purego.RegisterLibFunc(&l.fnLlamaMemorySeqPosMax, h, "llama_memory_seq_pos_max")
 
+	// Register struct-passing functions via platform-specific implementation
+	if err := l.registerStructPassingLlamaFuncs(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (l *Library) registerMtmdFuncs() error {
 	h := l.hMtmd
 
-	purego.RegisterLibFunc(&l.fnMtmdContextParamsDefault, h, "mtmd_context_params_default")
+	// mtmd_context_params_default returns a struct — handled platform-specifically
+	if err := l.registerStructPassingMtmdFuncs(); err != nil {
+		return err
+	}
 	purego.RegisterLibFunc(&l.fnMtmdInitFromFile, h, "mtmd_init_from_file")
 	purego.RegisterLibFunc(&l.fnMtmdFree, h, "mtmd_free")
 	purego.RegisterLibFunc(&l.fnMtmdInputChunksInit, h, "mtmd_input_chunks_init")
@@ -414,10 +422,10 @@ func (l *Library) registerMtmdFuncs() error {
 	purego.RegisterLibFunc(&l.fnMtmdHelperBitmapInitFromBuf, h, "mtmd_helper_bitmap_init_from_buf")
 
 	// Optional: mtmd_input_text_init/free were removed in later llama.cpp versions.
-	if sym, err := purego.Dlsym(h, "mtmd_input_text_init"); err == nil {
+	if sym, err := findSymbol(h, "mtmd_input_text_init"); err == nil {
 		purego.RegisterFunc(&l.fnMtmdInputTextInit, sym)
 	}
-	if sym, err := purego.Dlsym(h, "mtmd_input_text_free"); err == nil {
+	if sym, err := findSymbol(h, "mtmd_input_text_free"); err == nil {
 		purego.RegisterFunc(&l.fnMtmdInputTextFree, sym)
 	}
 

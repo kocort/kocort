@@ -141,6 +141,7 @@ func (m *Manager) executePendingDelete(pending *pendingOp) {
 	}
 
 	modelPaths := installedModelFiles(m.modelsDir, pending.modelID)
+	modelPaths = append(modelPaths, installedMMProjFiles(m.modelsDir, pending.modelID)...)
 	if len(modelPaths) == 0 {
 		pending.reply <- fmt.Errorf("model file not found: %s", resolveInstalledModelPath(m.modelsDir, pending.modelID))
 		return

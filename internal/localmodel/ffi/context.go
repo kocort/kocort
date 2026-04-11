@@ -6,8 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/kocort/purego"
 )
 
 // ContextParams holds context creation parameters (Go-friendly).
@@ -116,11 +114,8 @@ func (c *Context) SetAbortCallback(callback func() bool) {
 		return
 	}
 
-	cb := purego.NewCallback(func(userData uintptr) uintptr {
-		if callback() {
-			return 1
-		}
-		return 0
+	cb := newAbortCallbackPlatform(func(userData uintptr) bool {
+		return callback()
 	})
 	c.abortCb = cb
 	c.lib.fnLlamaSetAbortCallback(c.ptr, cb, 0)
@@ -284,14 +279,4 @@ func (c *Context) GetLogitsIthDirect(i int) []float32 {
 // Synchronize waits for pending operations to complete.
 func (c *Context) Synchronize() {
 	c.lib.fnLlamaSynchronize(c.ptr)
-}
-
-// ── Callback helpers ────────────────────────────────────────────────────────
-
-// newProgressCallback creates a purego callback for model loading progress.
-func newProgressCallback(fn func(float32)) uintptr {
-	return purego.NewCallback(func(progress float32, userData uintptr) uintptr {
-		fn(progress)
-		return 1 // continue loading
-	})
 }

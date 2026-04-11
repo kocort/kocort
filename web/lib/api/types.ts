@@ -191,6 +191,15 @@ export type LocalizedText = string | {
     en?: string;
 };
 
+export type ModelCapabilities = {
+    vision?: boolean;
+    audio?: boolean;
+    video?: boolean;
+    tools?: boolean;
+    reasoning?: boolean;
+    coding?: boolean;
+};
+
 export type LocalModelState = {
     enabled: boolean;
     status: 'running' | 'stopped' | 'starting' | 'stopping' | 'error';
@@ -200,15 +209,18 @@ export type LocalModelState = {
         id: string;
         name: string;
         size?: string;
+        capabilities?: ModelCapabilities;
     }>;
     catalog?: Array<{
         id: string;
+        modelId?: string;
         name: string;
         description?: LocalizedText;
         size?: string;
         downloadUrl?: string;
         filename?: string;
         defaults?: ModelPresetDefaults;
+        capabilities?: ModelCapabilities;
     }>;
     lastError?: string;
     downloadProgress?: {
@@ -216,6 +228,13 @@ export type LocalModelState = {
         filename: string;
         totalBytes: number;
         downloadedBytes: number;
+        active: boolean;
+        canceled?: boolean;
+        error?: string;
+    };
+    libDownloadProgress?: {
+        downloadedBytes: number;
+        totalBytes: number;
         active: boolean;
         canceled?: boolean;
         error?: string;
@@ -237,15 +256,18 @@ export type CerebellumState = {
         id: string;
         name: string;
         size?: string;
+        capabilities?: ModelCapabilities;
     }>;
     catalog?: Array<{
         id: string;
+        modelId?: string;
         name: string;
         description?: LocalizedText;
         size?: string;
         downloadUrl?: string;
         filename?: string;
         defaults?: ModelPresetDefaults;
+        capabilities?: ModelCapabilities;
     }>;
     lastError?: string;
     downloadProgress?: {
@@ -253,6 +275,13 @@ export type CerebellumState = {
         filename: string;
         totalBytes: number;
         downloadedBytes: number;
+        active: boolean;
+        canceled?: boolean;
+        error?: string;
+    };
+    libDownloadProgress?: {
+        downloadedBytes: number;
+        totalBytes: number;
         active: boolean;
         canceled?: boolean;
         error?: string;
@@ -501,4 +530,27 @@ export type NetworkState = {
     useSystemProxy: boolean;
     proxyUrl: string;
     language: 'system' | 'en' | 'zh';
+};
+
+// LlamaCpp / Dynamic Library
+// ─────────────────────────────────────────────────────────────────
+
+export type LlamaCppState = {
+    version: string;
+    gpuType: string;
+    detectedGpuType: string;
+    libDir?: string;
+    loaded: boolean;
+    defaultVersion: string;
+    downloadedVariants: Array<{ version: string; gpuType: string }>;
+    availableGpuTypes: string[];
+    downloadProgress?: {
+        version: string;
+        gpuType: string;
+        downloadedBytes: number;
+        totalBytes: number;
+        active: boolean;
+        canceled?: boolean;
+        error?: string;
+    };
 };

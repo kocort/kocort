@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/kocort/kocort/internal/localmodel/catalog"
 )
 
 // ── File scanning and model path resolution ─────────────────────────────────
@@ -53,6 +55,34 @@ func installedModelFiles(modelsDir, modelID string) []string {
 	return files
 }
 
+func installedMMProjFiles(modelsDir, modelID string) []string {
+	if strings.TrimSpace(modelsDir) == "" || strings.TrimSpace(modelID) == "" {
+		return nil
+	}
+
+	entries, err := os.ReadDir(modelsDir)
+	if err != nil {
+		return nil
+	}
+
+	files := make([]string, 0, 1)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(strings.ToLower(name), ".gguf") || !catalog.IsMMProjFilename(name) {
+			continue
+		}
+		if catalog.CompanionModelIDFromFilename(name) != modelID {
+			continue
+		}
+		files = append(files, filepath.Join(modelsDir, name))
+	}
+	sort.Strings(files)
+	return files
+}
+
 func resolveInstalledModelPath(modelsDir, modelID string) string {
 	if strings.TrimSpace(modelsDir) == "" || strings.TrimSpace(modelID) == "" {
 		return modelID
@@ -90,8 +120,11 @@ func scanModels(modelsDir string) []ModelInfo {
 	}
 
 	type aggregate struct {
-		size     int64
-		hasFirst bool
+		size         int64
+		hasFirst     bool
+		hasPrimary   bool
+		hasVision    bool
+		capabilities catalog.Capabilities
 	}
 	aggregates := make(map[string]*aggregate, len(entries))
 	for _, entry := range entries {
@@ -103,12 +136,19 @@ func scanModels(modelsDir string) []ModelInfo {
 			continue
 		}
 		stem := strings.TrimSuffix(name, filepath.Ext(name))
-		id := stem
-		hasFirst := true
-		if base, idx, _, ok := splitModelID(stem); ok {
-			id = base
-			hasFirst = idx == 1
+		id := catalog.ModelIDFromFilename(name)
+		if id == "" {
+			continue
 		}
+		isMMProj := catalog.IsMMProjFilename(name)
+		hasFirst := true
+		if !isMMProj {
+			if base, idx, _, ok := splitModelID(stem); ok {
+				id = base
+				hasFirst = idx == 1
+			}
+		}
+
 		agg := aggregates[id]
 		if agg == nil {
 			agg = &aggregate{}
@@ -117,12 +157,17 @@ func scanModels(modelsDir string) []ModelInfo {
 		if info, err := entry.Info(); err == nil {
 			agg.size += info.Size()
 		}
+		if isMMProj {
+			agg.hasVision = true
+			continue
+		}
+		agg.hasPrimary = true
 		agg.hasFirst = agg.hasFirst || hasFirst
 	}
 
 	ids := make([]string, 0, len(aggregates))
 	for id, agg := range aggregates {
-		if !agg.hasFirst {
+		if !agg.hasPrimary || !agg.hasFirst {
 			continue
 		}
 		ids = append(ids, id)
@@ -136,10 +181,15 @@ func scanModels(modelsDir string) []ModelInfo {
 		if agg != nil && agg.size > 0 {
 			sizeStr = FormatBytes(agg.size)
 		}
+		caps := catalog.IntersectCapabilities(
+			catalog.InferCapabilities(id, HumanModelName(id), "", agg != nil && agg.hasVision),
+			catalog.RuntimeSupportedCapabilities(),
+		)
 		models = append(models, ModelInfo{
-			ID:   id,
-			Name: HumanModelName(id),
-			Size: sizeStr,
+			ID:           id,
+			Name:         HumanModelName(id),
+			Size:         sizeStr,
+			Capabilities: caps,
 		})
 	}
 

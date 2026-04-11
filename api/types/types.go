@@ -148,37 +148,39 @@ type BrainState struct {
 // LocalModelState represents the state of a local model manager instance.
 // Used by both brain-local and cerebellum.
 type LocalModelState struct {
-	Enabled          bool                        `json:"enabled"`
-	Status           string                      `json:"status"`
-	ModelID          string                      `json:"modelId,omitempty"`
-	ModelsDir        string                      `json:"modelsDir,omitempty"`
-	Models           []CerebellumModelInfo       `json:"models"`
-	Catalog          []CerebellumModelPreset     `json:"catalog,omitempty"`
-	LastError        string                      `json:"lastError,omitempty"`
-	DownloadProgress *CerebellumDownloadProgress `json:"downloadProgress,omitempty"`
-	AutoStart        bool                        `json:"autoStart,omitempty"`
-	EnableThinking   bool                        `json:"enableThinking"`
-	Sampling         *SamplingParams             `json:"sampling,omitempty"`
-	Threads          int                         `json:"threads"`
-	ContextSize      int                         `json:"contextSize"`
-	GpuLayers        int                         `json:"gpuLayers"`
+	Enabled             bool                        `json:"enabled"`
+	Status              string                      `json:"status"`
+	ModelID             string                      `json:"modelId,omitempty"`
+	ModelsDir           string                      `json:"modelsDir,omitempty"`
+	Models              []CerebellumModelInfo       `json:"models"`
+	Catalog             []CerebellumModelPreset     `json:"catalog,omitempty"`
+	LastError           string                      `json:"lastError,omitempty"`
+	DownloadProgress    *CerebellumDownloadProgress `json:"downloadProgress,omitempty"`
+	LibDownloadProgress *LibDownloadProgress        `json:"libDownloadProgress,omitempty"`
+	AutoStart           bool                        `json:"autoStart,omitempty"`
+	EnableThinking      bool                        `json:"enableThinking"`
+	Sampling            *SamplingParams             `json:"sampling,omitempty"`
+	Threads             int                         `json:"threads"`
+	ContextSize         int                         `json:"contextSize"`
+	GpuLayers           int                         `json:"gpuLayers"`
 }
 
 // CerebellumState represents the state of the local cerebellum (小脑).
 type CerebellumState struct {
-	Enabled          bool                        `json:"enabled"`
-	Status           string                      `json:"status"`
-	ModelID          string                      `json:"modelId,omitempty"`
-	ModelsDir        string                      `json:"modelsDir,omitempty"`
-	Models           []CerebellumModelInfo       `json:"models"`
-	Catalog          []CerebellumModelPreset     `json:"catalog,omitempty"`
-	LastError        string                      `json:"lastError,omitempty"`
-	DownloadProgress *CerebellumDownloadProgress `json:"downloadProgress,omitempty"`
-	AutoStart        bool                        `json:"autoStart,omitempty"`
-	Sampling         *SamplingParams             `json:"sampling,omitempty"`
-	Threads          int                         `json:"threads"`
-	ContextSize      int                         `json:"contextSize"`
-	GpuLayers        int                         `json:"gpuLayers"`
+	Enabled             bool                        `json:"enabled"`
+	Status              string                      `json:"status"`
+	ModelID             string                      `json:"modelId,omitempty"`
+	ModelsDir           string                      `json:"modelsDir,omitempty"`
+	Models              []CerebellumModelInfo       `json:"models"`
+	Catalog             []CerebellumModelPreset     `json:"catalog,omitempty"`
+	LastError           string                      `json:"lastError,omitempty"`
+	DownloadProgress    *CerebellumDownloadProgress `json:"downloadProgress,omitempty"`
+	LibDownloadProgress *LibDownloadProgress        `json:"libDownloadProgress,omitempty"`
+	AutoStart           bool                        `json:"autoStart,omitempty"`
+	Sampling            *SamplingParams             `json:"sampling,omitempty"`
+	Threads             int                         `json:"threads"`
+	ContextSize         int                         `json:"contextSize"`
+	GpuLayers           int                         `json:"gpuLayers"`
 }
 
 // SamplingParams describes the sampling parameters for local model inference.
@@ -196,11 +198,11 @@ type SamplingParams struct {
 
 // LocalModelParamsUpdateRequest represents a request to update local model parameters.
 type LocalModelParamsUpdateRequest struct {
-	Sampling    *SamplingParams `json:"sampling,omitempty"`
-	Threads     *int            `json:"threads,omitempty"`
-	ContextSize *int            `json:"contextSize,omitempty"`
-	GpuLayers   *int            `json:"gpuLayers,omitempty"`
-	EnableThinking *bool        `json:"enableThinking,omitempty"`
+	Sampling       *SamplingParams `json:"sampling,omitempty"`
+	Threads        *int            `json:"threads,omitempty"`
+	ContextSize    *int            `json:"contextSize,omitempty"`
+	GpuLayers      *int            `json:"gpuLayers,omitempty"`
+	EnableThinking *bool           `json:"enableThinking,omitempty"`
 }
 
 // CerebellumDownloadProgress tracks an ongoing model download.
@@ -214,11 +216,21 @@ type CerebellumDownloadProgress struct {
 	Error           string `json:"error,omitempty"`
 }
 
+// LibDownloadProgress tracks an ongoing library download (parallel with model download).
+type LibDownloadProgress struct {
+	DownloadedBytes int64  `json:"downloadedBytes"`
+	TotalBytes      int64  `json:"totalBytes"`
+	Active          bool   `json:"active"`
+	Canceled        bool   `json:"canceled,omitempty"`
+	Error           string `json:"error,omitempty"`
+}
+
 // CerebellumModelInfo describes an available local model.
 type CerebellumModelInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Size string `json:"size,omitempty"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Size         string            `json:"size,omitempty"`
+	Capabilities ModelCapabilities `json:"capabilities,omitempty"`
 }
 
 // CerebellumModelSelectRequest represents a cerebellum model selection request.
@@ -233,11 +245,11 @@ type CerebellumDownloadRequest struct {
 
 // ModelPresetDefaults describes default runtime/sampling parameters for a model preset.
 type ModelPresetDefaults struct {
-	Threads     int             `json:"threads,omitempty"`
-	ContextSize int             `json:"contextSize,omitempty"`
-	GpuLayers   int             `json:"gpuLayers,omitempty"`
-	EnableThinking *bool        `json:"enableThinking,omitempty"`
-	Sampling    *SamplingParams `json:"sampling,omitempty"`
+	Threads        int             `json:"threads,omitempty"`
+	ContextSize    int             `json:"contextSize,omitempty"`
+	GpuLayers      int             `json:"gpuLayers,omitempty"`
+	EnableThinking *bool           `json:"enableThinking,omitempty"`
+	Sampling       *SamplingParams `json:"sampling,omitempty"`
 }
 
 // LocalizedText stores Chinese and English UI text.
@@ -248,13 +260,25 @@ type LocalizedText struct {
 
 // CerebellumModelPreset describes a recommended model in the catalog.
 type CerebellumModelPreset struct {
-	ID          string               `json:"id"`
-	Name        string               `json:"name"`
-	Description *LocalizedText       `json:"description,omitempty"`
-	Size        string               `json:"size,omitempty"`
-	DownloadURL string               `json:"downloadUrl,omitempty"`
-	Filename    string               `json:"filename,omitempty"`
-	Defaults    *ModelPresetDefaults `json:"defaults,omitempty"`
+	ID           string               `json:"id"`
+	ModelID      string               `json:"modelId,omitempty"`
+	Name         string               `json:"name"`
+	Description  *LocalizedText       `json:"description,omitempty"`
+	Size         string               `json:"size,omitempty"`
+	DownloadURL  string               `json:"downloadUrl,omitempty"`
+	Filename     string               `json:"filename,omitempty"`
+	Defaults     *ModelPresetDefaults `json:"defaults,omitempty"`
+	Capabilities ModelCapabilities    `json:"capabilities,omitempty"`
+}
+
+// ModelCapabilities describes feature badges surfaced for local models.
+type ModelCapabilities struct {
+	Vision    bool `json:"vision,omitempty"`
+	Audio     bool `json:"audio,omitempty"`
+	Video     bool `json:"video,omitempty"`
+	Tools     bool `json:"tools,omitempty"`
+	Reasoning bool `json:"reasoning,omitempty"`
+	Coding    bool `json:"coding,omitempty"`
 }
 
 // CerebellumHelpRequest represents a cerebellum help query.
@@ -574,6 +598,46 @@ type NetworkSaveRequest struct {
 	UseSystemProxy bool   `json:"useSystemProxy"`
 	ProxyURL       string `json:"proxyUrl"`
 	Language       string `json:"language"`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LlamaCpp / Dynamic Library types
+// ─────────────────────────────────────────────────────────────────────────────
+
+// LlamaCppState represents the current llama.cpp dynamic library status.
+type LlamaCppState struct {
+	Version            string                    `json:"version"`
+	GPUType            string                    `json:"gpuType"`
+	DetectedGPUType    string                    `json:"detectedGpuType"`
+	LibDir             string                    `json:"libDir,omitempty"`
+	Loaded             bool                      `json:"loaded"`
+	DefaultVersion     string                    `json:"defaultVersion"`
+	DownloadedVariants []LlamaCppVariant         `json:"downloadedVariants"`
+	AvailableGPUTypes  []string                  `json:"availableGpuTypes"`
+	DownloadProgress   *LlamaCppDownloadProgress `json:"downloadProgress,omitempty"`
+}
+
+// LlamaCppDownloadProgress tracks an ongoing library download.
+type LlamaCppDownloadProgress struct {
+	Version         string `json:"version"`
+	GPUType         string `json:"gpuType"`
+	DownloadedBytes int64  `json:"downloadedBytes"`
+	TotalBytes      int64  `json:"totalBytes"`
+	Active          bool   `json:"active"`
+	Canceled        bool   `json:"canceled,omitempty"`
+	Error           string `json:"error,omitempty"`
+}
+
+// LlamaCppVariant describes a downloaded library variant (version + GPU backend).
+type LlamaCppVariant struct {
+	Version string `json:"version"`
+	GPUType string `json:"gpuType"`
+}
+
+// LlamaCppSaveRequest represents a request to update the llama.cpp library config.
+type LlamaCppSaveRequest struct {
+	Version string `json:"version"`
+	GPUType string `json:"gpuType"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -58,9 +58,9 @@ type Manager struct {
 	waiters       []chan<- string // WaitReady() callers blocked until lifecycle idle
 
 	// Download state.
-	dlProgress DownloadProgress
-	dlCancel   context.CancelFunc
-	dlReporter *download.AtomicProgress // progress reporter for active download
+	dlProgress    DownloadProgress
+	dlCancel      context.CancelFunc
+	dlReporter    *download.AtomicProgress // progress reporter for model download
 
 	// Pending compound operation (e.g. stop-before-delete).
 	pendingAfterStop *pendingOp

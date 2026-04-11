@@ -49,8 +49,14 @@ func TestLibExtension(t *testing.T) {
 
 func TestRequiredLibNames(t *testing.T) {
 	names := requiredLibNames()
-	if len(names) < 4 {
-		t.Fatalf("expected at least 4 required libs, got %d", len(names))
+	// Windows has 3 required libs (no ggml-cpu.dll — it ships arch-specific variants),
+	// other platforms have 4.
+	minExpected := 4
+	if runtime.GOOS == "windows" {
+		minExpected = 3
+	}
+	if len(names) < minExpected {
+		t.Fatalf("expected at least %d required libs, got %d", minExpected, len(names))
 	}
 	for _, n := range names {
 		t.Logf("required lib: %s", n)
