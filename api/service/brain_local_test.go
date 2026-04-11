@@ -172,7 +172,7 @@ func newBrainLocalServiceTestRuntime(t *testing.T, brainMode string, autoStart b
 	rt.BrainLocal = localmodel.NewManagerWithBackend(localmodel.Config{
 		ModelID:   "demo",
 		ModelsDir: modelsDir,
-	}, &brainLocalTestBackend{}, localmodel.BuiltinBrainCatalog)
+	}, &brainLocalTestBackend{}, localmodel.BuiltinCatalogPresets())
 
 	return rt, configDir
 }

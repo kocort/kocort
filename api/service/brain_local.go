@@ -59,48 +59,6 @@ func BuildBrainLocalState(rt *runtime.Runtime) *types.LocalModelState {
 			},
 		}
 	}
-	catalog := make([]types.CerebellumModelPreset, len(snap.Catalog))
-	for i, p := range snap.Catalog {
-		caps := p.CapabilitiesResolved()
-		catalog[i] = types.CerebellumModelPreset{
-			ID:          p.ID,
-			ModelID:     p.ModelID(),
-			Name:        p.Name,
-			Description: cloneLocalizedText(p.Description),
-			Size:        p.Size,
-			DownloadURL: p.DownloadURL,
-			Filename:    p.Filename,
-			Capabilities: types.ModelCapabilities{
-				Vision:    caps.Vision,
-				Audio:     caps.Audio,
-				Video:     caps.Video,
-				Tools:     caps.Tools,
-				Reasoning: caps.Reasoning,
-				Coding:    caps.Coding,
-			},
-		}
-		if p.Defaults != nil {
-			catalog[i].Defaults = &types.ModelPresetDefaults{
-				Threads:        p.Defaults.Threads,
-				ContextSize:    p.Defaults.ContextSize,
-				GpuLayers:      p.Defaults.GpuLayers,
-				EnableThinking: p.Defaults.EnableThinking,
-			}
-			if p.Defaults.Sampling != nil {
-				catalog[i].Defaults.Sampling = &types.SamplingParams{
-					Temp:           p.Defaults.Sampling.Temp,
-					TopP:           p.Defaults.Sampling.TopP,
-					TopK:           p.Defaults.Sampling.TopK,
-					MinP:           p.Defaults.Sampling.MinP,
-					TypicalP:       p.Defaults.Sampling.TypicalP,
-					RepeatLastN:    p.Defaults.Sampling.RepeatLastN,
-					PenaltyRepeat:  p.Defaults.Sampling.PenaltyRepeat,
-					PenaltyFreq:    p.Defaults.Sampling.PenaltyFreq,
-					PenaltyPresent: p.Defaults.Sampling.PenaltyPresent,
-				}
-			}
-		}
-	}
 	var dlProgress *types.CerebellumDownloadProgress
 	if snap.DownloadProgress != nil {
 		dlProgress = &types.CerebellumDownloadProgress{
@@ -132,7 +90,6 @@ func BuildBrainLocalState(rt *runtime.Runtime) *types.LocalModelState {
 		ModelID:             snap.ModelID,
 		ModelsDir:           rt.Config.BrainLocal.ModelsDir,
 		Models:              models,
-		Catalog:             catalog,
 		LastError:           snap.LastError,
 		DownloadProgress:    dlProgress,
 		LibDownloadProgress: libProgress,
@@ -272,7 +229,7 @@ func BrainLocalSelectModel(rt *runtime.Runtime, modelID string) error {
 	}
 	previousModel := rt.BrainLocal.ModelID()
 	if rt.Config.BrainLocal.EnableThinking == nil {
-		rt.BrainLocal.SetEnableThinking(localmodel.ResolveEnableThinkingDefault(nil, modelID, rt.Config.BrainLocal.ModelsDir, localmodel.BuiltinBrainCatalog))
+		rt.BrainLocal.SetEnableThinking(localmodel.ResolveEnableThinkingDefault(nil, modelID, rt.Config.BrainLocal.ModelsDir, localmodel.BuiltinCatalogPresets()))
 	}
 	if err := rt.BrainLocal.SelectModel(modelID); err != nil {
 		recordBrainLocalEvent(rt, "brain_local_model_select_failed", "error",

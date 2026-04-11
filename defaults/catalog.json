@@ -1,10 +1,21 @@
 {
-    "cerebellum": [
+    "models": [
         {
             "id": "qwen3-1.7b-q4_k_m",
+            "role": "cerebellum",
             "name": "Qwen3 1.7B (Q4_K_M)",
-            "description": "Recommended: Good balance of speed and quality for safety review",
+            "description": {
+                "zh": "超轻量：1.3 GB 即可运行，适合安全审查与低资源设备。",
+                "en": "Ultra-light: runs in ~1.3 GB, ideal for safety review and low-resource devices."
+            },
             "size": "~1.28 GB",
+            "minVram": "~2 GB",
+            "parameters": "1.7B",
+            "context": 32768,
+            "capabilities": {
+                "tools": true,
+                "reasoning": true
+            },
             "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q4_K_M.gguf",
             "filename": "Qwen3-1.7B.Q4_K_M.gguf",
             "defaults": {
@@ -26,67 +37,41 @@
             }
         },
         {
-            "id": "qwen3-1.7b-q3_k_m",
-            "name": "Qwen3 1.7B (Q3_K_M)",
-            "description": "Lightweight: Smallest practical quantization for low-resource environments",
-            "size": "~1.07 GB",
-            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q3_K_M.gguf",
-            "filename": "Qwen3-1.7B.Q3_K_M.gguf",
-            "defaults": {
-                "threads": 4,
-                "contextSize": 32768,
-                "gpuLayers": -1,
-                "enableThinking": true,
-                "sampling": {
-                    "temp": 0.6,
-                    "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
-                    "typicalP": 0,
-                    "repeatLastN": 64,
-                    "penaltyRepeat": 1.0,
-                    "penaltyFreq": 0,
-                    "penaltyPresent": 0
-                }
-            }
-        },
-        {
-            "id": "qwen3-1.7b-q6_k",
-            "name": "Qwen3 1.7B (Q6_K)",
-            "description": "Higher quality: Best accuracy for complex safety reviews",
-            "size": "~1.67 GB",
-            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B.Q6_K.gguf",
-            "filename": "Qwen3-1.7B.Q6_K.gguf",
-            "defaults": {
-                "threads": 4,
-                "contextSize": 32768,
-                "gpuLayers": -1,
-                "enableThinking": true,
-                "sampling": {
-                    "temp": 0.6,
-                    "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
-                    "typicalP": 0,
-                    "repeatLastN": 64,
-                    "penaltyRepeat": 1.0,
-                    "penaltyFreq": 0,
-                    "penaltyPresent": 0
-                }
-            }
-        },
-        {
             "id": "gemma-4-e2b-it-q4_k_m",
+            "role": "both",
             "name": "Gemma 4 E2B Instruct (Q4_K_M)",
-            "description": "Recommended: Balanced Gemma 4 E2B preset for local cerebellum safety review",
+            "description": {
+                "zh": "Google 轻量多模态模型，支持工具调用与推理，可用于小脑或轻量大脑。",
+                "en": "Google lightweight multimodal model with tool use and reasoning, for cerebellum or light brain."
+            },
             "size": "~3.43 GB",
+            "minVram": "~4 GB",
+            "parameters": "2B",
+            "context": 32768,
+            "capabilities": {
+                "vision": true,
+                "audio": true,
+                "video": true,
+                "tools": true,
+                "reasoning": true,
+                "coding": true
+            },
             "downloadUrl": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
             "filename": "gemma-4-E2B-it-Q4_K_M.gguf",
+            "files": [
+                {
+                    "downloadUrl": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
+                    "filename": "gemma-4-E2B-it-Q4_K_M.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/mmproj-gemma-4-E2B-it-BF16.gguf",
+                    "filename": "mmproj-gemma-4-E2B-it-Q4_K_M.gguf"
+                }
+            ],
             "defaults": {
                 "threads": 4,
                 "contextSize": 32768,
                 "gpuLayers": -1,
-                "enableThinking": true,
                 "sampling": {
                     "temp": 0.6,
                     "topP": 0.95,
@@ -101,12 +86,23 @@
             }
         },
         {
-            "id": "gemma-4-e2b-it-q6_k",
-            "name": "Gemma 4 E2B Instruct (Q6_K)",
-            "description": "Higher quality: More accurate Gemma 4 E2B preset for stricter semantic review",
-            "size": "~3.85 GB",
-            "downloadUrl": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q6_K.gguf",
-            "filename": "gemma-4-E2B-it-Q6_K.gguf",
+            "id": "qwen3-8b-q4_k_m",
+            "role": "both",
+            "name": "Qwen3 8B (Q4_K_M)",
+            "description": {
+                "zh": "通用首选：对话、推理、工具调用、代码样样行，8 GB VRAM 可跑。",
+                "en": "Versatile default: chat, reasoning, tool use and code, runs on 8 GB VRAM."
+            },
+            "size": "~5.03 GB",
+            "minVram": "~6 GB",
+            "parameters": "8B",
+            "context": 32768,
+            "capabilities": {
+                "tools": true,
+                "reasoning": true
+            },
+            "downloadUrl": "https://huggingface.co/MaziyarPanahi/Qwen3-8B-GGUF/resolve/main/Qwen3-8B.Q4_K_M.gguf",
+            "filename": "Qwen3-8B.Q4_K_M.gguf",
             "defaults": {
                 "threads": 4,
                 "contextSize": 32768,
@@ -121,48 +117,44 @@
                     "repeatLastN": 64,
                     "penaltyRepeat": 1.0,
                     "penaltyFreq": 0,
-                    "penaltyPresent": 0
+                    "penaltyPresent": 1.5
                 }
             }
         },
-        {
-            "id": "gemma-4-e2b-it-q8_0",
-            "name": "Gemma 4 E2B Instruct (Q8_0)",
-            "description": "Highest quality: Near-lossless Gemma 4 E2B preset for resource-rich environments",
-            "size": "~4.97 GB",
-            "downloadUrl": "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q8_0.gguf",
-            "filename": "gemma-4-E2B-it-Q8_0.gguf",
-            "defaults": {
-                "threads": 4,
-                "contextSize": 32768,
-                "gpuLayers": -1,
-                "enableThinking": true,
-                "sampling": {
-                    "temp": 0.6,
-                    "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
-                    "typicalP": 0,
-                    "repeatLastN": 64,
-                    "penaltyRepeat": 1.0,
-                    "penaltyFreq": 0,
-                    "penaltyPresent": 0
-                }
-            }
-        }
-    ],
-    "brain": [
         {
             "id": "qwen3.5-9b-q4_k_m",
+            "role": "both",
             "name": "Qwen3.5 9B (Q4_K_M)",
-            "description": "Recommended: Good balance of speed and quality for general agent tasks",
-            "size": "~5.7 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf",
-            "filename": "Qwen3.5-9B-Q4_K_M.gguf",
+            "description": {
+                "zh": "新一代多模态：统一视觉语言，推理与代码均衡，支持 Thinking。",
+                "en": "Next-gen multimodal: unified vision-language with balanced reasoning and code, thinking supported."
+            },
+            "size": "~5.1 GB",
+            "minVram": "~8 GB",
+            "parameters": "9B",
+            "context": 32768,
+            "capabilities": {
+                "vision": true,
+                "tools": true,
+                "reasoning": true
+            },
+            "downloadUrl": "https://huggingface.co/Qwen/Qwen3.5-9B-Instruct-GGUF/resolve/main/qwen3.5-9b-instruct-q4_k_m.gguf",
+            "filename": "qwen3.5-9b-instruct-q4_k_m.gguf",
+            "files": [
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3.5-9B-Instruct-GGUF/resolve/main/qwen3.5-9b-instruct-q4_k_m.gguf",
+                    "filename": "qwen3.5-9b-instruct-q4_k_m.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/mmproj-BF16.gguf",
+                    "filename": "mmproj-qwen3.5-9b-instruct-q4_k_m.gguf"
+                }
+            ],
             "defaults": {
                 "threads": 4,
                 "contextSize": 32768,
                 "gpuLayers": -1,
+                "enableThinking": true,
                 "sampling": {
                     "temp": 0.6,
                     "topP": 0.95,
@@ -177,20 +169,104 @@
             }
         },
         {
-            "id": "qwen3.5-9b-q3_k_m",
-            "name": "Qwen3.5 9B (Q3_K_M)",
-            "description": "Lightweight: Smaller footprint for lower-resource environments",
-            "size": "~4.7 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q3_K_M.gguf",
-            "filename": "Qwen3.5-9B-Q3_K_M.gguf",
+            "id": "phi-4-14b-q4_k_m",
+            "role": "brain",
+            "name": "Phi-4 14B (Q4_K_M)",
+            "description": {
+                "zh": "微软推理专精：14B 高密度模型，擅长推理与代码，8 GB VRAM 可跑。",
+                "en": "Microsoft reasoning-focused: 14B dense model excelling at reasoning and code, runs on 8 GB VRAM."
+            },
+            "size": "~7.7 GB",
+            "minVram": "~8 GB",
+            "parameters": "14B",
+            "context": 16384,
+            "capabilities": {
+                "tools": true,
+                "reasoning": true,
+                "coding": true
+            },
+            "downloadUrl": "https://huggingface.co/bartowski/phi-4-GGUF/resolve/main/phi-4-Q4_K_M.gguf",
+            "filename": "phi-4-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 4,
+                "contextSize": 16384,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "qwen3-14b-q4_k_m",
+            "role": "brain",
+            "name": "Qwen3 14B (Q4_K_M)",
+            "description": {
+                "zh": "中坚力量：更强推理与代码能力，工具调用与 Thinking 齐全。",
+                "en": "Mid-tier powerhouse: stronger reasoning and coding with full tool use and thinking support."
+            },
+            "size": "~9.0 GB",
+            "minVram": "~10 GB",
+            "parameters": "14B",
+            "context": 32768,
+            "capabilities": {
+                "tools": true,
+                "reasoning": true
+            },
+            "downloadUrl": "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
+            "filename": "Qwen3-14B-Q4_K_M.gguf",
             "defaults": {
                 "threads": 4,
                 "contextSize": 32768,
                 "gpuLayers": -1,
+                "enableThinking": true,
                 "sampling": {
                     "temp": 0.6,
                     "topP": 0.95,
                     "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 1.5
+                }
+            }
+        },
+        {
+            "id": "gpt-oss-20b-q4_k_m",
+            "role": "brain",
+            "name": "GPT-OSS 20B (Q4_K_M)",
+            "description": {
+                "zh": "OpenAI 开源 MoE：21B 参数仅 3.6B 激活，工具调用与推理能力强，12 GB VRAM 可跑。",
+                "en": "OpenAI open-weight MoE: 21B params with 3.6B active, strong tool use and reasoning, runs on 12 GB VRAM."
+            },
+            "size": "~11.6 GB",
+            "minVram": "~12 GB",
+            "parameters": "21B (3.6B active)",
+            "context": 32768,
+            "capabilities": {
+                "tools": true,
+                "reasoning": true,
+                "coding": true
+            },
+            "downloadUrl": "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf",
+            "filename": "gpt-oss-20b-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 32768,
+                "gpuLayers": 0,
+                "sampling": {
+                    "temp": 1.0,
+                    "topP": 1.0,
+                    "topK": 40,
                     "minP": 0,
                     "typicalP": 0,
                     "repeatLastN": 64,
@@ -201,17 +277,120 @@
             }
         },
         {
-            "id": "qwen3.5-9b-q8_0",
-            "name": "Qwen3.5 9B (Q8_0)",
-            "description": "Higher quality: Best accuracy for demanding tasks",
-            "size": "~9.5 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q8_0.gguf",
-            "filename": "Qwen3.5-9B-Q8_0.gguf",
+            "id": "mistral-small-3.1-24b-q4_k_m",
+            "role": "brain",
+            "name": "Mistral Small 3.1 24B (Q4_K_M)",
+            "description": {
+                "zh": "Mistral 多模态：24B 密集模型，多语言 + 视觉 + 代码 + 工具调用。",
+                "en": "Mistral multimodal: 24B dense model with multilingual, vision, code and tool use."
+            },
+            "size": "~12.8 GB",
+            "minVram": "~14 GB",
+            "parameters": "24B",
+            "context": 32768,
+            "capabilities": {
+                "vision": true,
+                "tools": true,
+                "coding": true
+            },
+            "downloadUrl": "https://huggingface.co/lmstudio-community/Mistral-Small-3.1-24B-Instruct-2503-GGUF/resolve/main/Mistral-Small-3.1-24B-Instruct-2503-Q4_K_M.gguf",
+            "filename": "Mistral-Small-3.1-24B-Instruct-2503-Q4_K_M.gguf",
+            "files": [
+                {
+                    "downloadUrl": "https://huggingface.co/lmstudio-community/Mistral-Small-3.1-24B-Instruct-2503-GGUF/resolve/main/Mistral-Small-3.1-24B-Instruct-2503-Q4_K_M.gguf",
+                    "filename": "Mistral-Small-3.1-24B-Instruct-2503-Q4_K_M.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/lmstudio-community/Mistral-Small-3.1-24B-Instruct-2503-GGUF/resolve/main/mmproj-model-f16.gguf",
+                    "filename": "mmproj-Mistral-Small-3.1-24B-Instruct-2503-Q4_K_M.gguf"
+                }
+            ],
             "defaults": {
-                "threads": 4,
+                "threads": 8,
                 "contextSize": 32768,
                 "gpuLayers": -1,
                 "sampling": {
+                    "temp": 0.7,
+                    "topP": 0.95,
+                    "topK": 40,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "gemma-3-27b-it-q4_k_m",
+            "role": "brain",
+            "name": "Gemma 3 27B Instruct (Q4_K_M)",
+            "description": {
+                "zh": "Google 旗舰：27B 多模态，128K 上下文，工具调用能力强。",
+                "en": "Google flagship: 27B multimodal with 128K context and strong tool use."
+            },
+            "size": "~14.3 GB",
+            "minVram": "~16 GB",
+            "parameters": "27B",
+            "context": 32768,
+            "capabilities": {
+                "vision": true,
+                "tools": true,
+                "reasoning": true
+            },
+            "downloadUrl": "https://huggingface.co/unsloth/gemma-3-27b-it-GGUF/resolve/main/gemma-3-27b-it-Q4_K_M.gguf",
+            "filename": "gemma-3-27b-it-Q4_K_M.gguf",
+            "files": [
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/gemma-3-27b-it-GGUF/resolve/main/gemma-3-27b-it-Q4_K_M.gguf",
+                    "filename": "gemma-3-27b-it-Q4_K_M.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/unsloth/gemma-3-27b-it-GGUF/resolve/main/mmproj-BF16.gguf",
+                    "filename": "mmproj-gemma-3-27b-it-Q4_K_M.gguf"
+                }
+            ],
+            "defaults": {
+                "threads": 8,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "sampling": {
+                    "temp": 0.7,
+                    "topP": 0.95,
+                    "topK": 40,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 0
+                }
+            }
+        },
+        {
+            "id": "deepseek-r1-distill-qwen-32b-q4_k_m",
+            "role": "brain",
+            "name": "DeepSeek R1 Distill 32B (Q4_K_M)",
+            "description": {
+                "zh": "推理王者：R1 蒸馏至 Qwen 32B，数学与代码推理顶尖，Thinking 模式。",
+                "en": "Reasoning champion: R1 distilled into Qwen 32B, top-tier math and code reasoning, thinking mode."
+            },
+            "size": "~16.9 GB",
+            "minVram": "~18 GB",
+            "parameters": "32B",
+            "context": 32768,
+            "capabilities": {
+                "reasoning": true
+            },
+            "downloadUrl": "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+            "filename": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "enableThinking": true,
+                "sampling": {
                     "temp": 0.6,
                     "topP": 0.95,
                     "topK": 20,
@@ -225,22 +404,69 @@
             }
         },
         {
-            "id": "qwen3.5-27b-q4_k_m",
-            "name": "Qwen3.5 27B (Q4_K_M)",
-            "description": "Balanced large model: Strong reasoning and instruction following",
-            "size": "~16.4 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q4_K_M.gguf",
-            "filename": "Qwen3.5-27B-Q4_K_M.gguf",
+            "id": "qwen3-32b-q4_k_m",
+            "role": "brain",
+            "name": "Qwen3 32B (Q4_K_M)",
+            "description": {
+                "zh": "旗舰密集模型：对话、代码、推理全面领先，支持工具调用与 Thinking。",
+                "en": "Flagship dense model: leading in chat, code and reasoning with tool use and thinking support."
+            },
+            "size": "~16.9 GB",
+            "minVram": "~18 GB",
+            "parameters": "32B",
+            "context": 32768,
+            "capabilities": {
+                "tools": true,
+                "reasoning": true
+            },
+            "downloadUrl": "https://huggingface.co/Qwen/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q4_K_M.gguf",
+            "filename": "Qwen3-32B-Q4_K_M.gguf",
+            "defaults": {
+                "threads": 8,
+                "contextSize": 32768,
+                "gpuLayers": -1,
+                "enableThinking": true,
+                "sampling": {
+                    "temp": 0.6,
+                    "topP": 0.95,
+                    "topK": 20,
+                    "minP": 0,
+                    "typicalP": 0,
+                    "repeatLastN": 64,
+                    "penaltyRepeat": 1.0,
+                    "penaltyFreq": 0,
+                    "penaltyPresent": 1.5
+                }
+            }
+        },
+        {
+            "id": "glm-4.7-flash-q4_k_m",
+            "role": "brain",
+            "name": "GLM-4.7-Flash (Q4_K_M)",
+            "description": {
+                "zh": "智谱轻量 MoE：30B 级别快速推理，工具调用与代码能力强。",
+                "en": "Zhipu lightweight MoE: 30B-class fast inference with strong tool use and coding."
+            },
+            "size": "~18.3 GB",
+            "minVram": "~20 GB",
+            "parameters": "30B (MoE)",
+            "context": 65536,
+            "capabilities": {
+                "tools": true,
+                "reasoning": true,
+                "coding": true
+            },
+            "downloadUrl": "https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF/resolve/main/GLM-4.7-Flash-Q4_K_M.gguf",
+            "filename": "GLM-4.7-Flash-Q4_K_M.gguf",
             "defaults": {
                 "threads": 8,
                 "contextSize": 65536,
                 "gpuLayers": -1,
-                "enableThinking": true,
                 "sampling": {
-                    "temp": 0.6,
+                    "temp": 1.0,
                     "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
+                    "topK": 40,
+                    "minP": 0.01,
                     "typicalP": 0,
                     "repeatLastN": 64,
                     "penaltyRepeat": 1.0,
@@ -250,146 +476,49 @@
             }
         },
         {
-            "id": "qwen3.5-27b-q3_k_m",
-            "name": "Qwen3.5 27B (Q3_K_M)",
-            "description": "Lightweight large model: Reduced VRAM for 27B-class performance",
-            "size": "~14.0 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q3_K_M.gguf",
-            "filename": "Qwen3.5-27B-Q3_K_M.gguf",
-            "defaults": {
-                "threads": 8,
-                "contextSize": 65536,
-                "gpuLayers": -1,
-                "enableThinking": true,
-                "sampling": {
-                    "temp": 0.6,
-                    "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
-                    "typicalP": 0,
-                    "repeatLastN": 64,
-                    "penaltyRepeat": 1.0,
-                    "penaltyFreq": 0,
-                    "penaltyPresent": 0
+            "id": "qwen3-coder-next-q4_k_m",
+            "role": "brain",
+            "name": "Qwen3-Coder-Next (Q4_K_M)",
+            "description": {
+                "zh": "编码代理专精：面向软件工程优化，4 分片 48 GB，需大显存。",
+                "en": "Coding agent specialist: optimized for software engineering, 4-shard 48 GB, requires large VRAM."
+            },
+            "size": "~48.4 GB",
+            "minVram": "~50 GB",
+            "parameters": "~80B",
+            "context": 131072,
+            "capabilities": {
+                "tools": true,
+                "coding": true
+            },
+            "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+            "filename": "Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+            "files": [
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
+                    "filename": "Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf",
+                    "filename": "Qwen3-Coder-Next-Q4_K_M-00002-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00003-of-00004.gguf",
+                    "filename": "Qwen3-Coder-Next-Q4_K_M-00003-of-00004.gguf"
+                },
+                {
+                    "downloadUrl": "https://huggingface.co/Qwen/Qwen3-Coder-Next-GGUF/resolve/main/Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00004-of-00004.gguf",
+                    "filename": "Qwen3-Coder-Next-Q4_K_M-00004-of-00004.gguf"
                 }
-            }
-        },
-        {
-            "id": "qwen3.5-27b-q8_0",
-            "name": "Qwen3.5 27B (Q8_0)",
-            "description": "Highest accuracy 27B: Near-lossless quantization for maximum quality",
-            "size": "~28.8 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-27B-GGUF/resolve/main/Qwen3.5-27B-Q8_0.gguf",
-            "filename": "Qwen3.5-27B-Q8_0.gguf",
-            "defaults": {
-                "threads": 8,
-                "contextSize": 65536,
-                "gpuLayers": -1,
-                "enableThinking": true,
-                "sampling": {
-                    "temp": 0.6,
-                    "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
-                    "typicalP": 0,
-                    "repeatLastN": 64,
-                    "penaltyRepeat": 1.0,
-                    "penaltyFreq": 0,
-                    "penaltyPresent": 0
-                }
-            }
-        },
-        {
-            "id": "qwen3.5-122b-a10b-q4_k_m",
-            "name": "Qwen3.5 122B-A10B (Q4_K_M)",
-            "description": "MoE flagship: 122B total / 10B active parameters, exceptional capability",
-            "size": "~76.5 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-122B-A10B-GGUF/resolve/main/Qwen3.5-122B-A10B-Q4_K_M.gguf",
-            "filename": "Qwen3.5-122B-A10B-Q4_K_M.gguf",
+            ],
             "defaults": {
                 "threads": 8,
                 "contextSize": 131072,
                 "gpuLayers": -1,
-                "enableThinking": true,
                 "sampling": {
-                    "temp": 0.6,
+                    "temp": 1.0,
                     "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
-                    "typicalP": 0,
-                    "repeatLastN": 64,
-                    "penaltyRepeat": 1.0,
-                    "penaltyFreq": 0,
-                    "penaltyPresent": 0
-                }
-            }
-        },
-        {
-            "id": "qwen3.5-122b-a10b-q3_k_m",
-            "name": "Qwen3.5 122B-A10B (Q3_K_M)",
-            "description": "MoE balanced: Reduced size with strong 122B-A10B performance",
-            "size": "~56.4 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-122B-A10B-GGUF/resolve/main/Qwen3.5-122B-A10B-Q3_K_M.gguf",
-            "filename": "Qwen3.5-122B-A10B-Q3_K_M.gguf",
-            "defaults": {
-                "threads": 8,
-                "contextSize": 131072,
-                "gpuLayers": -1,
-                "enableThinking": true,
-                "sampling": {
-                    "temp": 0.6,
-                    "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
-                    "typicalP": 0,
-                    "repeatLastN": 64,
-                    "penaltyRepeat": 1.0,
-                    "penaltyFreq": 0,
-                    "penaltyPresent": 0
-                }
-            }
-        },
-        {
-            "id": "qwen3.5-397b-a17b-q4_k_m",
-            "name": "Qwen3.5 397B-A17B (Q4_K_M)",
-            "description": "MoE ultra: 397B total / 17B active, state-of-the-art open-source performance",
-            "size": "~244 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-397B-A17B-GGUF/resolve/main/Qwen3.5-397B-A17B-Q4_K_M.gguf",
-            "filename": "Qwen3.5-397B-A17B-Q4_K_M.gguf",
-            "defaults": {
-                "threads": 8,
-                "contextSize": 131072,
-                "gpuLayers": -1,
-                "enableThinking": true,
-                "sampling": {
-                    "temp": 0.6,
-                    "topP": 0.95,
-                    "topK": 20,
-                    "minP": 0,
-                    "typicalP": 0,
-                    "repeatLastN": 64,
-                    "penaltyRepeat": 1.0,
-                    "penaltyFreq": 0,
-                    "penaltyPresent": 0
-                }
-            }
-        },
-        {
-            "id": "qwen3.5-397b-a17b-q3_k_m",
-            "name": "Qwen3.5 397B-A17B (Q3_K_M)",
-            "description": "MoE ultra lightweight: Best-in-class quality at reduced storage cost",
-            "size": "~177 GB",
-            "downloadUrl": "https://huggingface.co/unsloth/Qwen3.5-397B-A17B-GGUF/resolve/main/Qwen3.5-397B-A17B-Q3_K_M.gguf",
-            "filename": "Qwen3.5-397B-A17B-Q3_K_M.gguf",
-            "defaults": {
-                "threads": 8,
-                "contextSize": 131072,
-                "gpuLayers": -1,
-                "enableThinking": true,
-                "sampling": {
-                    "temp": 0.6,
-                    "topP": 0.95,
-                    "topK": 20,
+                    "topK": 40,
                     "minP": 0,
                     "typicalP": 0,
                     "repeatLastN": 64,

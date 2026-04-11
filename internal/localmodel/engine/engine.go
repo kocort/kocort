@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
+	"github.com/kocort/kocort/internal/localmodel/catalog"
 	"github.com/kocort/kocort/internal/localmodel/chatfmt"
 	"github.com/kocort/kocort/internal/localmodel/ffi"
 )
@@ -67,6 +68,14 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 	if lib == nil {
 		return nil, fmt.Errorf("llamadl backend not available: %v", ffi.LibraryError())
 	}
+
+	// Update runtime capabilities based on actual library features.
+	catalog.SetRuntimeCapabilities(catalog.Capabilities{
+		Vision:    lib.IsMtmdAvailable(),
+		Tools:     true,
+		Reasoning: true,
+		Coding:    true,
+	})
 
 	e := &Engine{
 		cfg:            cfg,

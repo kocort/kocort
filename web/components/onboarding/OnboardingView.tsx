@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useI18n } from '@/lib/i18n/I18nContext';
+import type { TranslationKey } from '@/lib/i18n/translations';
 import { Select } from '@/components/ui';
 import { ToggleSwitch } from '@/components/ui';
 import {
@@ -50,7 +51,7 @@ function getPresetModelId(preset: { modelId?: string; filename?: string; id: str
   return preset.modelId || preset.filename?.replace(/\.gguf$/i, '') || preset.id;
 }
 
-function capabilityBadgeItems(t: (key: string) => string, capabilities?: ModelCapabilities) {
+function capabilityBadgeItems(t: (key: TranslationKey, params?: Record<string, string>) => string, capabilities?: ModelCapabilities) {
   const items: Array<{ key: string; label: string; className: string }> = [];
   if (capabilities?.vision) {
     items.push({ key: 'vision', label: t('brain.vision'), className: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400' });
@@ -116,11 +117,11 @@ export function OnboardingView({ onComplete }: OnboardingViewProps) {
     const state = await apiGet<BrainState>('/api/engine/brain');
     setPresets(state.modelPresets || []);
     setCerebellumState(state.cerebellum || null);
-    if (state.cerebellum?.catalog) {
-      setCerebellumCatalog(state.cerebellum.catalog);
+    if (state.localModelCatalog) {
+      setCerebellumCatalog(state.localModelCatalog);
       setSelectedCerebellumModel((current) => {
         if (current) return current;
-        return state.cerebellum?.catalog?.[0]?.id || '';
+        return state.localModelCatalog?.[0]?.id || '';
       });
     }
     return state;

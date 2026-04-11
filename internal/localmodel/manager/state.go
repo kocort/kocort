@@ -19,11 +19,11 @@ type ModelPresetFile = catalog.PresetFile
 // LocalizedText stores Chinese and English display text.
 type LocalizedText = catalog.LocalizedText
 
-// BuiltinCerebellumCatalog re-exports the cerebellum catalog for convenience.
-var BuiltinCerebellumCatalog = catalog.BuiltinCerebellumCatalog
+// BuiltinCatalog re-exports the unified catalog for convenience.
+var BuiltinCatalog = catalog.BuiltinCatalog
 
-// BuiltinBrainCatalog re-exports the brain catalog for convenience.
-var BuiltinBrainCatalog = catalog.BuiltinBrainCatalog
+// BuiltinCatalogPresets re-exports the flat preset list.
+var BuiltinCatalogPresets = catalog.BuiltinCatalogPresets
 
 // ── API type aliases (used throughout manager) ───────────────────────────────
 

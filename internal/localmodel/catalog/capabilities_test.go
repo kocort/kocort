@@ -14,7 +14,7 @@ func TestInferCapabilitiesGemma4E2B(t *testing.T) {
 		t.Fatalf("unexpected Gemma 4 capabilities: %+v", caps)
 	}
 	runtimeCaps := IntersectCapabilities(caps, RuntimeSupportedCapabilities())
-	if !runtimeCaps.Vision || !runtimeCaps.Tools || runtimeCaps.Audio || runtimeCaps.Video || runtimeCaps.Coding {
+	if !runtimeCaps.Vision || !runtimeCaps.Tools || !runtimeCaps.Coding || runtimeCaps.Audio || runtimeCaps.Video {
 		t.Fatalf("unexpected runtime-filtered Gemma 4 capabilities: %+v", runtimeCaps)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/kocort/kocort/internal/channel/adapter"
 	"github.com/kocort/kocort/internal/config"
 	"github.com/kocort/kocort/internal/core"
+	"github.com/kocort/kocort/internal/localmodel/catalog"
 	"github.com/kocort/kocort/internal/session"
 	"github.com/kocort/kocort/internal/skill"
 	"github.com/kocort/kocort/runtime"
@@ -24,17 +25,66 @@ func BuildBrainState(ctx context.Context, rt *runtime.Runtime) types.BrainState 
 		brainMode = "cloud"
 	}
 	return types.BrainState{
-		DefaultAgent: config.ResolveDefaultConfiguredAgentID(rt.Config),
-		Agents:       rt.Config.Agents,
-		Models:       rt.Config.Models,
-		Providers:    SummarizeProviders(ctx, rt),
-		SystemPrompt: ResolveDefaultSystemPrompt(rt.Config),
-		ModelRecords: BuildBrainModelRecords(ctx, rt),
-		ModelPresets: presets.AsTypes(),
-		BrainMode:    brainMode,
-		BrainLocal:   BuildBrainLocalState(rt),
-		Cerebellum:   BuildCerebellumState(rt),
+		DefaultAgent:      config.ResolveDefaultConfiguredAgentID(rt.Config),
+		Agents:            rt.Config.Agents,
+		Models:            rt.Config.Models,
+		Providers:         SummarizeProviders(ctx, rt),
+		SystemPrompt:      ResolveDefaultSystemPrompt(rt.Config),
+		ModelRecords:      BuildBrainModelRecords(ctx, rt),
+		ModelPresets:      presets.AsTypes(),
+		BrainMode:         brainMode,
+		BrainLocal:        BuildBrainLocalState(rt),
+		Cerebellum:        BuildCerebellumState(rt),
+		LocalModelCatalog: buildUnifiedCatalog(),
 	}
+}
+
+// buildUnifiedCatalog returns the full model catalog with role tags and resolved capabilities.
+func buildUnifiedCatalog() []types.CerebellumModelPreset {
+	entries := catalog.BuiltinCatalog
+	out := make([]types.CerebellumModelPreset, len(entries))
+	for i, e := range entries {
+		caps := e.Preset.CapabilitiesResolved()
+		out[i] = types.CerebellumModelPreset{
+			ID:          e.ID,
+			ModelID:     e.Preset.ModelID(),
+			Name:        e.Name,
+			Description: cloneLocalizedText(e.Description),
+			Size:        e.Size,
+			DownloadURL: e.DownloadURL,
+			Filename:    e.Filename,
+			Role:        e.Role,
+			Capabilities: types.ModelCapabilities{
+				Vision:    caps.Vision,
+				Audio:     caps.Audio,
+				Video:     caps.Video,
+				Tools:     caps.Tools,
+				Reasoning: caps.Reasoning,
+				Coding:    caps.Coding,
+			},
+		}
+		if e.Defaults != nil {
+			out[i].Defaults = &types.ModelPresetDefaults{
+				Threads:     e.Defaults.Threads,
+				ContextSize: e.Defaults.ContextSize,
+				GpuLayers:   e.Defaults.GpuLayers,
+			}
+			if e.Defaults.Sampling != nil {
+				out[i].Defaults.Sampling = &types.SamplingParams{
+					Temp:           e.Defaults.Sampling.Temp,
+					TopP:           e.Defaults.Sampling.TopP,
+					TopK:           e.Defaults.Sampling.TopK,
+					MinP:           e.Defaults.Sampling.MinP,
+					TypicalP:       e.Defaults.Sampling.TypicalP,
+					RepeatLastN:    e.Defaults.Sampling.RepeatLastN,
+					PenaltyRepeat:  e.Defaults.Sampling.PenaltyRepeat,
+					PenaltyFreq:    e.Defaults.Sampling.PenaltyFreq,
+					PenaltyPresent: e.Defaults.Sampling.PenaltyPresent,
+				}
+			}
+		}
+	}
+	return out
 }
 
 // BuildCapabilitiesState builds the capabilities state response.

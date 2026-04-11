@@ -181,10 +181,13 @@ func scanModels(modelsDir string) []ModelInfo {
 		if agg != nil && agg.size > 0 {
 			sizeStr = FormatBytes(agg.size)
 		}
-		caps := catalog.IntersectCapabilities(
-			catalog.InferCapabilities(id, HumanModelName(id), "", agg != nil && agg.hasVision),
-			catalog.RuntimeSupportedCapabilities(),
-		)
+		caps, found := catalog.LookupCatalogCapabilities(id)
+		if !found {
+			caps = catalog.IntersectCapabilities(
+				catalog.InferCapabilities(id, HumanModelName(id), "", agg != nil && agg.hasVision),
+				catalog.RuntimeSupportedCapabilities(),
+			)
+		}
 		models = append(models, ModelInfo{
 			ID:           id,
 			Name:         HumanModelName(id),

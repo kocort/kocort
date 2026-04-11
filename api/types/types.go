@@ -133,16 +133,17 @@ type TaskUpdateRequest struct {
 
 // BrainState represents the brain configuration state.
 type BrainState struct {
-	DefaultAgent string                       `json:"defaultAgent"`
-	Agents       config.AgentsConfig          `json:"agents"`
-	Models       config.ModelsConfig          `json:"models"`
-	Providers    []core.ProviderHealthSummary `json:"providers,omitempty"`
-	SystemPrompt string                       `json:"systemPrompt,omitempty"`
-	ModelRecords []BrainModelRecord           `json:"modelRecords,omitempty"`
-	ModelPresets []BrainModelPreset           `json:"modelPresets,omitempty"`
-	BrainMode    string                       `json:"brainMode"`
-	BrainLocal   *LocalModelState             `json:"brainLocal,omitempty"`
-	Cerebellum   *CerebellumState             `json:"cerebellum,omitempty"`
+	DefaultAgent     string                       `json:"defaultAgent"`
+	Agents           config.AgentsConfig          `json:"agents"`
+	Models           config.ModelsConfig          `json:"models"`
+	Providers        []core.ProviderHealthSummary `json:"providers,omitempty"`
+	SystemPrompt     string                       `json:"systemPrompt,omitempty"`
+	ModelRecords     []BrainModelRecord           `json:"modelRecords,omitempty"`
+	ModelPresets     []BrainModelPreset           `json:"modelPresets,omitempty"`
+	BrainMode        string                       `json:"brainMode"`
+	BrainLocal       *LocalModelState             `json:"brainLocal,omitempty"`
+	Cerebellum       *CerebellumState             `json:"cerebellum,omitempty"`
+	LocalModelCatalog []CerebellumModelPreset     `json:"localModelCatalog,omitempty"`
 }
 
 // LocalModelState represents the state of a local model manager instance.
@@ -153,7 +154,6 @@ type LocalModelState struct {
 	ModelID             string                      `json:"modelId,omitempty"`
 	ModelsDir           string                      `json:"modelsDir,omitempty"`
 	Models              []CerebellumModelInfo       `json:"models"`
-	Catalog             []CerebellumModelPreset     `json:"catalog,omitempty"`
 	LastError           string                      `json:"lastError,omitempty"`
 	DownloadProgress    *CerebellumDownloadProgress `json:"downloadProgress,omitempty"`
 	LibDownloadProgress *LibDownloadProgress        `json:"libDownloadProgress,omitempty"`
@@ -172,7 +172,6 @@ type CerebellumState struct {
 	ModelID             string                      `json:"modelId,omitempty"`
 	ModelsDir           string                      `json:"modelsDir,omitempty"`
 	Models              []CerebellumModelInfo       `json:"models"`
-	Catalog             []CerebellumModelPreset     `json:"catalog,omitempty"`
 	LastError           string                      `json:"lastError,omitempty"`
 	DownloadProgress    *CerebellumDownloadProgress `json:"downloadProgress,omitempty"`
 	LibDownloadProgress *LibDownloadProgress        `json:"libDownloadProgress,omitempty"`
@@ -269,6 +268,7 @@ type CerebellumModelPreset struct {
 	Filename     string               `json:"filename,omitempty"`
 	Defaults     *ModelPresetDefaults `json:"defaults,omitempty"`
 	Capabilities ModelCapabilities    `json:"capabilities,omitempty"`
+	Role         string               `json:"role,omitempty"`
 }
 
 // ModelCapabilities describes feature badges surfaced for local models.

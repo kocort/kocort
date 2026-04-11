@@ -66,8 +66,8 @@ const (
 // ── Catalog Variables ────────────────────────────────────────────────────────
 
 var (
-	BuiltinBrainCatalog      = manager.BuiltinBrainCatalog
-	BuiltinCerebellumCatalog = manager.BuiltinCerebellumCatalog
+	BuiltinCatalog        = manager.BuiltinCatalog
+	BuiltinCatalogPresets = manager.BuiltinCatalogPresets
 )
 
 // ── Utility Functions ────────────────────────────────────────────────────────

@@ -125,6 +125,18 @@ export type BrainState = {
     brainMode?: string;
     brainLocal?: LocalModelState;
     cerebellum?: CerebellumState;
+    localModelCatalog?: Array<{
+        id: string;
+        modelId?: string;
+        name: string;
+        description?: LocalizedText;
+        size?: string;
+        downloadUrl?: string;
+        filename?: string;
+        defaults?: ModelPresetDefaults;
+        capabilities?: ModelCapabilities;
+        role?: string;
+    }>;
 };
 
 export type BrainModelRecord = {
@@ -211,17 +223,6 @@ export type LocalModelState = {
         size?: string;
         capabilities?: ModelCapabilities;
     }>;
-    catalog?: Array<{
-        id: string;
-        modelId?: string;
-        name: string;
-        description?: LocalizedText;
-        size?: string;
-        downloadUrl?: string;
-        filename?: string;
-        defaults?: ModelPresetDefaults;
-        capabilities?: ModelCapabilities;
-    }>;
     lastError?: string;
     downloadProgress?: {
         presetId: string;
@@ -256,17 +257,6 @@ export type CerebellumState = {
         id: string;
         name: string;
         size?: string;
-        capabilities?: ModelCapabilities;
-    }>;
-    catalog?: Array<{
-        id: string;
-        modelId?: string;
-        name: string;
-        description?: LocalizedText;
-        size?: string;
-        downloadUrl?: string;
-        filename?: string;
-        defaults?: ModelPresetDefaults;
         capabilities?: ModelCapabilities;
     }>;
     lastError?: string;

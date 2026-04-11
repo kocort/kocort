@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Capabilities describes model features surfaced in the UI.
@@ -97,6 +98,9 @@ func InferCapabilities(modelID, name, description string, hasVision bool) Capabi
 			caps.Audio = true
 			caps.Video = true
 		}
+	case hasAny(text, "gemma 3", "gemma-3"):
+		caps.Tools = true
+		caps.Reasoning = true
 	case hasAny(text, "glm-5", "glm 5", "glm-4.7-flash", "glm 4.7 flash"):
 		caps.Tools = true
 		caps.Reasoning = true
@@ -109,6 +113,15 @@ func InferCapabilities(modelID, name, description string, hasVision bool) Capabi
 		caps.Tools = true
 		caps.Reasoning = true
 		caps.Coding = true
+	case hasAny(text, "phi-4", "phi4"):
+		caps.Tools = true
+		caps.Reasoning = true
+		caps.Coding = true
+	case hasAny(text, "mistral-small", "mistral small"):
+		caps.Tools = true
+		caps.Coding = true
+	case hasAny(text, "deepseek-r1", "deepseek r1"):
+		caps.Reasoning = true
 	}
 
 	return caps
@@ -123,14 +136,34 @@ func hasAny(text string, needles ...string) bool {
 	return false
 }
 
-// RuntimeSupportedCapabilities returns the subset of capability badges that
-// the current local runtime can actually serve end-to-end today.
-func RuntimeSupportedCapabilities() Capabilities {
-	return Capabilities{
+// runtimeCaps holds the dynamically configured runtime capabilities.
+// Updated via SetRuntimeCapabilities when the llama.cpp library is loaded.
+var (
+	runtimeCapsMu sync.RWMutex
+	runtimeCaps   = Capabilities{
 		Vision:    true,
 		Tools:     true,
 		Reasoning: true,
+		Coding:    true,
 	}
+)
+
+// SetRuntimeCapabilities updates the runtime capability set based on the
+// actual features available in the loaded llama.cpp library.
+// Call this after the library is initialised (e.g. after checking IsMtmdAvailable).
+func SetRuntimeCapabilities(caps Capabilities) {
+	runtimeCapsMu.Lock()
+	runtimeCaps = caps
+	runtimeCapsMu.Unlock()
+}
+
+// RuntimeSupportedCapabilities returns the subset of capability badges that
+// the current local runtime can actually serve end-to-end today.
+func RuntimeSupportedCapabilities() Capabilities {
+	runtimeCapsMu.RLock()
+	c := runtimeCaps
+	runtimeCapsMu.RUnlock()
+	return c
 }
 
 // IntersectCapabilities keeps only capabilities supported by both sides.
@@ -160,20 +193,38 @@ func (p Preset) ModelID() string {
 }
 
 // CapabilitiesResolved returns capability badges for the preset.
+// If the preset has explicit capabilities defined in JSON, those are used;
+// otherwise it falls back to name-based inference. The result is then
+// intersected with the runtime's supported capabilities.
 func (p Preset) CapabilitiesResolved() Capabilities {
-	description := ""
-	if p.Description != nil {
-		description = strings.TrimSpace(strings.Join([]string{p.Description.Zh, p.Description.En}, " "))
+	var declared Capabilities
+	if p.Capabilities != nil {
+		declared = *p.Capabilities
+	} else {
+		description := ""
+		if p.Description != nil {
+			description = strings.TrimSpace(strings.Join([]string{p.Description.Zh, p.Description.En}, " "))
+		}
+		hasVision := false
+		for _, file := range p.DownloadFiles() {
+			if IsMMProjFilename(file.Filename) {
+				hasVision = true
+				break
+			}
+		}
+		declared = InferCapabilities(p.ModelID(), p.Name, description, hasVision)
 	}
-	hasVision := false
-	for _, file := range p.DownloadFiles() {
-		if IsMMProjFilename(file.Filename) {
-			hasVision = true
-			break
+	return IntersectCapabilities(declared, RuntimeSupportedCapabilities())
+}
+
+// LookupCatalogCapabilities returns the resolved capabilities from the builtin
+// catalog for the given model ID, if a matching preset exists. The second
+// return value is false when no catalog entry matches.
+func LookupCatalogCapabilities(modelID string) (Capabilities, bool) {
+	for _, entry := range BuiltinCatalog {
+		if entry.Preset.ModelID() == modelID {
+			return entry.Preset.CapabilitiesResolved(), true
 		}
 	}
-	return IntersectCapabilities(
-		InferCapabilities(p.ModelID(), p.Name, description, hasVision),
-		RuntimeSupportedCapabilities(),
-	)
+	return Capabilities{}, false
 }

@@ -49,7 +49,7 @@ type DownloadProgress = localmodel.DownloadProgress
 type ModelBackend = localmodel.ModelBackend
 
 // BuiltinModelCatalog is the default catalog for cerebellum models.
-var BuiltinModelCatalog = localmodel.BuiltinCerebellumCatalog
+var BuiltinModelCatalog = localmodel.BuiltinCatalogPresets()
 
 // sensitiveKeywords — re-exported from localmodel.
 var sensitiveKeywords = localmodel.SensitiveKeywords
@@ -140,7 +140,7 @@ type Manager struct {
 // BuiltinModelCatalogPresets returns the built-in cerebellum catalog.
 // Alias kept for backward compatibility in tests.
 func BuiltinModelCatalogPresets() []localmodel.ModelPreset {
-	return localmodel.BuiltinCerebellumCatalog
+	return localmodel.BuiltinCatalogPresets()
 }
 
 // NewManager creates a new cerebellum Manager.

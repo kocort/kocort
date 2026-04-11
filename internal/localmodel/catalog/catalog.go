@@ -51,14 +51,15 @@ type PresetDefaults struct {
 
 // Preset describes a downloadable model preset.
 type Preset struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Description *LocalizedText  `json:"description,omitempty"`
-	Size        string          `json:"size"`
-	DownloadURL string          `json:"downloadUrl"`
-	Filename    string          `json:"filename"`
-	Files       []PresetFile    `json:"files,omitempty"`
-	Defaults    *PresetDefaults `json:"defaults,omitempty"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Description  *LocalizedText  `json:"description,omitempty"`
+	Size         string          `json:"size"`
+	DownloadURL  string          `json:"downloadUrl"`
+	Filename     string          `json:"filename"`
+	Files        []PresetFile    `json:"files,omitempty"`
+	Defaults     *PresetDefaults `json:"defaults,omitempty"`
+	Capabilities *Capabilities   `json:"capabilities,omitempty"`
 }
 
 // DownloadFiles returns the list of files to download for this preset.
@@ -86,23 +87,49 @@ func (p Preset) PrimaryFilename() string {
 	return strings.TrimSpace(files[0].Filename)
 }
 
-// catalogData is the raw structure parsed from catalog.json.
-type catalogData struct {
-	Cerebellum []Preset `json:"cerebellum"`
-	Brain      []Preset `json:"brain"`
+// presetEntry is a catalog entry with an optional role tag.
+type presetEntry struct {
+	Preset
+	Role string `json:"role"` // "cerebellum", "brain", or "both"
 }
 
-// BuiltinCerebellumCatalog contains recommended models for the cerebellum.
-var BuiltinCerebellumCatalog []Preset
+// catalogData is the raw structure parsed from catalog.json.
+type catalogData struct {
+	Models []presetEntry `json:"models"`
+}
 
-// BuiltinBrainCatalog contains recommended models for the brain local mode.
-var BuiltinBrainCatalog []Preset
+// PresetWithRole pairs a Preset with its catalog role tag.
+type PresetWithRole struct {
+	Preset
+	Role string // "cerebellum", "brain", or "both"
+}
+
+// BuiltinCatalog contains all models with their role tags.
+var BuiltinCatalog []PresetWithRole
+
+// BuiltinCatalogPresets returns the flat list of presets (without roles)
+// suitable for passing to manager.NewManager.
+func BuiltinCatalogPresets() []Preset {
+	out := make([]Preset, len(BuiltinCatalog))
+	for i, e := range BuiltinCatalog {
+		out[i] = e.Preset
+	}
+	return out
+}
 
 func init() {
 	var data catalogData
 	if err := json.Unmarshal(catalogJSON, &data); err != nil {
 		panic(fmt.Sprintf("catalog: failed to parse catalog.json: %v", err))
 	}
-	BuiltinCerebellumCatalog = data.Cerebellum
-	BuiltinBrainCatalog = data.Brain
+	for _, entry := range data.Models {
+		role := strings.TrimSpace(strings.ToLower(entry.Role))
+		if role == "" {
+			role = "both"
+		}
+		BuiltinCatalog = append(BuiltinCatalog, PresetWithRole{
+			Preset: entry.Preset,
+			Role:   role,
+		})
+	}
 }
