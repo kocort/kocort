@@ -118,7 +118,7 @@ func BuildBrainLocalState(rt *runtime.Runtime) *types.LocalModelState {
 // backend to use the local model.
 // When switching to "cloud", stops the brain local model, re-enables the
 // cerebellum, and restores the normal cloud backend.
-func BrainModeSwitch(rt *runtime.Runtime, mode string) error {
+func BrainModeSwitch(rt *runtime.Runtime, mode string, cerebellumEnabled *bool) error {
 	if rt == nil || rt.BrainLocal == nil {
 		return errNoBrainLocal
 	}
@@ -162,9 +162,17 @@ func BrainModeSwitch(rt *runtime.Runtime, mode string) error {
 	}
 	return ModifyAndPersist(rt, func(cfg *config.AppConfig) (ConfigSections, error) {
 		cfg.BrainMode = mode
+		// Apply explicit cerebellum enable/disable override for cloud mode.
+		if mode == "cloud" && cerebellumEnabled != nil {
+			cfg.Cerebellum.Enabled = cerebellumEnabled
+		}
 		// Restart cerebellum if switching to cloud and enabled in config.
 		if mode == "cloud" && cfg.CerebellumEnabled() && rt.Cerebellum != nil {
 			_ = rt.Cerebellum.Start()
+		}
+		// Stop cerebellum if switching to cloud but explicitly disabled.
+		if mode == "cloud" && !cfg.CerebellumEnabled() && rt.Cerebellum != nil {
+			_ = rt.Cerebellum.Stop()
 		}
 		return ConfigSections{Main: true}, nil
 	})

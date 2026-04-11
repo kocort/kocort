@@ -882,7 +882,7 @@ func (h *Engine) BrainModeSwitch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := service.BrainModeSwitch(h.Runtime, req.Mode); err != nil {
+	if err := service.BrainModeSwitch(h.Runtime, req.Mode, req.CerebellumEnabled); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

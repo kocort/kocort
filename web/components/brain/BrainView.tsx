@@ -165,7 +165,7 @@ const API_KIND_OPTIONS = [
   { value: 'anthropic-messages', label: 'Anthropic Messages' },
 ];
 
-type BrainMode = 'cloud' | 'local';
+type AppMode = 'cloud' | 'hybrid' | 'local';
 type LocalDeleteTarget = {
   scope: 'brainLocal' | 'cerebellum';
   modelId: string;
@@ -657,12 +657,24 @@ export function BrainView() {
     }
   };
 
-  // Brain mode switch
-  const brainModeSwitch = async (mode: BrainMode) => {
+  // Brain mode switch — maps the 3 AppModes to backend API
+  const switchAppMode = async (target: AppMode) => {
     setModeSwitching(true);
     setError('');
     try {
-      const next = await apiPost<BrainState>('/api/engine/brain/mode', { mode });
+      let payload: Record<string, unknown>;
+      switch (target) {
+        case 'cloud':
+          payload = { mode: 'cloud', cerebellumEnabled: false };
+          break;
+        case 'hybrid':
+          payload = { mode: 'cloud', cerebellumEnabled: true };
+          break;
+        case 'local':
+          payload = { mode: 'local' };
+          break;
+      }
+      const next = await apiPost<BrainState>('/api/engine/brain/mode', payload);
       setState(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('brain.switchModeError'));
@@ -883,8 +895,10 @@ export function BrainView() {
     }
   };
 
-  // Derive current mode from state
-  const currentMode: BrainMode = (state?.brainMode === 'local') ? 'local' : 'cloud';
+  // Derive current app mode from state
+  const appMode: AppMode = (state?.brainMode === 'local')
+    ? 'local'
+    : (state?.cerebellum?.enabled ? 'hybrid' : 'cloud');
 
   // Unified catalog from backend (all models with roles)
   const unifiedCatalog = state?.localModelCatalog || [];
@@ -893,12 +907,12 @@ export function BrainView() {
     ...(cerebellum?.models || []).map((m) => m.id),
     ...(brainLocal?.models || []).map((m) => m.id),
   ]);
-  // Active download context: use brainLocal in local mode, cerebellum in cloud mode
-  const activeDlProgress = currentMode === 'local' ? brainLocal?.downloadProgress : cerebellum?.downloadProgress;
-  const activeLibDlProgress = currentMode === 'local' ? brainLocal?.libDownloadProgress : cerebellum?.libDownloadProgress;
-  const activeDownloadModel = currentMode === 'local' ? brainLocalDownloadModel : cerebellumDownloadModel;
-  const activeCancelDownload = currentMode === 'local' ? brainLocalCancelDownload : cerebellumCancelDownload;
-  const activeCancelLibDownload = currentMode === 'local' ? brainLocalCancelLibDownload : cerebellumCancelLibDownload;
+  // Active download context: use brainLocal in local mode, cerebellum in hybrid mode
+  const activeDlProgress = appMode === 'local' ? brainLocal?.downloadProgress : cerebellum?.downloadProgress;
+  const activeLibDlProgress = appMode === 'local' ? brainLocal?.libDownloadProgress : cerebellum?.libDownloadProgress;
+  const activeDownloadModel = appMode === 'local' ? brainLocalDownloadModel : cerebellumDownloadModel;
+  const activeCancelDownload = appMode === 'local' ? brainLocalCancelDownload : cerebellumCancelDownload;
+  const activeCancelLibDownload = appMode === 'local' ? brainLocalCancelLibDownload : cerebellumCancelLibDownload;
 
   const cerebellumDefaultModel = (cerebellum?.models || []).find((model) => model.id === cerebellum?.modelId) || null;
   const brainLocalDefaultModel = (brainLocal?.models || []).find((model) => model.id === brainLocal?.modelId) || null;
@@ -938,19 +952,23 @@ export function BrainView() {
   const brainLocalIsRunning = brainLocal?.status === 'running' && !brainLocalPendingAction;
 
   // ─── Page header ─────────────────────────────────────────────
-  const pageTitle = currentMode === 'local' ? t('brain.modeLocal') : t('brain.modeCloud');
-  const pageDesc = currentMode === 'local' ? t('brain.modeLocalDesc') : t('brain.modeCloudDesc');
+  const modeDescriptions: Record<AppMode, string> = {
+    cloud: t('brain.modeCloudDesc'),
+    hybrid: t('brain.modeHybridDesc'),
+    local: t('brain.modeLocalDesc'),
+  };
+  const pageDesc = modeDescriptions[appMode];
 
   return (
     <div className="flex h-full flex-col bg-white text-zinc-900 transition-colors dark:bg-zinc-950 dark:text-zinc-100">
-      <PageHeader title={pageTitle} description={pageDesc}>
+      <PageHeader title={t('brain.runMode')} description={pageDesc}>
         <button
           onClick={() => void refresh()}
           className="rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
           <RefreshCw className="h-4 w-4" />
         </button>
-        {currentMode === 'cloud' && (
+        {appMode !== 'local' && (
           <button
             onClick={openCreateModel}
             className="flex items-center gap-2 whitespace-nowrap rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
@@ -961,47 +979,47 @@ export function BrainView() {
         )}
       </PageHeader>
 
-      {/* ─── Mode Switcher ─────────────────────────────────────────── */}
-      <div className="border-b border-zinc-200 px-6 dark:border-zinc-800">
-        <div className="-mb-px flex gap-1 py-2">
-          <button
-            onClick={() => void brainModeSwitch('cloud')}
-            disabled={modeSwitching}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${currentMode === 'cloud'
-              ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-800'
-              : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200'
-              }`}
-          >
-            <Cloud className="h-4 w-4" />
-            {t('brain.modeCloudShort')}
-          </button>
-          <button
-            onClick={() => void brainModeSwitch('local')}
-            disabled={modeSwitching}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${currentMode === 'local'
-              ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-800'
-              : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200'
-              }`}
-          >
-            <HardDrive className="h-4 w-4" />
-            {t('brain.modeLocalShort')}
-          </button>
-          {modeSwitching && (
-            <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {t('brain.modeSwitching')}
-            </span>
-          )}
+      {/* ─── Three-Mode Selector ─────────────────────────────────── */}
+      <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+        <div className="grid grid-cols-3 gap-3">
+          {([
+            { mode: 'cloud' as AppMode, icon: Cloud, label: t('brain.modeCloudShort'), subtitle: t('brain.modeCloudSubtitle') },
+            { mode: 'hybrid' as AppMode, icon: ShieldAlert, label: t('brain.modeHybridShort'), subtitle: t('brain.modeHybridSubtitle') },
+            { mode: 'local' as AppMode, icon: HardDrive, label: t('brain.modeLocalShort'), subtitle: t('brain.modeLocalSubtitle') },
+          ]).map(({ mode, icon: Icon, label, subtitle }) => (
+            <button
+              key={mode}
+              onClick={() => void switchAppMode(mode)}
+              disabled={modeSwitching}
+              className={`relative flex flex-col items-center gap-1.5 rounded-xl border-2 px-4 py-3 text-center transition-all ${appMode === mode
+                ? 'border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm dark:border-indigo-400 dark:bg-indigo-950/40 dark:text-indigo-300'
+                : 'border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:bg-zinc-900'
+                }`}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-sm font-semibold">{label}</span>
+              <span className="text-[11px] leading-tight opacity-70">{subtitle}</span>
+              {appMode === mode && (
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+              )}
+            </button>
+          ))}
         </div>
+        {modeSwitching && (
+          <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {t('brain.modeSwitching')}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 space-y-8 overflow-y-auto p-6">
         <ErrorAlert message={error} />
 
         {/* ══════════════════════════════════════════════════════════════════
-            Cloud Models (shown in cloud mode)
+            Cloud Models (shown in cloud and hybrid modes)
            ══════════════════════════════════════════════════════════════════ */}
-        {currentMode === 'cloud' && (
+        {appMode !== 'local' && (
           <section className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1104,7 +1122,7 @@ export function BrainView() {
         {/* ══════════════════════════════════════════════════════════════════
             Brain Local (shown in local mode)
            ══════════════════════════════════════════════════════════════════ */}
-        {currentMode === 'local' && (
+        {appMode === 'local' && (
           <section className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1301,9 +1319,9 @@ export function BrainView() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            Cerebellum (only visible in cloud mode — not needed for pure local)
+            Cerebellum (only visible in hybrid mode — cloud + local audit)
            ══════════════════════════════════════════════════════════════════ */}
-        {currentMode === 'cloud' && (
+        {appMode === 'hybrid' && (
           <section className="space-y-6">
             {/* Status & Controls */}
             <div>
@@ -1499,9 +1517,9 @@ export function BrainView() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            Unified Model Catalog (shown in both modes)
+            Unified Model Catalog (shown in hybrid and local modes)
            ══════════════════════════════════════════════════════════════════ */}
-        {!loading && unifiedCatalog.length > 0 ? (
+        {!loading && appMode !== 'cloud' && unifiedCatalog.length > 0 ? (
           <section className="space-y-6">
             <div>
               <h3 className="mb-1 text-lg font-medium text-zinc-900 dark:text-zinc-100">{t('brain.catalogTitle')}</h3>

@@ -349,7 +349,8 @@ type BrainModelAssignRequest struct {
 
 // BrainModeSwitchRequest represents a request to switch brain mode.
 type BrainModeSwitchRequest struct {
-	Mode string `json:"mode"` // "cloud" or "local"
+	Mode              string `json:"mode"`                        // "cloud" or "local"
+	CerebellumEnabled *bool  `json:"cerebellumEnabled,omitempty"` // override cerebellum enabled; only used for cloud mode
 }
 
 // BrainLocalModelSelectRequest represents a request to select a brain local model.
