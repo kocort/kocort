@@ -36,7 +36,7 @@ func newDefaultBackend() ModelBackend {
 // Start loads the model via engine.Engine and starts the batch
 // inference loop in the background.
 func (eb *engineBackend) Start(modelPath string, threads, contextSize, gpuLayers int,
-	sampling SamplingParams, enableThinking bool) error {
+	sampling SamplingParams, enableThinking bool, mmprojPath string) error {
 
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
@@ -49,6 +49,7 @@ func (eb *engineBackend) Start(modelPath string, threads, contextSize, gpuLayers
 
 	eng, err := engine.NewEngine(engine.EngineConfig{
 		ModelPath:      modelPath,
+		MmprojPath:     mmprojPath,
 		ContextSize:    contextSize,
 		BatchSize:      512,
 		Parallel:       1,
@@ -144,6 +145,16 @@ func (eb *engineBackend) Stop() error {
 
 // IsStub returns false — this is a real backend.
 func (eb *engineBackend) IsStub() bool { return false }
+
+// HasVision returns true if the engine loaded a multimodal projector.
+func (eb *engineBackend) HasVision() bool {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	if eb.engine == nil {
+		return false
+	}
+	return eb.engine.HasVision()
+}
 
 // ContextSize returns the effective context window size.
 func (eb *engineBackend) ContextSize() int {

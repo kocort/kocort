@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -59,6 +60,7 @@ func installedMMProjFiles(modelsDir, modelID string) []string {
 	if strings.TrimSpace(modelsDir) == "" || strings.TrimSpace(modelID) == "" {
 		return nil
 	}
+	modelID = strings.ToLower(modelID)
 
 	entries, err := os.ReadDir(modelsDir)
 	if err != nil {
@@ -81,6 +83,54 @@ func installedMMProjFiles(modelsDir, modelID string) []string {
 	}
 	sort.Strings(files)
 	return files
+}
+
+// resolveMMProjPath finds the companion mmproj file for modelID.
+// It first consults the catalog to check both the specified filename and the
+// download URL's original filename (which may differ in quantization suffix),
+// then falls back to a filename-pattern scan.
+func resolveMMProjPath(modelsDir, modelID string, presets []catalog.Preset) string {
+	if strings.TrimSpace(modelsDir) == "" || strings.TrimSpace(modelID) == "" {
+		return ""
+	}
+	modelID = strings.ToLower(modelID)
+	// Catalog-based lookup: check both catalog filename and URL-derived filename.
+	for _, p := range presets {
+		if p.ID != modelID && p.ModelID() != modelID {
+			continue
+		}
+		for _, f := range p.DownloadFiles() {
+			if !catalog.IsMMProjFilename(f.Filename) {
+				continue
+			}
+			// Try catalog-specified filename.
+			if path := filepath.Join(modelsDir, f.Filename); fileExists(path) {
+				return path
+			}
+			// Try original filename from download URL.
+			if f.DownloadURL != "" {
+				if u, err := url.Parse(f.DownloadURL); err == nil {
+					urlBase := filepath.Base(u.Path)
+					if urlBase != f.Filename {
+						if path := filepath.Join(modelsDir, urlBase); fileExists(path) {
+							return path
+						}
+					}
+				}
+			}
+		}
+		break
+	}
+	// Fallback: filename-pattern scan.
+	if files := installedMMProjFiles(modelsDir, modelID); len(files) > 0 {
+		return files[0]
+	}
+	return ""
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func resolveInstalledModelPath(modelsDir, modelID string) string {

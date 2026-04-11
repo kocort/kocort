@@ -7,6 +7,11 @@ type EngineConfig struct {
 	// ModelPath is the path to the GGUF model file.
 	ModelPath string
 
+	// MmprojPath is the optional path to a multimodal projector GGUF file
+	// (e.g. mmproj-*.gguf). When set and the library supports it, the
+	// engine will load a vision context for image understanding.
+	MmprojPath string
+
 	// ContextSize is the total KV cache context window (default: 2048).
 	ContextSize int
 

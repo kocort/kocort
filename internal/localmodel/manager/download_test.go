@@ -15,11 +15,14 @@ import (
 
 type downloadTestBackend struct{}
 
-func (b *downloadTestBackend) Start(string, int, int, int, SamplingParams, bool) error { return nil }
+func (b *downloadTestBackend) Start(string, int, int, int, SamplingParams, bool, string) error {
+	return nil
+}
 
 func (b *downloadTestBackend) Stop() error { return nil }
 
-func (b *downloadTestBackend) IsStub() bool { return false }
+func (b *downloadTestBackend) IsStub() bool    { return false }
+func (b *downloadTestBackend) HasVision() bool { return false }
 
 func (b *downloadTestBackend) ContextSize() int { return 0 }
 

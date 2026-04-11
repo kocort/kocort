@@ -18,9 +18,9 @@ func (m *Manager) handleStart(cmd *cmdStart) {
 	}
 	if m.isStub {
 		m.status = StatusError
-		m.lastError = "local inference not available: binary built without llama.cpp support (use -tags llamacpp)"
+		m.lastError = "local inference not available"
 		m.syncAtomics()
-		cmd.reply <- fmt.Errorf("local inference not available: binary built without llama.cpp support (use -tags llamacpp)")
+		cmd.reply <- fmt.Errorf("local inference not available")
 		return
 	}
 	if m.modelID == "" {
@@ -46,6 +46,12 @@ func (m *Manager) handleStart(cmd *cmdStart) {
 	backend := m.backend
 	ch := m.cmdCh
 
+	// Resolve companion mmproj file for vision support.
+	mmprojPath := resolveMMProjPath(m.modelsDir, m.modelID, m.catalog)
+	if mmprojPath != "" {
+		slog.Info("[localmodel] found mmproj companion", "path", mmprojPath)
+	}
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -53,7 +59,7 @@ func (m *Manager) handleStart(cmd *cmdStart) {
 				ch <- &cmdLifecycleDone{err: fmt.Errorf("start panicked: %v", r), op: "start"}
 			}
 		}()
-		err := backend.Start(modelPath, threads, contextSize, gpuLayers, sampling, enableThinking)
+		err := backend.Start(modelPath, threads, contextSize, gpuLayers, sampling, enableThinking, mmprojPath)
 		cs := 0
 		if err == nil {
 			cs = backend.ContextSize()
@@ -119,6 +125,9 @@ func (m *Manager) handleRestart(cmd *cmdRestart) {
 	backend := m.backend
 	ch := m.cmdCh
 
+	// Resolve companion mmproj file for vision support.
+	mmprojPath := resolveMMProjPath(m.modelsDir, m.modelID, m.catalog)
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -134,7 +143,7 @@ func (m *Manager) handleRestart(cmd *cmdRestart) {
 		// Notify actor to update observable status to "starting".
 		ch <- &cmdStatusHint{status: StatusStarting}
 		// Phase 2: start
-		if err := backend.Start(modelPath, threads, contextSize, gpuLayers, sampling, enableThinking); err != nil {
+		if err := backend.Start(modelPath, threads, contextSize, gpuLayers, sampling, enableThinking, mmprojPath); err != nil {
 			ch <- &cmdLifecycleDone{err: fmt.Errorf("start during restart failed: %v", err), op: "restart"}
 			return
 		}

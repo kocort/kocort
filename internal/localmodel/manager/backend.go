@@ -12,7 +12,7 @@ import "context"
 type ModelBackend interface {
 	// Start loads the model and begins the inference loop.
 	Start(modelPath string, threads, contextSize, gpuLayers int,
-		sampling SamplingParams, enableThinking bool) error
+		sampling SamplingParams, enableThinking bool, mmprojPath string) error
 
 	// Stop releases all model resources and stops the inference loop.
 	Stop() error
@@ -27,6 +27,10 @@ type ModelBackend interface {
 
 	// SetSamplingParams updates sampling parameters for subsequent inference.
 	SetSamplingParams(sp SamplingParams)
+
+	// HasVision returns true if the loaded model supports multimodal vision
+	// (i.e. a multimodal projector was loaded successfully).
+	HasVision() bool
 
 	// CreateChatCompletionStream creates a streaming chat completion.
 	// The caller provides a ChatCompletionRequest;

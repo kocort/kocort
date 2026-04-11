@@ -60,13 +60,24 @@ func (c *MtmdContext) MultimodalTokenize(llamaContext *Context, data []byte) ([]
 	ic := lib.fnMtmdInputChunksInit()
 	defer lib.fnMtmdInputChunksFree(ic)
 
-	// Initialize empty text prompt
+	// Build mtmd_input_text struct with the default media marker.
 	marker := lib.fnMtmdDefaultMarker()
-	if lib.fnMtmdInputTextInit == nil {
-		return nil, errors.New("mtmd_input_text_init not available in this llama.cpp version")
+	var inputText uintptr
+	var inputTextKeepAlive *cMtmdInputText // prevent GC until after tokenize
+	if lib.fnMtmdInputTextInit != nil {
+		// Legacy path: use mtmd_input_text_init if available (pre-b8720).
+		inputText = lib.fnMtmdInputTextInit(marker, true, true)
+		defer lib.fnMtmdInputTextFree(inputText)
+	} else {
+		// b8720+: construct the struct directly and pass its address.
+		it := cMtmdInputText{
+			Text:         marker,
+			AddSpecial:   true,
+			ParseSpecial: true,
+		}
+		inputTextKeepAlive = &it
+		inputText = uintptr(unsafe.Pointer(&it))
 	}
-	it := lib.fnMtmdInputTextInit(marker, true, true)
-	defer lib.fnMtmdInputTextFree(it)
 
 	// Initialize bitmap from image data
 	bm := lib.fnMtmdHelperBitmapInitFromBuf(c.ptr, &data[0], uintptr(len(data)))
@@ -76,7 +87,8 @@ func (c *MtmdContext) MultimodalTokenize(llamaContext *Context, data []byte) ([]
 	defer lib.fnMtmdBitmapFree(bm)
 
 	// Tokenize
-	ret := lib.fnMtmdTokenize(c.ptr, ic, it, (*uintptr)(unsafe.Pointer(&bm)), 1)
+	ret := lib.fnMtmdTokenize(c.ptr, ic, inputText, (*uintptr)(unsafe.Pointer(&bm)), 1)
+	runtime.KeepAlive(inputTextKeepAlive)
 	if ret != 0 {
 		return nil, errors.New("unable to tokenize mtmd embedding from image")
 	}

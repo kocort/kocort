@@ -80,6 +80,21 @@ func (p *AgentPipeline) buildRunContext(_ context.Context, state *PipelineState)
 			tools = append(tools, registered.Tool)
 		}
 	}
+
+	// ---- Suppress image tool when local model has native vision ----
+	// When the model can process images directly, remove the "image" tool
+	// so the model analyzes images inline instead of delegating to a
+	// sub-agent (which causes a confusing double-inference loop).
+	if r.BrainLocal != nil && r.BrainLocal.HasVision() {
+		filtered := make([]rtypes.Tool, 0, len(tools))
+		for _, t := range tools {
+			if t.Name() == "image" {
+				continue
+			}
+			filtered = append(filtered, t)
+		}
+		tools = filtered
+	}
 	state.Tools = tools
 
 	// ---- Assemble AgentRunContext ----

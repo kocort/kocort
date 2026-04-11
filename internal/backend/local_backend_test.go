@@ -28,11 +28,12 @@ type fakeBackend struct {
 	contextSize  int
 }
 
-func (f *fakeBackend) Start(string, int, int, int, localmodel.SamplingParams, bool) error {
+func (f *fakeBackend) Start(string, int, int, int, localmodel.SamplingParams, bool, string) error {
 	return nil
 }
 func (f *fakeBackend) Stop() error  { return nil }
-func (f *fakeBackend) IsStub() bool { return false }
+func (f *fakeBackend) IsStub() bool    { return false }
+func (f *fakeBackend) HasVision() bool { return false }
 func (f *fakeBackend) ContextSize() int {
 	if f.contextSize > 0 {
 		return f.contextSize
@@ -2102,5 +2103,184 @@ func TestRunStreamingRound_StreamOpenFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "GPU not available") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// ===========================================================================
+// Test: Image/multimodal content survives the full local backend pipeline
+//
+//   BuildOpenAICompatMessages → SanitizeOpenAICompatMessages
+//     → convertOpenAIMessagesToLlama → sanitizeLlamaMessages
+//
+// The test verifies that an image attachment in the request ends up as a
+// []any content (with image_url parts) in the final llama messages.
+// ===========================================================================
+
+func TestImageAttachmentSurvivesFullLocalPipeline(t *testing.T) {
+	runCtx := rtypes.AgentRunContext{
+		SystemPrompt: "You are a helpful assistant.",
+		Request: core.AgentRunRequest{
+			Message: "describe this image",
+			Attachments: []core.Attachment{{
+				Type:     "image",
+				Name:     "photo.png",
+				MIMEType: "image/png",
+				Content:  []byte("PNGDATA"),
+			}},
+		},
+		Transcript: []core.TranscriptMessage{
+			{Role: "user", Text: "hello"},
+			{Role: "assistant", Text: "Hi! How can I help?", Type: "assistant_final"},
+		},
+	}
+
+	// Stage 1: Build OpenAI messages (shared helper).
+	openaiMsgs := BuildOpenAICompatMessages(runCtx)
+
+	var foundMultiContent bool
+	for _, msg := range openaiMsgs {
+		if msg.Role == "user" && len(msg.MultiContent) > 0 {
+			foundMultiContent = true
+			break
+		}
+	}
+	if !foundMultiContent {
+		t.Fatalf("Stage 1 FAIL: BuildOpenAICompatMessages did not produce MultiContent; messages: %+v", openaiMsgs)
+	}
+
+	// Stage 2: Sanitize (shared helper).
+	sanitized := SanitizeOpenAICompatMessages(openaiMsgs)
+	foundMultiContent = false
+	for _, msg := range sanitized {
+		if msg.Role == "user" && len(msg.MultiContent) > 0 {
+			foundMultiContent = true
+			break
+		}
+	}
+	if !foundMultiContent {
+		t.Fatalf("Stage 2 FAIL: SanitizeOpenAICompatMessages stripped MultiContent; messages: %+v", sanitized)
+	}
+
+	// Stage 3: Convert to llama messages.
+	llamaMsgs := convertOpenAIMessagesToLlama(sanitized)
+	var multimodalMsg *localmodel.ChatMessage
+	for i := range llamaMsgs {
+		if llamaMsgs[i].Role == "user" {
+			if parts, ok := llamaMsgs[i].Content.([]any); ok && len(parts) > 0 {
+				multimodalMsg = &llamaMsgs[i]
+				break
+			}
+		}
+	}
+	if multimodalMsg == nil {
+		for i, m := range llamaMsgs {
+			t.Logf("  [%d] role=%s content_type=%T", i, m.Role, m.Content)
+		}
+		t.Fatalf("Stage 3 FAIL: convertOpenAIMessagesToLlama did not preserve multimodal content")
+	}
+
+	// Verify the parts structure.
+	parts, _ := multimodalMsg.Content.([]any)
+	var hasText, hasImage bool
+	for _, p := range parts {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch pm["type"] {
+		case "text":
+			hasText = true
+		case "image_url":
+			hasImage = true
+			imgURL, ok := pm["image_url"].(map[string]any)
+			if !ok || imgURL["url"] == nil || imgURL["url"] == "" {
+				t.Fatalf("Stage 3 FAIL: image_url part has no url: %+v", pm)
+			}
+		}
+	}
+	if !hasText {
+		t.Errorf("Stage 3: missing text part in multimodal content")
+	}
+	if !hasImage {
+		t.Errorf("Stage 3: missing image_url part in multimodal content")
+	}
+
+	// Stage 4: sanitizeLlamaMessages (called inside runStreamingToolLoop).
+	finalMsgs := sanitizeLlamaMessages(llamaMsgs)
+	var finalMultimodal *localmodel.ChatMessage
+	for i := range finalMsgs {
+		if finalMsgs[i].Role == "user" {
+			if parts, ok := finalMsgs[i].Content.([]any); ok && len(parts) > 0 {
+				finalMultimodal = &finalMsgs[i]
+				break
+			}
+		}
+	}
+	if finalMultimodal == nil {
+		for i, m := range finalMsgs {
+			t.Logf("  [%d] role=%s content_type=%T content=%v", i, m.Role, m.Content, m.Content)
+		}
+		t.Fatalf("Stage 4 FAIL: sanitizeLlamaMessages dropped multimodal user message")
+	}
+
+	t.Logf("All 4 stages passed: image survives full local backend pipeline")
+}
+
+func TestConvertOpenAIMessagesToLlamaPreservesMultiContent(t *testing.T) {
+	msgs := []openAIChatMessage{
+		{Role: "system", Content: "You are helpful."},
+		{
+			Role: "user",
+			MultiContent: []openai.ChatMessagePart{
+				{Type: openai.ChatMessagePartTypeText, Text: "what is this?"},
+				{Type: openai.ChatMessagePartTypeImageURL, ImageURL: &openai.ChatMessageImageURL{URL: "data:image/png;base64,abc123"}},
+			},
+		},
+	}
+	result := convertOpenAIMessagesToLlama(msgs)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(result))
+	}
+	parts, ok := result[1].Content.([]any)
+	if !ok {
+		t.Fatalf("expected []any content for multimodal message, got %T: %v", result[1].Content, result[1].Content)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(parts))
+	}
+	imgPart, ok := parts[1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any for image part, got %T", parts[1])
+	}
+	if imgPart["type"] != "image_url" {
+		t.Errorf("expected type=image_url, got %v", imgPart["type"])
+	}
+	imgURL, ok := imgPart["image_url"].(map[string]any)
+	if !ok || imgURL["url"] != "data:image/png;base64,abc123" {
+		t.Errorf("expected image URL, got %+v", imgPart["image_url"])
+	}
+}
+
+func TestSanitizeLlamaMessagesPreservesMultimodalUser(t *testing.T) {
+	messages := []localmodel.ChatMessage{
+		{Role: "system", Content: "You are helpful."},
+		{Role: "user", Content: []any{
+			map[string]any{"type": "text", "text": "describe this"},
+			map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64,abc"}},
+		}},
+	}
+	result := sanitizeLlamaMessages(messages)
+
+	var found bool
+	for _, msg := range result {
+		if msg.Role == "user" {
+			if parts, ok := msg.Content.([]any); ok && len(parts) > 0 {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("sanitizeLlamaMessages dropped multimodal user message; result: %+v", result)
 	}
 }

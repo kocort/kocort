@@ -38,7 +38,15 @@ func (e *Engine) ChatCompletion(ctx context.Context, req ChatCompletionRequest) 
 
 	thinking := e.thinkingMode(&req)
 
-	slog.Info("[engine] ChatCompletion", "prompt", prompt, "thinking", thinking)
+	slog.Info("[engine] ChatCompletion",
+		"hasVision", e.image != nil,
+		"imageCount", len(images),
+		"prompt", prompt,
+		"renderedMsgs", len(renderedMsgs),
+		"thinking", thinking)
+	if len(images) > 0 && e.image == nil {
+		slog.Error("[engine] BUG: messages contain images but vision (mmproj) is not loaded — model will NOT see any images")
+	}
 
 	// Build sampling config.
 	cfg := DefaultSamplingConfig()

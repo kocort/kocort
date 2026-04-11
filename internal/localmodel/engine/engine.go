@@ -110,6 +110,9 @@ func (e *Engine) ContextSize() int {
 // EnableThinking returns whether thinking is globally enabled.
 func (e *Engine) EnableThinking() bool { return e.enableThinking }
 
+// HasVision returns true if the multimodal projector was loaded successfully.
+func (e *Engine) HasVision() bool { return e.image != nil }
+
 // SetEnableThinking sets the global thinking default.
 func (e *Engine) SetEnableThinking(v bool) { e.enableThinking = v }
 
@@ -230,6 +233,23 @@ func (e *Engine) Load() error {
 	}
 	e.cache = cache
 
+	// Load multimodal projector if configured.
+	if e.cfg.MmprojPath != "" && e.lib.IsMtmdAvailable() {
+		mtmd, err := ffi.NewMtmdContext(e.lib, lc, e.cfg.MmprojPath)
+		if err != nil {
+			slog.Warn("[engine] failed to load mmproj, vision disabled",
+				"path", e.cfg.MmprojPath, "error", err)
+		} else {
+			e.image = mtmd
+			slog.Info("[engine] multimodal projector loaded", "path", e.cfg.MmprojPath)
+		}
+	} else if e.cfg.MmprojPath == "" {
+		slog.Info("[engine] no mmproj path configured, vision disabled")
+	} else {
+		slog.Warn("[engine] mtmd library not available, vision disabled",
+			"mmprojPath", e.cfg.MmprojPath, "mtmdAvailable", e.lib.IsMtmdAvailable())
+	}
+
 	// Initialize sequence management.
 	e.seqs = make([]*sequence, parallel)
 	e.seqsSem = semaphore.NewWeighted(int64(parallel))
@@ -248,7 +268,8 @@ func (e *Engine) Load() error {
 		"batch", batchSize,
 		"parallel", parallel,
 		"threads", threads,
-		"gpu_layers", gpuLayers)
+		"gpu_layers", gpuLayers,
+		"hasVision", e.image != nil)
 
 	return nil
 }
@@ -403,6 +424,23 @@ func (e *Engine) newSequence(prompt string, images []ImageData, params seqParams
 		return nil, errors.New("empty input")
 	}
 
+	// Diagnostic: count token vs embed inputs.
+	tokenInputs, embedInputs := 0, 0
+	for _, inp := range inputs {
+		if inp.embed != nil {
+			embedInputs++
+		} else {
+			tokenInputs++
+		}
+	}
+	slog.Info("[engine] newSequence inputs",
+		"total", len(inputs),
+		"tokenInputs", tokenInputs,
+		"embedInputs", embedInputs,
+		"imageCount", len(images),
+		"hasVision", e.image != nil,
+		"ctxLen", e.cache.ctxLen)
+
 	numKeep := params.NumKeep
 	if numKeep < 0 {
 		numKeep = len(inputs)
@@ -423,7 +461,20 @@ func (e *Engine) newSequence(prompt string, images []ImageData, params seqParams
 		newInputs := make([]input, 0, e.cache.ctxLen)
 		newInputs = append(newInputs, inputs[:numKeep]...)
 		newInputs = append(newInputs, inputs[numKeep+discard:]...)
-		slog.Warn("[engine] truncating prompt", "limit", e.cache.ctxLen, "original", len(inputs), "new", len(newInputs))
+		// Recount after truncation.
+		truncTokens, truncEmbeds := 0, 0
+		for _, inp := range newInputs {
+			if inp.embed != nil {
+				truncEmbeds++
+			} else {
+				truncTokens++
+			}
+		}
+		slog.Warn("[engine] truncating prompt",
+			"limit", e.cache.ctxLen,
+			"original", len(inputs), "new", len(newInputs),
+			"origTokens", tokenInputs, "origEmbeds", embedInputs,
+			"truncTokens", truncTokens, "truncEmbeds", truncEmbeds)
 		inputs = newInputs
 	}
 
@@ -470,6 +521,10 @@ func (e *Engine) tokenize(prompt string, images []ImageData) ([]input, error) {
 		parts = re.Split(prompt, -1)
 		matches = re.FindAllStringSubmatch(prompt, -1)
 	} else {
+		if strings.Contains(prompt, "[img-") {
+			slog.Warn("[engine] prompt contains image placeholders but vision is not available — images will be sent as literal text",
+				"hasVision", false, "imageCount", len(images))
+		}
 		parts = []string{prompt}
 	}
 

@@ -89,7 +89,7 @@ func NewManagerWithBackend(cfg Config, backend ModelBackend, catalog []ModelPres
 		backend:        backend,
 		modelsDir:      strings.TrimSpace(cfg.ModelsDir),
 		status:         StatusStopped,
-		modelID:        strings.TrimSpace(cfg.ModelID),
+		modelID:        strings.ToLower(strings.TrimSpace(cfg.ModelID)),
 		catalog:        catalog,
 		sampling:       sp,
 		threads:        cfg.Threads,
@@ -210,6 +210,9 @@ func (m *Manager) LastError() string { return m.atomicLastError.Load().(string) 
 // IsStub returns true when the manager is using a stub backend
 // (binary built without -tags llamacpp). Immutable after construction.
 func (m *Manager) IsStub() bool { return m.isStub }
+
+// HasVision returns true if the loaded model supports multimodal vision.
+func (m *Manager) HasVision() bool { return m.backend.HasVision() }
 
 // ── Public API (channel-based) ──────────────────────────────────────────────
 

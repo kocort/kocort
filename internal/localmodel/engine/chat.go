@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/kocort/kocort/internal/localmodel/chatfmt"
@@ -60,6 +61,25 @@ func (e *Engine) buildPrompt(req *ChatCompletionRequest) (string, []ImageData, [
 		return "", nil, nil, err
 	}
 
+	// Count image-bearing messages.
+	imgMsgCount := 0
+	for _, m := range msgs {
+		if m.ImageCount > 0 {
+			imgMsgCount++
+		}
+	}
+	slog.Info("[engine] buildPrompt",
+		"totalMsgs", len(msgs), "imageDataCount", len(images),
+		"imageMsgCount", imgMsgCount, "hasVision", e.image != nil)
+
+	// When the engine has vision and images are present, add a brief hint to
+	// the system message so small models are not misled by long text-heavy
+	// system prompts into thinking they cannot see images.
+	if e.image != nil && len(images) > 0 && len(msgs) > 0 && msgs[0].Role == "system" {
+		msgs[0].Content = strings.TrimRight(msgs[0].Content, " \n") +
+			"\n\nVision: enabled — images uploaded by the user are embedded inline. Analyze them directly."
+	}
+
 	thinking := e.thinkingMode(req)
 
 	rendered, prompt, err := chatfmt.TruncateAndRender(
@@ -105,7 +125,10 @@ func normalizeMessages(messages []ChatMessage) ([]chatfmt.Message, []ImageData, 
 				ToolCalls: msg.ToolCalls, Name: toolName, ToolCallID: msg.ToolCallID,
 			})
 		case []any:
-			start := len(out)
+			// Merge all text and image parts into a single chatfmt.Message
+			// so the template renderer places them in one turn.
+			var textParts []string
+			imgCount := 0
 			for _, part := range content {
 				data, ok := part.(map[string]any)
 				if !ok {
@@ -114,7 +137,9 @@ func normalizeMessages(messages []ChatMessage) ([]chatfmt.Message, []ImageData, 
 				switch data["type"] {
 				case "text":
 					text, _ := data["text"].(string)
-					out = append(out, chatfmt.Message{Role: msg.Role, Content: text})
+					if text != "" {
+						textParts = append(textParts, text)
+					}
 				case "image_url":
 					url, err := extractImageURL(data["image_url"])
 					if err != nil {
@@ -126,19 +151,20 @@ func normalizeMessages(messages []ChatMessage) ([]chatfmt.Message, []ImageData, 
 					}
 					img.ID = len(images)
 					images = append(images, img)
-					out = append(out, chatfmt.Message{Role: msg.Role, ImageCount: 1})
+					imgCount++
 				default:
 					return nil, nil, errors.New("unsupported content part type")
 				}
 			}
-			if len(out) == start {
-				out = append(out, chatfmt.Message{Role: msg.Role})
-			}
-			last := len(out) - 1
-			out[last].Reasoning = msg.Reasoning
-			out[last].ToolCalls = msg.ToolCalls
-			out[last].Name = toolName
-			out[last].ToolCallID = msg.ToolCallID
+			out = append(out, chatfmt.Message{
+				Role:       msg.Role,
+				Content:    strings.Join(textParts, "\n"),
+				ImageCount: imgCount,
+				Reasoning:  msg.Reasoning,
+				ToolCalls:  msg.ToolCalls,
+				Name:       toolName,
+				ToolCallID: msg.ToolCallID,
+			})
 		default:
 			return nil, nil, errors.New("invalid message content type")
 		}

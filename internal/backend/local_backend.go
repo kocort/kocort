@@ -110,6 +110,7 @@ func (b *LocalModelBackend) Run(ctx context.Context, runCtx rtypes.AgentRunConte
 	messages := convertOpenAIMessagesToLlama(
 		SanitizeOpenAICompatMessages(BuildOpenAICompatMessages(runCtx)),
 	)
+
 	tools := convertOpenAIToolsToLlama(
 		BuildOpenAICompatToolDefinitions(runCtx.AvailableTools),
 	)
@@ -565,7 +566,7 @@ func convertOpenAIMessagesToLlama(msgs []openAIChatMessage) []localmodel.ChatMes
 	for _, m := range msgs {
 		cm := localmodel.ChatMessage{
 			Role:       m.Role,
-			Content:    ExtractOpenAICompatContent(m.Content),
+			Content:    convertOpenAIContentToLlama(m),
 			Name:       m.Name,
 			ToolCallID: m.ToolCallID,
 		}
@@ -587,6 +588,30 @@ func convertOpenAIMessagesToLlama(msgs []openAIChatMessage) []localmodel.ChatMes
 		out = append(out, cm)
 	}
 	return out
+}
+
+// convertOpenAIContentToLlama extracts the content from an OpenAI message,
+// preserving multimodal parts (images) when present. Returns a string for
+// text-only messages, or []any (of map[string]any) for multimodal messages
+// so that the engine's normalizeMessages can decode image_url parts.
+func convertOpenAIContentToLlama(m openAIChatMessage) any {
+	if len(m.MultiContent) > 0 {
+		parts := make([]any, 0, len(m.MultiContent))
+		for _, p := range m.MultiContent {
+			part := map[string]any{"type": string(p.Type)}
+			switch p.Type {
+			case "text":
+				part["text"] = p.Text
+			case "image_url":
+				if p.ImageURL != nil {
+					part["image_url"] = map[string]any{"url": p.ImageURL.URL}
+				}
+			}
+			parts = append(parts, part)
+		}
+		return parts
+	}
+	return ExtractOpenAICompatContent(m.Content)
 }
 
 // convertOpenAIToolsToLlama converts OpenAI tool definitions to llamawrapper
@@ -614,6 +639,15 @@ func convertOpenAIToolsToLlama(tools []openAIToolDefinition) []localmodel.Tool {
 // llamawrapper-based message sanitization and tool-call validation
 // ---------------------------------------------------------------------------
 
+// isStringContent reports whether c is a plain string (or nil).
+func isStringContent(c any) bool {
+	if c == nil {
+		return true
+	}
+	_, ok := c.(string)
+	return ok
+}
+
 // sanitizeLlamaMessages cleans and validates a slice of llamawrapper messages,
 // dropping empty messages, merging adjacent system messages, and ensuring
 // assistant tool-call messages have matching tool-result messages.
@@ -627,10 +661,11 @@ func sanitizeLlamaMessages(messages []localmodel.ChatMessage) []localmodel.ChatM
 		role := strings.TrimSpace(strings.ToLower(msg.Role))
 		contentStr, _ := msg.Content.(string)
 		text := strings.TrimSpace(contentStr)
+		isMultimodal := !isStringContent(msg.Content) && msg.Content != nil
 
 		switch role {
 		case "system", "user":
-			if text == "" {
+			if text == "" && !isMultimodal {
 				continue
 			}
 			if role == "system" && len(sanitized) > 0 && sanitized[len(sanitized)-1].Role == role {
@@ -638,7 +673,11 @@ func sanitizeLlamaMessages(messages []localmodel.ChatMessage) []localmodel.ChatM
 				sanitized[len(sanitized)-1].Content = strings.TrimSpace(prev + "\n\n" + text)
 				continue
 			}
-			sanitized = append(sanitized, localmodel.ChatMessage{Role: role, Content: text})
+			if isMultimodal {
+				sanitized = append(sanitized, localmodel.ChatMessage{Role: role, Content: msg.Content})
+			} else {
+				sanitized = append(sanitized, localmodel.ChatMessage{Role: role, Content: text})
+			}
 
 		case "assistant":
 			validCalls, _ := validateLlamaToolCalls(msg.ToolCalls)

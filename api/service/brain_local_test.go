@@ -18,7 +18,7 @@ type brainLocalTestBackend struct {
 	contextSize int
 }
 
-func (b *brainLocalTestBackend) Start(_ string, _ int, contextSize, _ int, _ localmodel.SamplingParams, _ bool) error {
+func (b *brainLocalTestBackend) Start(_ string, _ int, contextSize, _ int, _ localmodel.SamplingParams, _ bool, _ string) error {
 	b.running = true
 	b.contextSize = contextSize
 	return nil

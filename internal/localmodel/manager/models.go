@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // ── Command handlers (model selection / deletion) ───────────────────────────
@@ -27,7 +28,7 @@ func (m *Manager) handleSelectModel(cmd *cmdSelectModel) {
 	}
 
 	wasRunning := m.status == StatusRunning
-	m.modelID = cmd.modelID
+	m.modelID = strings.ToLower(cmd.modelID)
 	m.syncAtomics()
 
 	if wasRunning {
@@ -142,6 +143,19 @@ func (m *Manager) executePendingDelete(pending *pendingOp) {
 
 	modelPaths := installedModelFiles(m.modelsDir, pending.modelID)
 	modelPaths = append(modelPaths, installedMMProjFiles(m.modelsDir, pending.modelID)...)
+	// Also include catalog-resolved mmproj (may have a different quant suffix).
+	if mp := resolveMMProjPath(m.modelsDir, pending.modelID, m.catalog); mp != "" {
+		found := false
+		for _, p := range modelPaths {
+			if p == mp {
+				found = true
+				break
+			}
+		}
+		if !found {
+			modelPaths = append(modelPaths, mp)
+		}
+	}
 	if len(modelPaths) == 0 {
 		pending.reply <- fmt.Errorf("model file not found: %s", resolveInstalledModelPath(m.modelsDir, pending.modelID))
 		return

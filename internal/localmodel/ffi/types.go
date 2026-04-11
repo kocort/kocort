@@ -176,12 +176,49 @@ type cBackendDevProps struct {
 }
 
 // ── mtmd_context_params ─────────────────────────────────────────────────────
+// Must match the C struct layout from llama.cpp b8720 mtmd.h:
+//
+//	struct mtmd_context_params {
+//	    bool use_gpu;
+//	    bool print_timings;
+//	    int n_threads;
+//	    const char * image_marker;
+//	    const char * media_marker;
+//	    enum llama_flash_attn_type flash_attn_type;
+//	    bool warmup;
+//	    int image_min_tokens;
+//	    int image_max_tokens;
+//	    ggml_backend_sched_eval_callback cb_eval;
+//	    void * cb_eval_user_data;
+//	};
 type cMtmdContextParams struct {
-	UseGPU    cbool
-	_pad0     [3]byte
-	NThreads  int32
-	Verbosity int32
-	_pad1     [4]byte
+	UseGPU        cbool    // offset 0
+	PrintTimings  cbool    // offset 1
+	_pad0         [2]byte  // offset 2, align to 4
+	NThreads      int32    // offset 4
+	ImageMarker   uintptr  // offset 8  (const char *)
+	MediaMarker   uintptr  // offset 16 (const char *)
+	FlashAttnType int32    // offset 24 (enum)
+	Warmup        cbool    // offset 28
+	_pad1         [3]byte  // offset 29, align to 4
+	ImageMinToks  int32    // offset 32
+	ImageMaxToks  int32    // offset 36
+	CbEval        uintptr  // offset 40 (function pointer)
+	CbEvalUD      uintptr  // offset 48 (void *)
+}
+// Size: 56 bytes on x64
+
+// cMtmdInputText matches the C struct mtmd_input_text from b8720+:
+//
+//	struct mtmd_input_text {
+//	    const char * text;
+//	    bool add_special;
+//	    bool parse_special;
+//	};
+type cMtmdInputText struct {
+	Text         *byte // const char *
+	AddSpecial   cbool
+	ParseSpecial cbool
 }
 
 // ── cbool type ──────────────────────────────────────────────────────────────

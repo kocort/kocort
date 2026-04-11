@@ -6,6 +6,10 @@ func TestCompanionModelIDFromFilename(t *testing.T) {
 	if got := CompanionModelIDFromFilename("gemma-4-e2b-it-mmproj.gguf"); got != "gemma-4-e2b-it" {
 		t.Fatalf("expected companion model ID %q, got %q", "gemma-4-e2b-it", got)
 	}
+	// Mixed-case prefix-style filename from catalog downloads.
+	if got := CompanionModelIDFromFilename("mmproj-gemma-4-E2B-it-Q4_K_M.gguf"); got != "gemma-4-e2b-it-q4_k_m" {
+		t.Fatalf("expected companion model ID %q, got %q", "gemma-4-e2b-it-q4_k_m", got)
+	}
 }
 
 func TestInferCapabilitiesGemma4E2B(t *testing.T) {

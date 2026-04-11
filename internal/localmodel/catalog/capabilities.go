@@ -56,9 +56,9 @@ func CompanionModelIDFromFilename(filename string) string {
 		return ""
 	}
 	if base, ok := splitModelID(stem); ok {
-		return base
+		return strings.ToLower(base)
 	}
-	return stem
+	return strings.ToLower(stem)
 }
 
 // ModelIDFromFilename resolves the grouped model ID for a GGUF filename.
@@ -71,9 +71,9 @@ func ModelIDFromFilename(filename string) string {
 		return ""
 	}
 	if base, ok := splitModelID(stem); ok {
-		return base
+		return strings.ToLower(base)
 	}
-	return stem
+	return strings.ToLower(stem)
 }
 
 // InferCapabilities returns best-effort capability badges for UI display.

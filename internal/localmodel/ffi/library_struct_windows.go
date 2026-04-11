@@ -114,7 +114,7 @@ func (l *Library) registerStructPassingLlamaFuncs() error {
 // registerStructPassingMtmdFuncs registers mtmd functions that pass or return
 // C structs by value using syscall.SyscallN on Windows.
 func (l *Library) registerStructPassingMtmdFuncs() error {
-	// ── mtmd_context_params_default → returns cMtmdContextParams (16 bytes, hidden return ptr) ──
+	// ── mtmd_context_params_default → returns cMtmdContextParams (56 bytes, hidden return ptr) ──
 	symMtmdCtxParamsDefault, err := findSymbol(l.hMtmd, "mtmd_context_params_default")
 	if err != nil {
 		return fmt.Errorf("find mtmd_context_params_default: %w", err)
