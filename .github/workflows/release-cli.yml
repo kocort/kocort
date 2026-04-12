@@ -30,12 +30,8 @@ jobs:
         include:
           - goarch: amd64
             os_label: linux-amd64
-            cc: gcc
-            cxx: g++
           - goarch: arm64
             os_label: linux-arm64
-            cc: aarch64-linux-gnu-gcc
-            cxx: aarch64-linux-gnu-g++
 
     steps:
       - uses: actions/checkout@v4
@@ -63,24 +59,13 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake
-          if [ "${{ matrix.goarch }}" = "arm64" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          fi
-
       - name: Build
         env:
           GOOS: linux
           GOARCH: ${{ matrix.goarch }}
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cxx }}
           kocort_SKIP_WEB: "1"
           kocort_OUTPUT: dist/linux_${{ matrix.goarch }}/kocort
-        run: |
-          ./scripts/build.sh --llamacpp
+        run: ./scripts/build.sh
 
       - name: Package artifact
         run: tar -czf kocort-${{ matrix.os_label }}.tar.gz -C dist/linux_${{ matrix.goarch }} kocort
@@ -102,11 +87,9 @@ jobs:
           - runner: macos-15-intel
             goarch: amd64
             os_label: darwin-amd64
-            macos_version_min: "11.0"
           - runner: macos-14
             goarch: arm64
             os_label: darwin-arm64
-            macos_version_min: "14.0"
 
     steps:
       - uses: actions/checkout@v4
@@ -134,20 +117,13 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-
       - name: Build
         env:
           GOOS: darwin
           GOARCH: ${{ matrix.goarch }}
           kocort_SKIP_WEB: "1"
           kocort_OUTPUT: dist/darwin_${{ matrix.goarch }}/kocort
-          CGO_CFLAGS: "-O3 -mmacosx-version-min=${{ matrix.macos_version_min }}"
-          CGO_CXXFLAGS: "-O3 -mmacosx-version-min=${{ matrix.macos_version_min }}"
-          CGO_LDFLAGS: "-mmacosx-version-min=${{ matrix.macos_version_min }}"
-        run: |
-          ./scripts/build.sh --llamacpp
+        run: ./scripts/build.sh
 
       - name: Package artifact
         run: tar -czf kocort-${{ matrix.os_label }}.tar.gz -C dist/darwin_${{ matrix.goarch }} kocort
@@ -168,10 +144,8 @@ jobs:
         include:
           - goarch: amd64
             os_label: windows-amd64
-            mingw_arch: x86_64
           - goarch: arm64
             os_label: windows-arm64
-            mingw_arch: aarch64
 
     steps:
       - uses: actions/checkout@v4
@@ -197,32 +171,13 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Install LLVM MinGW
-        shell: bash
-        run: |
-          LLVM_MINGW_VER="llvm-mingw-20250114-ucrt-x86_64"
-          curl -fsSL \
-            "https://github.com/mstorsjo/llvm-mingw/releases/download/20250114/${LLVM_MINGW_VER}.zip" \
-            -o llvm-mingw.zip
-          unzip -q llvm-mingw.zip -d /c/
-          echo "C:/${LLVM_MINGW_VER}/bin" >> "$GITHUB_PATH"
-
-      - name: Verify compiler
-        shell: bash
-        run: |
-          which ${{ matrix.mingw_arch }}-w64-mingw32-clang
-          ${{ matrix.mingw_arch }}-w64-mingw32-clang --version
-
       - name: Build
         env:
           GOOS: windows
           GOARCH: ${{ matrix.goarch }}
-          CC: ${{ matrix.mingw_arch }}-w64-mingw32-clang
-          CXX: ${{ matrix.mingw_arch }}-w64-mingw32-clang++
-          CGO_LDFLAGS: "-static-libstdc++ -static-libgcc"
           kocort_SKIP_WEB: "1"
           kocort_OUTPUT: dist/windows_${{ matrix.goarch }}/kocort.exe
-        run: .\scripts\build.ps1 llamacpp
+        run: .\scripts\build.ps1
 
       - name: Package artifact
         shell: pwsh

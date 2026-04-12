@@ -63,11 +63,36 @@ jobs:
         id: version
         run: echo "tag=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')" >> "$GITHUB_OUTPUT"
 
-      - name: Download release artifacts
+      - name: Download CLI Linux artifacts
+        if: inputs.build-cli
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: kocort-{cli,desktop}-*
+          pattern: kocort-linux-*
+          merge-multiple: true
+
+      - name: Download CLI Darwin artifacts
+        if: inputs.build-cli
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: kocort-darwin-*
+          merge-multiple: true
+
+      - name: Download CLI Windows artifacts
+        if: inputs.build-cli
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: kocort-windows-*
+          merge-multiple: true
+
+      - name: Download desktop artifacts
+        if: inputs.build-desktop
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: kocort-desktop-*
           merge-multiple: true
 
       - name: Generate checksums
