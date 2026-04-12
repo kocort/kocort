@@ -8,7 +8,7 @@ on:
         type: boolean
         default: true
       build-desktop:
-        description: "构建 Desktop (6 平台, win/linux amd64 含 Vulkan GPU)"
+        description: "构建 Desktop (6 平台，无 GPU 变体)"
         type: boolean
         default: true
       create-release:

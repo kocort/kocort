@@ -21,7 +21,7 @@ env:
   GO_VERSION: "1.23"
 
 jobs:
-  # ── macOS amd64 / arm64 (no GPU) ───────────────────────────
+  # ── macOS amd64 / arm64 ────────────────────────────────────
   build-desktop-macos:
     name: Desktop macos-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -94,7 +94,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_name }}.dmg
 
-  # ── Windows arm64 (no GPU) ─────────────────────────────────
+  # ── Windows arm64 ───────────────────────────────────────────
   build-desktop-windows-arm64:
     name: Desktop windows-arm64
     runs-on: windows-latest
@@ -156,9 +156,9 @@ jobs:
           name: kocort-desktop-windows-arm64
           path: kocort-desktop-windows-arm64.zip
 
-  # ── Windows amd64 + Vulkan GPU ─────────────────────────────
-  build-desktop-windows-amd64-gpu:
-    name: Desktop windows-amd64-gpu
+  # ── Windows amd64 ───────────────────────────────────────────
+  build-desktop-windows-amd64:
+    name: Desktop windows-amd64
     runs-on: windows-latest
 
     steps:
@@ -189,10 +189,6 @@ jobs:
         shell: pwsh
         run: choco install -y --no-progress ripgrep fd
 
-      - name: Install GPU build dependencies
-        shell: pwsh
-        run: choco install -y --no-progress ccache ninja
-
       - name: Install LLVM MinGW
         shell: bash
         run: |
@@ -211,57 +207,18 @@ jobs:
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh --windows
 
-      - name: Cache Vulkan SDK
-        id: cache-install
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            C:\VulkanSDK
-          key: vulkan-sdk-1.4.321.1
-
-      - name: Install Vulkan SDK
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          if ("${{ steps.cache-install.outputs.cache-hit }}" -ne 'true') {
-            Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/1.4.321.1/windows/vulkansdk-windows-X64-1.4.321.1.exe" -OutFile "install.exe"
-            Start-Process -FilePath .\install.exe -ArgumentList "-c","--am","--al","in" -NoNewWindow -Wait
-          }
-          $vulkanPath = (Resolve-Path "C:\VulkanSDK\*").path
-          echo "$vulkanPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "VULKAN_SDK=$vulkanPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Save Vulkan SDK cache
-        if: ${{ !cancelled() && steps.cache-install.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            C:\VulkanSDK
-          key: vulkan-sdk-1.4.321.1
-
-      - name: Build Vulkan GPU backend
-        shell: pwsh
-        run: |
-          Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
-          Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -no_logo'
-          cmake --preset Vulkan
-          cmake --build --preset Vulkan --parallel
-          cmake --install build --prefix dist/windows_amd64
-        env:
-          CMAKE_GENERATOR: Ninja
-
       - name: Package artifact
         shell: pwsh
-        run: Compress-Archive -Path "dist\windows_amd64\*" -DestinationPath "kocort-desktop-windows-amd64-gpu.zip" -Force
+        run: Compress-Archive -Path "dist\windows_amd64\*" -DestinationPath "kocort-desktop-windows-amd64.zip" -Force
 
       - name: Upload artifact
         if: inputs.upload-artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kocort-desktop-windows-amd64-gpu
-          path: kocort-desktop-windows-amd64-gpu.zip
+          name: kocort-desktop-windows-amd64
+          path: kocort-desktop-windows-amd64.zip
 
-  # ── Linux arm64 (no GPU) ───────────────────────────────────
+  # ── Linux arm64 ─────────────────────────────────────────────
   build-desktop-linux-arm64:
     name: Desktop linux-arm64
     runs-on: ubuntu-24.04-arm
@@ -312,9 +269,9 @@ jobs:
           name: kocort-desktop-linux-arm64
           path: kocort-desktop-linux-arm64.tar.gz
 
-  # ── Linux amd64 + Vulkan GPU ───────────────────────────────
-  build-desktop-linux-amd64-gpu:
-    name: Desktop linux-amd64-gpu
+  # ── Linux amd64 ─────────────────────────────────────────────
+  build-desktop-linux-amd64:
+    name: Desktop linux-amd64
     runs-on: ubuntu-latest
 
     steps:
@@ -343,7 +300,7 @@ jobs:
       - name: Install desktop build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ripgrep fd-find wget gnupg software-properties-common
+          sudo apt-get install -y build-essential cmake ripgrep fd-find
           sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 
       - name: Build desktop bundle
@@ -353,24 +310,12 @@ jobs:
           chmod +x ./scripts/build-desktop.sh
           ./scripts/build-desktop.sh --linux
 
-      - name: Install Vulkan build toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libvulkan-dev glslc
-          echo "VULKAN_SDK=/usr" >> "$GITHUB_ENV"
-
-      - name: Build Vulkan GPU backend
-        run: |
-          cmake --preset Vulkan
-          cmake --build --preset Vulkan --parallel
-          cmake --install build --prefix dist/linux_amd64
-
       - name: Package artifact
-        run: tar -czf kocort-desktop-linux-amd64-gpu.tar.gz -C dist/linux_amd64 .
+        run: tar -czf kocort-desktop-linux-amd64.tar.gz -C dist/linux_amd64 .
 
       - name: Upload artifact
         if: inputs.upload-artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kocort-desktop-linux-amd64-gpu
-          path: kocort-desktop-linux-amd64-gpu.tar.gz
+          name: kocort-desktop-linux-amd64
+          path: kocort-desktop-linux-amd64.tar.gz

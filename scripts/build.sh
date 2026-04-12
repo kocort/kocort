@@ -241,7 +241,7 @@ Environment:
 Runtime environment (used when running the built binary):
   KOCORT_LLAMA_LIB_DIR  Path to llama.cpp shared libraries (skip auto-download)
   KOCORT_LLAMA_VERSION  llama.cpp version to download (default: b8720)
-  KOCORT_LLAMA_GPU      GPU type: cpu, vulkan, cuda-12.4, cuda-13.1, rocm-7.2
+    KOCORT_LLAMA_GPU      Library variant (current builds only publish CPU artifacts)
 
 Examples:
   # Default build
