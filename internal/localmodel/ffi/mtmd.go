@@ -33,7 +33,7 @@ func NewMtmdContext(lib *Library, llamaContext *Context, modelPath string) (*Mtm
 	cp := lib.fnMtmdContextParamsDefault()
 
 	modelPtr := lib.fnLlamaGetModel(llamaContext.ptr)
-	ctx := lib.fnMtmdInitFromFile(pathPtr, modelPtr, uintptr(unsafe.Pointer(&cp)))
+	ctx := lib.fnMtmdInitFromFile(pathPtr, modelPtr, &cp)
 	runtime.KeepAlive(pathBuf)
 
 	if ctx == 0 {
@@ -62,7 +62,7 @@ func (c *MtmdContext) MultimodalTokenize(llamaContext *Context, data []byte) ([]
 
 	// Build mtmd_input_text struct with the default media marker.
 	marker := lib.fnMtmdDefaultMarker()
-	var inputText uintptr
+	var inputText *cMtmdInputText
 	var inputTextKeepAlive *cMtmdInputText // prevent GC until after tokenize
 	if lib.fnMtmdInputTextInit != nil {
 		// Legacy path: use mtmd_input_text_init if available (pre-b8720).
@@ -76,7 +76,7 @@ func (c *MtmdContext) MultimodalTokenize(llamaContext *Context, data []byte) ([]
 			ParseSpecial: true,
 		}
 		inputTextKeepAlive = &it
-		inputText = uintptr(unsafe.Pointer(&it))
+		inputText = &it
 	}
 
 	// Initialize bitmap from image data
@@ -108,7 +108,7 @@ func (c *MtmdContext) MultimodalTokenize(llamaContext *Context, data []byte) ([]
 			// Text chunk — extract tokens
 			var cNumTokens uintptr
 			cTokensPtr := lib.fnMtmdInputChunkGetTokensText(chunk, &cNumTokens)
-			cTokensArr := unsafe.Slice((*int32)(unsafe.Pointer(cTokensPtr)), int(cNumTokens))
+			cTokensArr := unsafe.Slice(cTokensPtr, int(cNumTokens))
 			tokens := make([]int, int(cNumTokens))
 			for j := range int(cNumTokens) {
 				tokens[j] = int(cTokensArr[j])
@@ -122,12 +122,12 @@ func (c *MtmdContext) MultimodalTokenize(llamaContext *Context, data []byte) ([]
 			}
 
 			chunkEmbd := lib.fnMtmdGetOutputEmbd(c.ptr)
-			if chunkEmbd == 0 {
+			if chunkEmbd == nil {
 				return nil, errors.New("no mtmd image embedding")
 			}
 
 			// Copy embeddings for each token
-			s := unsafe.Slice((*float32)(unsafe.Pointer(chunkEmbd)), numTokens*numEmbed)
+			s := unsafe.Slice(chunkEmbd, numTokens*numEmbed)
 			rows := make([]float32, len(s))
 			copy(rows, s)
 			for j := range numTokens {

@@ -32,13 +32,13 @@ func NewBatch(lib *Library, batchSize int, maxSeq int, embedSize int) (*Batch, e
 
 	// Check if allocations succeeded
 	allocSize := batchSize * maxSeq
-	nilPointer := (embedSize == 0 && c.Token == 0) || (embedSize != 0 && c.Embd == 0) ||
-		c.Pos == 0 || c.NSeqID == 0 || c.SeqID == 0 || c.Logits == 0
+	nilPointer := (embedSize == 0 && c.Token == nil) || (embedSize != 0 && c.Embd == nil) ||
+		c.Pos == nil || c.NSeqID == nil || c.SeqID == nil || c.Logits == nil
 
 	if !nilPointer {
 		// Also check that seq_id pointers are non-nil
-		seqIDPtrs := unsafe.Slice((*uintptr)(unsafe.Pointer(c.SeqID)), allocSize)
-		nilPointer = slices.Contains(seqIDPtrs, uintptr(0))
+		seqIDPtrs := unsafe.Slice(c.SeqID, allocSize)
+		nilPointer = slices.Contains(seqIDPtrs, (*int32)(nil))
 	}
 
 	if nilPointer {
@@ -76,31 +76,31 @@ func (b *Batch) Add(token int, embed []float32, pos int, logits bool, seqIds ...
 
 	if !b.IsEmbedding() {
 		// Set token
-		tokenSlice := unsafe.Slice((*int32)(unsafe.Pointer(b.c.Token)), alloc)
+		tokenSlice := unsafe.Slice(b.c.Token, alloc)
 		tokenSlice[idx] = int32(token)
 	} else {
 		// Set embedding
-		embdSlice := unsafe.Slice((*float32)(unsafe.Pointer(b.c.Embd)), alloc*b.embedSize)
+		embdSlice := unsafe.Slice(b.c.Embd, alloc*b.embedSize)
 		copy(embdSlice[idx*b.embedSize:], embed)
 	}
 
 	// Set position
-	posSlice := unsafe.Slice((*int32)(unsafe.Pointer(b.c.Pos)), alloc)
+	posSlice := unsafe.Slice(b.c.Pos, alloc)
 	posSlice[idx] = int32(pos)
 
 	// Set number of seq IDs
-	nSeqIDSlice := unsafe.Slice((*int32)(unsafe.Pointer(b.c.NSeqID)), alloc)
+	nSeqIDSlice := unsafe.Slice(b.c.NSeqID, alloc)
 	nSeqIDSlice[idx] = int32(len(seqIds))
 
 	// Set seq IDs
-	seqIDPtrs := unsafe.Slice((*uintptr)(unsafe.Pointer(b.c.SeqID)), alloc)
-	seqIDArr := unsafe.Slice((*int32)(unsafe.Pointer(seqIDPtrs[idx])), len(seqIds))
+	seqIDPtrs := unsafe.Slice(b.c.SeqID, alloc)
+	seqIDArr := unsafe.Slice(seqIDPtrs[idx], len(seqIds))
 	for i, s := range seqIds {
 		seqIDArr[i] = int32(s)
 	}
 
 	// Set logits flag
-	logitsSlice := unsafe.Slice((*int8)(unsafe.Pointer(b.c.Logits)), alloc)
+	logitsSlice := unsafe.Slice(b.c.Logits, alloc)
 	if logits {
 		logitsSlice[idx] = 1
 	} else {

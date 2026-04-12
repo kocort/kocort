@@ -1,7 +1,5 @@
 package ffi
 
-import "unsafe"
-
 // DeviceID identifies a compute device (GPU, etc.)
 type DeviceID struct {
 	// ID is an identifier for the device for matching with system management libraries.
@@ -28,16 +26,16 @@ func EnumerateGPUs(lib *Library) []Devices {
 
 		if devType == GGMLBackendDeviceTypeGPU || devType == GGMLBackendDeviceTypeIGPU {
 			var props cBackendDevProps
-			lib.fnGgmlBackendDevGetProps(device, uintptr(unsafe.Pointer(&props)))
+			lib.fnGgmlBackendDevGetProps(device, &props)
 
 			// Name contains the backend+index (e.g. "CUDA0"), which
 			// we expose as the Library field for backend identification.
-			name := gostr((*byte)(unsafe.Pointer(props.Name)))
+			name := gostr(props.Name)
 
 			// DeviceID is the PCI bus id (e.g. "0000:01:00.0") or empty.
 			var devID string
-			if props.DeviceID != 0 {
-				devID = gostr((*byte)(unsafe.Pointer(props.DeviceID)))
+			if props.DeviceID != nil {
+				devID = gostr(props.DeviceID)
 			}
 
 			ids = append(ids, Devices{

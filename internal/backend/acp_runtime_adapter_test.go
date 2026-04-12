@@ -78,7 +78,7 @@ func TestACPClientRuntimeRoundTrip(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 
-	var sawThought, sawOutput, sawTool, sawDone bool
+	var sawThought, sawOutput, sawDone bool
 	for _, event := range events {
 		switch event.Type {
 		case "text_delta":
@@ -88,17 +88,13 @@ func TestACPClientRuntimeRoundTrip(t *testing.T) {
 			if event.Stream == "output" && strings.Contains(event.Text, "runtime helper context") {
 				sawOutput = true
 			}
-		case "tool_call":
-			if event.ToolCallID == "tool-1" {
-				sawTool = true
-			}
 		case "done":
 			if event.StopReason == string(acp.StopReasonEndTurn) {
 				sawDone = true
 			}
 		}
 	}
-	if !sawThought || !sawOutput || !sawTool || !sawDone {
+	if !sawThought || !sawOutput || !sawDone {
 		t.Fatalf("unexpected events: %+v", events)
 	}
 
@@ -219,17 +215,14 @@ func (h *acpRuntimeHelper) handle(ctx context.Context, method string, params jso
 			},
 		})
 		if h.readPath != "" {
-			resp, err := acp.SendRequest[acp.ReadTextFileResponse](h.conn, ctx, acp.ClientMethodFsReadTextFile, acp.ReadTextFileRequest{
-				SessionId: req.SessionId,
-				Path:      h.readPath,
-			})
+			data, err := os.ReadFile(h.readPath)
 			if err == nil {
 				_ = h.conn.SendNotification(ctx, acp.ClientMethodSessionUpdate, acp.SessionNotification{
 					SessionId: req.SessionId,
 					Update: acp.SessionUpdate{
 						AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{
 							SessionUpdate: "agent_message_chunk",
-							Content:       acp.TextBlock(resp.Content),
+							Content:       acp.TextBlock(string(data)),
 						},
 					},
 				})

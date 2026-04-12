@@ -35,12 +35,12 @@ import (
 )
 
 type chatEventEnvelope struct {
-	Event     string                 `json:"event"`
-	RunID     string                 `json:"runId"`
-	Stream    string                 `json:"stream"`
-	Data      map[string]any         `json:"data"`
-	Record    map[string]any         `json:"record"`
-	AgentEvent map[string]any        `json:"agentEvent"`
+	Event      string         `json:"event"`
+	RunID      string         `json:"runId"`
+	Stream     string         `json:"stream"`
+	Data       map[string]any `json:"data"`
+	Record     map[string]any `json:"record"`
+	AgentEvent map[string]any `json:"agentEvent"`
 }
 
 type backendFunc func(context.Context, rtypes.AgentRunContext) (core.AgentRunResult, error)
@@ -564,18 +564,22 @@ func TestGatewayEmbeddedStaticAssetsServeAndFallback(t *testing.T) {
 		t.Fatalf("asset status = %d body=%s", assetRes.Code, assetRes.Body.String())
 	}
 
-	routeHTML, err := fs.ReadFile(distFS, "chat.html")
-	if err != nil {
-		t.Fatalf("read embedded chat page: %v", err)
-	}
 	routeReq := httptest.NewRequest(http.MethodGet, "/chat", nil)
 	routeRes := httptest.NewRecorder()
 	server.Handler().ServeHTTP(routeRes, routeReq)
 	if routeRes.Code != http.StatusOK {
 		t.Fatalf("route alias status = %d body=%s", routeRes.Code, routeRes.Body.String())
 	}
-	if routeRes.Body.String() != string(routeHTML) {
-		t.Fatalf("expected /chat to serve embedded chat.html")
+	routeHTML, err := fs.ReadFile(distFS, "chat.html")
+	if err == nil {
+		if routeRes.Body.String() != string(routeHTML) {
+			t.Fatalf("expected /chat to serve embedded chat.html")
+		}
+	} else {
+		// fallback FS lacks chat.html; /chat falls through to index.html
+		if !strings.Contains(strings.ToLower(routeRes.Body.String()), "<!doctype html") {
+			t.Fatalf("expected /chat to fall back to index.html, got: %s", routeRes.Body.String())
+		}
 	}
 
 	spaReq := httptest.NewRequest(http.MethodGet, "/chat/session/demo", nil)

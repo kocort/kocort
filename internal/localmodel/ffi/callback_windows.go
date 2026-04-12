@@ -2,7 +2,8 @@ package ffi
 
 import (
 	"syscall"
-	"unsafe"
+
+	"github.com/kocort/purego"
 )
 
 // newLogCallbackPlatform creates a log callback for Windows.
@@ -13,8 +14,8 @@ import (
 // C signature: void (*)(int level, const char *text, void *user_data)
 // We return 0 (ignored by caller) to satisfy the Windows constraint.
 func newLogCallbackPlatform(fn func(level int32, text *byte, userData uintptr)) uintptr {
-	return syscall.NewCallbackCDecl(func(level uintptr, text uintptr, userData uintptr) uintptr {
-		fn(int32(level), (*byte)(unsafe.Pointer(text)), userData)
+	return purego.NewCallback(func(level int32, text *byte, userData uintptr) uintptr {
+		fn(level, text, userData)
 		return 0
 	})
 }

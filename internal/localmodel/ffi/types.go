@@ -114,12 +114,12 @@ type cContextParams struct {
 type cBatch struct {
 	NTokens int32
 	_pad    [4]byte // padding to align Token pointer
-	Token   uintptr // llama_token *
-	Embd    uintptr // float *
-	Pos     uintptr // llama_pos *
-	NSeqID  uintptr // int32_t *
-	SeqID   uintptr // llama_seq_id **
-	Logits  uintptr // int8_t *
+	Token   *int32  // llama_token *
+	Embd    *float32 // float *
+	Pos     *int32  // llama_pos *
+	NSeqID  *int32  // int32_t *
+	SeqID   **int32 // llama_seq_id **
+	Logits  *int8   // int8_t *
 }
 
 // ── llama_token_data ────────────────────────────────────────────────────────
@@ -164,13 +164,13 @@ type cGgufInitParams struct {
 //	    struct ggml_backend_dev_caps caps; // 4 bools
 //	};
 type cBackendDevProps struct {
-	Name     uintptr // const char *
-	Desc     uintptr // const char *
+	Name     *byte   // const char *
+	Desc     *byte   // const char *
 	MemFree  uint64  // size_t
 	MemTotal uint64  // size_t
 	Type     int32   // enum
 	_pad0    [4]byte // align next pointer
-	DeviceID uintptr // const char * (may be 0/NULL)
+	DeviceID *byte   // const char * (may be 0/NULL)
 	Caps     [4]bool // ggml_backend_dev_caps {async, host_buffer, buffer_from_host_ptr, events}
 	_pad1    [4]byte // pad to 8-byte boundary
 }

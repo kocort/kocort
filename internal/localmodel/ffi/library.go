@@ -46,9 +46,9 @@ type Library struct {
 	fnLlamaSetAbortCallback     func(ctx uintptr, callback uintptr, data uintptr)
 
 	// Logits / Embeddings
-	fnLlamaGetLogitsIth     func(ctx uintptr, i int32) uintptr
-	fnLlamaGetEmbeddingsSeq func(ctx uintptr, seqID int32) uintptr
-	fnLlamaGetEmbeddingsIth func(ctx uintptr, i int32) uintptr
+	fnLlamaGetLogitsIth     func(ctx uintptr, i int32) *float32
+	fnLlamaGetEmbeddingsSeq func(ctx uintptr, seqID int32) *float32
+	fnLlamaGetEmbeddingsIth func(ctx uintptr, i int32) *float32
 
 	// KV Cache (memory API)
 	fnLlamaGetMemory      func(ctx uintptr) uintptr
@@ -125,7 +125,7 @@ type Library struct {
 	// ── libggml-base functions ──────────────────────────────────────────
 
 	fnGgmlBackendDevType     func(dev uintptr) int32
-	fnGgmlBackendDevGetProps func(dev uintptr, props uintptr)
+	fnGgmlBackendDevGetProps func(dev uintptr, props *cBackendDevProps)
 	fnGgufInitFromFile       func(path *byte, params uintptr) uintptr
 	fnGgufFindKey            func(ctx uintptr, key *byte) int32
 	fnGgufGetValStr          func(ctx uintptr, keyID int32) *byte
@@ -134,23 +134,23 @@ type Library struct {
 	// ── libmtmd functions (optional) ────────────────────────────────────
 
 	fnMtmdContextParamsDefault    func() cMtmdContextParams
-	fnMtmdInitFromFile            func(path *byte, model uintptr, params uintptr) uintptr
+	fnMtmdInitFromFile            func(path *byte, model uintptr, params *cMtmdContextParams) uintptr
 	fnMtmdFree                    func(ctx uintptr)
 	fnMtmdInputChunksInit         func() uintptr
 	fnMtmdInputChunksFree         func(chunks uintptr)
 	fnMtmdInputChunksSize         func(chunks uintptr) uintptr
 	fnMtmdInputChunksGet          func(chunks uintptr, i uintptr) uintptr
 	fnMtmdInputChunkGetType       func(chunk uintptr) int32
-	fnMtmdInputChunkGetTokensText func(chunk uintptr, n *uintptr) uintptr
+	fnMtmdInputChunkGetTokensText func(chunk uintptr, n *uintptr) *int32
 	fnMtmdInputChunkGetNTokens    func(chunk uintptr) int32
-	fnMtmdTokenize                func(ctx uintptr, chunks uintptr, text uintptr, bitmaps *uintptr, n int32) int32
+	fnMtmdTokenize                func(ctx uintptr, chunks uintptr, text *cMtmdInputText, bitmaps *uintptr, n int32) int32
 	fnMtmdEncodeChunk             func(ctx uintptr, chunk uintptr) int32
-	fnMtmdGetOutputEmbd           func(ctx uintptr) uintptr
+	fnMtmdGetOutputEmbd           func(ctx uintptr) *float32
 	fnMtmdDefaultMarker           func() *byte
 	fnMtmdBitmapFree              func(bm uintptr)
 	fnMtmdHelperBitmapInitFromBuf func(ctx uintptr, data *byte, length uintptr) uintptr
-	fnMtmdInputTextInit           func(marker *byte, addSpecial bool, parseSpecial bool) uintptr
-	fnMtmdInputTextFree           func(text uintptr)
+	fnMtmdInputTextInit           func(marker *byte, addSpecial bool, parseSpecial bool) *cMtmdInputText
+	fnMtmdInputTextFree           func(text *cMtmdInputText)
 
 	mtmdAvailable bool
 }

@@ -227,11 +227,11 @@ func (c *Context) Free() {
 // GetEmbeddingsSeq returns the embeddings for a sequence.
 func (c *Context) GetEmbeddingsSeq(seqId int) []float32 {
 	ePtr := c.lib.fnLlamaGetEmbeddingsSeq(c.ptr, int32(seqId))
-	if ePtr == 0 {
+	if ePtr == nil {
 		return nil
 	}
 	nEmbd := c.Model().NEmbd()
-	src := unsafe.Slice((*float32)(unsafe.Pointer(ePtr)), nEmbd)
+	src := unsafe.Slice(ePtr, nEmbd)
 	result := make([]float32, nEmbd)
 	copy(result, src)
 	return result
@@ -240,11 +240,11 @@ func (c *Context) GetEmbeddingsSeq(seqId int) []float32 {
 // GetEmbeddingsIth returns the embeddings at position i.
 func (c *Context) GetEmbeddingsIth(i int) []float32 {
 	ePtr := c.lib.fnLlamaGetEmbeddingsIth(c.ptr, int32(i))
-	if ePtr == 0 {
+	if ePtr == nil {
 		return nil
 	}
 	nEmbd := c.Model().NEmbd()
-	src := unsafe.Slice((*float32)(unsafe.Pointer(ePtr)), nEmbd)
+	src := unsafe.Slice(ePtr, nEmbd)
 	result := make([]float32, nEmbd)
 	copy(result, src)
 	return result
@@ -253,11 +253,11 @@ func (c *Context) GetEmbeddingsIth(i int) []float32 {
 // GetLogitsIth returns a copy of the logits at position i.
 func (c *Context) GetLogitsIth(i int) []float32 {
 	lPtr := c.lib.fnLlamaGetLogitsIth(c.ptr, int32(i))
-	if lPtr == 0 {
+	if lPtr == nil {
 		return nil
 	}
 	vocabSize := c.Model().NumVocab()
-	src := unsafe.Slice((*float32)(unsafe.Pointer(lPtr)), vocabSize)
+	src := unsafe.Slice(lPtr, vocabSize)
 	result := make([]float32, vocabSize)
 	copy(result, src)
 	return result
@@ -269,11 +269,11 @@ func (c *Context) GetLogitsIth(i int) []float32 {
 // is consumed immediately.
 func (c *Context) GetLogitsIthDirect(i int) []float32 {
 	lPtr := c.lib.fnLlamaGetLogitsIth(c.ptr, int32(i))
-	if lPtr == 0 {
+	if lPtr == nil {
 		return nil
 	}
 	vocabSize := c.Model().NumVocab()
-	return unsafe.Slice((*float32)(unsafe.Pointer(lPtr)), vocabSize)
+	return unsafe.Slice(lPtr, vocabSize)
 }
 
 // Synchronize waits for pending operations to complete.
