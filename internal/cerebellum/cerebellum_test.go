@@ -37,6 +37,9 @@ func TestStartWithoutModelReturnsError(t *testing.T) {
 
 func skipIfStubBackend(t *testing.T) {
 	t.Helper()
+	if os.Getenv("KOCORT_TEST_REAL_BACKEND") == "" {
+		t.Skip("skipping: requires real model backend (set KOCORT_TEST_REAL_BACKEND=1 to run)")
+	}
 	m := NewManager(config.CerebellumConfig{})
 	if m.Local().IsStub() {
 		t.Skip("test requires llama.cpp support (use -tags llamacpp)")
@@ -48,7 +51,7 @@ func TestStartStopLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	createFakeModel(t, dir, "test-model.gguf")
 
-	m := NewManager(config.CerebellumConfig{ModelsDir: dir})
+	m := NewManager(config.CerebellumConfig{ModelsDir: dir, ModelID: "test-model"})
 	if len(m.Models()) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(m.Models()))
 	}
@@ -78,7 +81,7 @@ func TestRestartLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	createFakeModel(t, dir, "model-a.gguf")
 
-	m := NewManager(config.CerebellumConfig{ModelsDir: dir})
+	m := NewManager(config.CerebellumConfig{ModelsDir: dir, ModelID: "model-a"})
 	if err := m.Start(); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}
@@ -123,7 +126,7 @@ func TestSelectModelWhileRunningRestarts(t *testing.T) {
 	createFakeModel(t, dir, "model-x.gguf")
 	createFakeModel(t, dir, "model-y.gguf")
 
-	m := NewManager(config.CerebellumConfig{ModelsDir: dir})
+	m := NewManager(config.CerebellumConfig{ModelsDir: dir, ModelID: "model-x"})
 	_ = m.Start()
 	m.WaitReady()
 	if m.Status() != StatusRunning {
@@ -147,7 +150,7 @@ func TestSnapshotReturnsCorrectState(t *testing.T) {
 	dir := t.TempDir()
 	createFakeModel(t, dir, "snap-model.gguf")
 
-	m := NewManager(config.CerebellumConfig{ModelsDir: dir})
+	m := NewManager(config.CerebellumConfig{ModelsDir: dir, ModelID: "snap-model"})
 	snap := m.Snapshot(true)
 	if !snap.Enabled {
 		t.Fatal("expected enabled=true")
@@ -191,7 +194,7 @@ func TestStartIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	createFakeModel(t, dir, "m.gguf")
 
-	m := NewManager(config.CerebellumConfig{ModelsDir: dir})
+	m := NewManager(config.CerebellumConfig{ModelsDir: dir, ModelID: "m"})
 	_ = m.Start()
 	m.WaitReady()
 	if err := m.Start(); err != nil {

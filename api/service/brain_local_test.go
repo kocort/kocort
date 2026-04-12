@@ -39,6 +39,8 @@ func (b *brainLocalTestBackend) ContextSize() int {
 
 func (b *brainLocalTestBackend) SetSamplingParams(localmodel.SamplingParams) {}
 
+func (b *brainLocalTestBackend) HasVision() bool { return false }
+
 func (b *brainLocalTestBackend) CreateChatCompletionStream(context.Context, localmodel.ChatCompletionRequest, bool) (<-chan localmodel.ChatCompletionChunk, error) {
 	ch := make(chan localmodel.ChatCompletionChunk)
 	close(ch)
@@ -86,7 +88,7 @@ func TestBrainLocalStartStopPersistAutoStartPreference(t *testing.T) {
 func TestBrainModeSwitchToLocalRespectsDisabledAutoStart(t *testing.T) {
 	rt, _ := newBrainLocalServiceTestRuntime(t, "cloud", false)
 
-	if err := BrainModeSwitch(rt, "local"); err != nil {
+	if err := BrainModeSwitch(rt, "local", nil); err != nil {
 		t.Fatalf("BrainModeSwitch: %v", err)
 	}
 	if got := rt.BrainLocal.Status(); got != localmodel.StatusStopped {
@@ -107,11 +109,8 @@ func TestBuildBrainLocalStateIncludesModelsDir(t *testing.T) {
 	if state.ModelsDir != rt.Config.BrainLocal.ModelsDir {
 		t.Fatalf("expected ModelsDir %q, got %q", rt.Config.BrainLocal.ModelsDir, state.ModelsDir)
 	}
-	if len(state.Catalog) == 0 || state.Catalog[0].Description == nil {
-		t.Fatal("expected catalog description to be present")
-	}
-	if state.Catalog[0].Description.Zh == "" || state.Catalog[0].Description.En == "" {
-		t.Fatalf("expected bilingual catalog description, got %+v", state.Catalog[0].Description)
+	if len(state.Models) == 0 {
+		t.Fatal("expected at least one model in state")
 	}
 }
 

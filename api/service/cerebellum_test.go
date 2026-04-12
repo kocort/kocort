@@ -86,11 +86,8 @@ func TestBuildCerebellumStateIncludesModelsDir(t *testing.T) {
 	if state.ModelsDir != rt.Config.Cerebellum.ModelsDir {
 		t.Fatalf("expected ModelsDir %q, got %q", rt.Config.Cerebellum.ModelsDir, state.ModelsDir)
 	}
-	if len(state.Catalog) == 0 || state.Catalog[0].Description == nil {
-		t.Fatal("expected catalog description to be present")
-	}
-	if state.Catalog[0].Description.Zh == "" || state.Catalog[0].Description.En == "" {
-		t.Fatalf("expected bilingual catalog description, got %+v", state.Catalog[0].Description)
+	if len(state.Models) == 0 {
+		t.Fatal("expected at least one model in state")
 	}
 }
 

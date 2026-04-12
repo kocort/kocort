@@ -501,19 +501,15 @@ func TestLoadPromptContextFiles(t *testing.T) {
 		}
 	})
 
-	t.Run("non_subagent_group_context_still_includes_long_term_memory_files", func(t *testing.T) {
+	t.Run("non_subagent_group_context_excludes_long_term_memory_files", func(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "MEMORY.md"), []byte("durable memory"), 0o644)
 		os.WriteFile(filepath.Join(dir, "memory.md"), []byte("fallback memory"), 0o644)
 		files, _ := loadPromptContextFiles(dir, core.ChatTypeGroup, false, false)
-		foundMemory := false
 		for _, f := range files {
 			if f.Path == "MEMORY.md" || f.Path == "memory.md" {
-				foundMemory = true
+				t.Fatalf("expected long-term memory excluded in group context, but found %s", f.Path)
 			}
-		}
-		if !foundMemory {
-			t.Fatalf("expected long-term memory included outside subagent context, got %+v", files)
 		}
 	})
 

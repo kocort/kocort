@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +84,9 @@ func TestProcessRegistryListShowsBackgroundSessions(t *testing.T) {
 }
 
 func TestProcessRegistryWriteAndSubmitWithPTY(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY mode is not supported on Windows")
+	}
 	r := NewProcessRegistry()
 	rec, err := r.Start(context.Background(), ProcessStartOptions{
 		Command:      `IFS= read -r line; printf 'got:%s\n' "$line"`,

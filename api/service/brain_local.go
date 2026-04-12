@@ -93,8 +93,8 @@ func BuildBrainLocalState(rt *runtime.Runtime) *types.LocalModelState {
 		LastError:           snap.LastError,
 		DownloadProgress:    dlProgress,
 		LibDownloadProgress: libProgress,
-		AutoStart:        autoStart,
-		EnableThinking:   snap.EnableThinking,
+		AutoStart:           autoStart,
+		EnableThinking:      snap.EnableThinking,
 		Sampling: &types.SamplingParams{
 			Temp:           sp.Temp,
 			TopP:           sp.TopP,

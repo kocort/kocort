@@ -347,7 +347,7 @@ func (m *AcpSessionManager) RunTurn(
 				stopReason = strings.TrimSpace(event.StopReason)
 			case "error":
 				if strings.TrimSpace(event.Text) != "" {
-					return fmt.Errorf(strings.TrimSpace(event.Text))
+					return fmt.Errorf("%s", strings.TrimSpace(event.Text))
 				}
 				return fmt.Errorf("ACP turn failed")
 			}
